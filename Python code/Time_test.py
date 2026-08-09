@@ -42,7 +42,7 @@ x = np.linspace(-N/2,N/2-1,N)*delta
 y = x
 X,Y = np.meshgrid(x,y)
 fig = plt.figure()
-ax = fig.gca(projection='3d')
+ax = fig.add_subplot(projection='3d')
 surf = ax.plot_surface(X,Y,Phase0,cmap = 'jet'),ax.set_title('Phase in 3D')
 plt.rcParams['font.sans-serif']=['SimHei']
 plt.rcParams['axes.unicode_minus'] = False

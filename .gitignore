@@ -1,3 +1,9 @@
 __pycache__/
 *.pyc
 Tesis_env/
+
+# Repos de terceros consultados como referencia (pyDHM, DLHM-model,
+# DLHM-processing-tools). Viven en disco pero no en el repo: son ~224 MB,
+# tienen su propia historia en GitHub y 172 MB son salidas de plotly.
+Carlos/
+referencia/carlos/
