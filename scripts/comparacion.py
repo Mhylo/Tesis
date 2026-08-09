@@ -20,9 +20,12 @@ Tres cuidados para que la comparación sea honesta:
    pasada de calentamiento (inicialización de cuBLAS y planes FFT).
 
 Uso:
-    python -m CamposT.comparacion                 # barridos por defecto
-    python -m CamposT.comparacion --n 256 512 1024 --smax 8
-    python -m CamposT.comparacion --sin-figuras
+    python -m scripts.comparacion                 # barridos por defecto
+    python -m scripts.comparacion --n 256 512 1024 --smax 8
+    python -m scripts.comparacion --sin-figuras
+
+Se invoca con -m y desde la raiz del repo, no como 'python scripts/comparacion.py':
+hace falta que la raiz este en sys.path para que 'import CamposT' resuelva.
 """
 
 import argparse
