@@ -1,6 +1,11 @@
 __pycache__/
 *.pyc
 Tesis_env/
+*.egg-info/
+.pytest_cache/
+
+# Archivos de bloqueo que Excel crea junto al .xlsx mientras esta abierto
+~$*.xlsx
 
 # Repos de terceros consultados como referencia (pyDHM, DLHM-model,
 # DLHM-processing-tools). Viven en disco pero no en el repo: son ~224 MB,
