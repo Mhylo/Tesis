@@ -1,0 +1,348 @@
+"""Verificación de los propagadores: identidad en z=0, energía y reversibilidad.
+
+Tarea 9 del cronograma (semana 5). Estas tres propiedades no requieren una
+solución analítica: se cumplen o no por construcción del método, así que
+distinguen un propagador correcto de uno que "da algo parecido".
+
+Sobre qué se le exige a cada método
+-----------------------------------
+FFT-ASM es unitario por construcción: la FFT lo es y |H| = 1 salvo en las
+ondas evanescentes, que en la malla de prueba no existen (lamb/(2·delta) =
+0.004 << 1). De ahí que se le exija conservación de energía y reversibilidad
+*exactas*.
+
+BLAS y MPASM pierden energía a propósito. BLAS aplica una máscara de banda
+limitada y MPASM comprime el intervalo espectral por Kf > 1; en ambos casos
+se descarta espectro, y descartar espectro es irreversible. Exigirles
+conservación de energía a todo z sería exigirles que no hagan lo que hacen.
+Lo que sí se les exige es no *ganar* energía nunca, y ser exactos en el
+régimen donde su aproximación está inactiva (Kf = 1, o z por debajo del
+límite de banda).
+"""
+
+import numpy as np
+import pytest
+
+from conftest import (DELTA, L0, LAMB, N, W0, Z_CERCANO, Z_TODOS,
+                      energia, error_relativo)
+
+from CamposT.propagadores import (blas, fft_asm, gauss_analytic, gauss_beam,
+                                  kf_auto, mpasm, transfer_function)
+
+
+def solo_campo(resultado):
+    """mpasm devuelve (campo, Kf); fft_asm y blas sólo el campo."""
+    return resultado[0] if isinstance(resultado, tuple) else resultado
+
+
+def z_limite_blas(n, delta, lamb):
+    """Distancia a la que la máscara de BLAS empieza a recortar espectro.
+
+    El límite de banda es flim = 1/(lamb·sqrt((2z/(delta·N))² + 1)) y la malla
+    llega hasta fmax = 1/(2·delta). Igualando ambos y despejando z:
+
+        z_lim = delta·N / (2·lamb·fmax) = delta²·N / lamb
+
+    Por debajo, la máscara no descarta nada y BLAS coincide con FFT-ASM; por
+    encima, descarta, y lo descartado no vuelve.
+    """
+    return delta ** 2 * n / lamb
+
+
+def cintura(w0, lamb, z):
+    """Radio del haz gaussiano tras propagar z. zR = pi·w0²/lamb."""
+    return w0 * np.sqrt(1 + (z / (np.pi * w0 ** 2 / lamb)) ** 2)
+
+
+#: los tres propagadores bajo la firma común, con Kf y s neutralizados en
+#: MPASM para que las tres funciones sean comparables término a término
+PROPAGADORES = {
+    "mpasm": lambda U, z, **kw: mpasm(U, DELTA, LAMB, z, s=1, Kf=1.0, **kw)[0],
+    "fft_asm": lambda U, z, **kw: fft_asm(U, DELTA, LAMB, z, **kw),
+    "blas": lambda U, z, **kw: blas(U, DELTA, LAMB, z, **kw),
+}
+
+
+# ---------------------------------------------------------------- caso z = 0
+@pytest.mark.parametrize("nombre", list(PROPAGADORES))
+def test_z_cero_devuelve_el_campo_de_entrada(nombre, campo, device, tol):
+    """Propagar una distancia nula no puede cambiar el campo."""
+    U = PROPAGADORES[nombre](campo, 0, device=device)
+    assert error_relativo(U, campo) < tol
+
+
+@pytest.mark.parametrize("s", [1, 2, 4])
+def test_mpasm_en_z_cero_es_identidad_para_cualquier_sobremuestreo(s, campo):
+    """El sobremuestreo cambia el coste, no el resultado en z = 0.
+
+    Comprueba que la DFT matricial sobremuestreada y su inversa son un par
+    exacto: si la normalización (s²·M·N·Kf²) estuviera mal, este es el primer
+    sitio donde se vería.
+    """
+    U, Kf = mpasm(campo, DELTA, LAMB, 0, s=s, device="cpu")
+    assert Kf == 1.0
+    assert error_relativo(U, campo) < 1e-12
+
+
+# ------------------------------------------------------------------- energía
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_fft_asm_conserva_la_energia(z, campo, device, tol):
+    """FFT-ASM es unitario: la FFT lo es y |H| = 1 en toda la malla."""
+    U = fft_asm(campo, DELTA, LAMB, z, device=device)
+    assert abs(energia(U) / energia(campo) - 1) < tol
+
+
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_mpasm_conserva_la_energia_sin_compresion(z, campo, device, tol):
+    """Con s = Kf = 1, MPASM es FFT-ASM escrito como producto matricial."""
+    U, _ = mpasm(campo, DELTA, LAMB, z, s=1, Kf=1.0, device=device)
+    assert abs(energia(U) / energia(campo) - 1) < tol
+
+
+@pytest.mark.parametrize("nombre", list(PROPAGADORES))
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_ningun_propagador_gana_energia(nombre, z, campo, device, tol):
+    """Propagar en espacio libre no crea energía. Perderla es admisible
+    (filtro de banda, compresión frecuencial); ganarla nunca lo es, y sería
+    el síntoma de una normalización equivocada."""
+    U = PROPAGADORES[nombre](campo, z, device=device)
+    assert energia(U) / energia(campo) <= 1 + tol
+
+
+def test_blas_pierde_energia_de_forma_monotona(campo):
+    """El límite de banda de BLAS se estrecha al crecer z, así que la energía
+    que deja pasar sólo puede decrecer. Un repunte indicaría que la máscara
+    se está calculando con el signo o el eje cambiados."""
+    E0 = energia(campo)
+    fracciones = [energia(blas(campo, DELTA, LAMB, z, device="cpu")) / E0
+                  for z in (0, 100, 500, 2000, 6000, 12000, 30000, 80000)]
+    for anterior, siguiente in zip(fracciones, fracciones[1:]):
+        assert siguiente <= anterior + 1e-12
+    assert fracciones[-1] < 0.5, "a z grande el filtro debería recortar de verdad"
+
+
+# ------------------------------------------------------------- reversibilidad
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_fft_asm_es_reversible(z, campo, device, tol):
+    """H(-z) = conj(H(z)) sin ondas evanescentes, luego propagar z y volver
+    -z devuelve el campo original."""
+    ida = fft_asm(campo, DELTA, LAMB, z, device=device)
+    vuelta = fft_asm(ida, DELTA, LAMB, -z, device=device)
+    assert error_relativo(vuelta, campo) < tol
+
+
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_mpasm_es_reversible_sin_compresion(z, campo, device, tol):
+    ida, _ = mpasm(campo, DELTA, LAMB, z, s=1, Kf=1.0, device=device)
+    vuelta, _ = mpasm(ida, DELTA, LAMB, -z, s=1, Kf=1.0, device=device)
+    assert error_relativo(vuelta, campo) < tol
+
+
+@pytest.mark.parametrize("fraccion", [0.15, 0.5, 0.9])
+def test_blas_es_reversible_mientras_el_filtro_no_actua(fraccion, campo, device, tol):
+    """Por debajo de z_lim la máscara no descarta nada y BLAS coincide con
+    FFT-ASM. El z se toma como fracción del límite en vez de a ojo, porque
+    depende de la malla: con N=64 y L0=5 mm son 637 mm, y un z fijo de 2000
+    caería ya en el otro régimen."""
+    z = fraccion * z_limite_blas(campo.shape[0], DELTA, LAMB)
+    ida = blas(campo, DELTA, LAMB, z, device=device)
+    vuelta = blas(ida, DELTA, LAMB, -z, device=device)
+    assert error_relativo(vuelta, campo) < tol
+
+
+@pytest.mark.parametrize("fraccion", [1.1, 3.0, 20.0])
+def test_blas_no_es_reversible_pasado_su_limite_de_banda(fraccion, campo):
+    """Contrapartida de la prueba anterior, y comprobación de que z_lim marca
+    de verdad el cruce: apenas un 10 % por encima, la vuelta ya no reconstruye
+    el campo. Queda escrito como comportamiento esperado, no como un fallo por
+    descubrir."""
+    z = fraccion * z_limite_blas(campo.shape[0], DELTA, LAMB)
+    ida = blas(campo, DELTA, LAMB, z, device="cpu")
+    vuelta = blas(ida, DELTA, LAMB, -z, device="cpu")
+    assert error_relativo(vuelta, campo) > 1e-6
+
+
+# --------------------------------------------- MPASM en su régimen propio
+# Las pruebas anteriores fijan s = Kf = 1 para poder comparar los tres métodos
+# término a término, pero ese ajuste desactiva justamente lo que MPASM aporta.
+# Lo que sigue lo ejercita con sobremuestreo y compresión activos.
+
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_mpasm_con_compresion_no_gana_energia(z, campo, device, tol):
+    """Con Kf > 1 la normalización lleva un factor Kf² (dos veces, ida en la
+    DFT directa). Si ese factor se cayera, el campo saldría escalado por Kf²
+    y la energía por Kf⁴: a z = 80000, Kf = 5.6, casi mil veces. Es la única
+    prueba de la suite sensible a la escala absoluta en este régimen."""
+    U, Kf = mpasm(campo, DELTA, LAMB, z, s=4, device=device)
+    assert energia(U) / energia(campo) <= 1 + tol
+
+
+def test_mpasm_activa_la_compresion_a_z_grande(campo):
+    """Salvaguarda de la prueba anterior: si kf_auto dejara de comprimir, esos
+    casos pasarían a ejercitar el régimen trivial sin que nadie se entere."""
+    assert kf_auto(N, DELTA, LAMB, 500, s=4) == 1.0
+    assert kf_auto(N, DELTA, LAMB, 80000, s=4) > 5
+
+
+@pytest.mark.parametrize("z", [12000, 80000])
+def test_mpasm_acierta_donde_fft_asm_aliasa(z, campo, malla):
+    """El resultado que justifica el método. A estos z el haz ya no cabe en la
+    ventana y FFT-ASM devuelve un campo irreconocible (RMS ~0.16 y ~0.88
+    contra la solución analítica), mientras que MPASM con s = 4 y Kf
+    automático sigue al gaussiano exacto con RMS < 1e-3 sobre la misma malla
+    de entrada y sin ampliarla."""
+    X, Y = malla
+    assert cintura(W0, LAMB, z) > L0 / 2
+
+    U_mpasm, Kf = mpasm(campo, DELTA, LAMB, z, s=4, device="cpu")
+    U_fft = fft_asm(campo, DELTA, LAMB, z, device="cpu")
+
+    assert Kf > 1, "el caso debe caer en el régimen comprimido"
+    assert _rms_contra_analitico(U_mpasm, X, Y, z) < 1e-3
+    assert _rms_contra_analitico(U_fft, X, Y, z) > 0.1
+
+
+# ------------------------------------------------- equivalencia entre métodos
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_mpasm_sin_sobremuestreo_coincide_con_fft_asm(z, campo, device, tol):
+    """Lo que promete el docstring de mpasm(): con s = Kf = r = mag = 1 es
+    FFT-ASM. Si esta prueba cae, los dos métodos han dejado de ser
+    comparables y la tabla de tiempos del Objetivo 1 pierde sentido."""
+    U_mpasm, _ = mpasm(campo, DELTA, LAMB, z, s=1, Kf=1.0, r=1, mag=1.0,
+                       device=device)
+    U_fft = fft_asm(campo, DELTA, LAMB, z, device=device)
+    assert error_relativo(U_mpasm, U_fft) < tol
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("nombre", list(PROPAGADORES))
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_gpu_y_cpu_dan_el_mismo_campo(nombre, z, campo):
+    """El mismo código en los dos dispositivos. La diferencia admisible es la
+    de complex64 frente a complex128, no la de dos algoritmos distintos: si
+    la política de fases en float64 de backend.py fallara, el error aquí se
+    dispararía varios órdenes de magnitud."""
+    pytest.importorskip("cupy")
+    from CamposT.backend import gpu_disponible
+    if not gpu_disponible():
+        pytest.skip("sin GPU CUDA")
+
+    U_cpu = PROPAGADORES[nombre](campo, z, device="cpu")
+    U_gpu = PROPAGADORES[nombre](campo, z, device="gpu", dtype=np.complex64)
+    assert error_relativo(U_gpu, U_cpu) < 1e-5
+
+
+# ----------------------------------------------------------- malla de salida
+def test_r_y_mag_controlan_la_malla_de_salida(campo):
+    """r fija el número de puntos de salida y mag el paso, Ecs. (6)-(8).
+    Es lo que permite reconstruir un plano más fino sin repropagar."""
+    N_entrada = campo.shape[0]
+    U, _ = mpasm(campo, DELTA, LAMB, 2000, s=1, Kf=1.0, r=2, device="cpu")
+    assert U.shape == (2 * N_entrada, 2 * N_entrada)
+
+    U, _ = mpasm(campo, DELTA, LAMB, 2000, s=1, Kf=1.0, mag=0.5, device="cpu")
+    assert U.shape == (N_entrada, N_entrada)
+
+
+# -------------------------------------------------------------------- kf_auto
+def test_kf_es_uno_en_z_cero():
+    assert kf_auto(64, DELTA, LAMB, 0) == 1.0
+
+
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_kf_nunca_baja_de_uno(z):
+    """Kf < 1 significaría expandir el intervalo espectral en vez de
+    comprimirlo, que no es lo que la Ec. (14) describe."""
+    assert kf_auto(64, DELTA, LAMB, z) >= 1.0
+
+
+def test_kf_crece_con_z():
+    valores = [kf_auto(64, DELTA, LAMB, z) for z in (500, 2000, 12000, 80000)]
+    assert valores == sorted(valores)
+
+
+def test_la_formula_del_codigo_original_difiere_de_la_del_paper():
+    """El código publicado escribe A**2 * B donde la Ec. (14) dice A**2 + B.
+    Esta prueba fija la discrepancia por escrito: si alguien "arregla"
+    kf_auto igualando las dos ramas, aquí se entera."""
+    z = 12000
+    del_paper = kf_auto(64, DELTA, LAMB, z, s=10, formula="paper")
+    del_codigo = kf_auto(64, DELTA, LAMB, z, s=10, formula="codigo")
+    assert del_paper != del_codigo
+
+
+# ------------------------------------------------- función de transferencia
+def test_la_transferencia_tiene_modulo_uno_en_las_ondas_propagantes():
+    """|H| = 1 es la razón de que FFT-ASM sea unitario; se comprueba aparte
+    para que un fallo señale la causa y no sólo el síntoma."""
+    fx = np.linspace(-0.5, 0.5, 65) / LAMB * 0.9   # dentro del círculo |lamb·f| < 1
+    H = transfer_function(fx, fx, LAMB, 2000, np, np.complex128)
+    assert np.allclose(np.abs(H), 1.0, atol=1e-12)
+
+
+def test_la_transferencia_anula_las_ondas_evanescentes():
+    """Fuera del círculo lamb²(fx²+fy²) > 1 la onda no propaga y H debe ser
+    exactamente cero, no un número grande."""
+    delta_fino = 1e-4                    # mm; 1/(2·delta) > 1/lamb
+    N_fino = 64
+    fx = (np.arange(N_fino) - N_fino / 2) / (delta_fino * N_fino)
+    H = transfer_function(fx, fx, LAMB, 2000, np, np.complex128)
+    FX, FY = np.meshgrid(fx, fx)
+    evanescentes = (LAMB * FX) ** 2 + (LAMB * FY) ** 2 >= 1.0
+    assert evanescentes.any(), "la malla de prueba no contiene evanescentes"
+    assert np.all(H[evanescentes] == 0)
+
+
+# ------------------------------------------------- referencia analítica
+def _rms_contra_analitico(U, X, Y, z):
+    ref = gauss_analytic(X, Y, W0, LAMB, z)
+    amplitud = np.abs(np.asarray(U))
+    return float(np.sqrt(np.mean((amplitud / amplitud.max() - ref / ref.max()) ** 2)))
+
+
+@pytest.mark.parametrize("z", Z_CERCANO)
+def test_fft_asm_sigue_al_gaussiano_analitico(z, campo, malla):
+    """Contraste contra la solución exacta del haz gaussiano. No es una
+    propiedad estructural como las anteriores sino exactitud física, y es el
+    puente hacia la tarea 13 (curvas de error).
+
+    Sólo se exige mientras el haz propagado cabe en la ventana; el caso
+    contrario es la prueba siguiente.
+    """
+    X, Y = malla
+    assert cintura(W0, LAMB, z) < L0 / 2, "el haz debe caber en la ventana"
+    assert _rms_contra_analitico(fft_asm(campo, DELTA, LAMB, z, device="cpu"),
+                                 X, Y, z) < 0.01
+
+
+def test_fft_asm_se_degrada_cuando_el_haz_no_cabe_en_la_ventana():
+    """El talón de Aquiles de FFT-ASM, y la razón de ser de MPASM y BLAS.
+
+    A z = 12000 mm el haz tiene wz = 2.6 mm y la ventana sólo llega a 2.5 mm:
+    lo que sale por un borde reentra por el opuesto (la FFT es circular) y la
+    amplitud deja de parecerse a la analítica. La prueba fija ambos lados —
+    falla con la ventana estrecha, acierta con una ancha — para que quede
+    demostrado que la causa es el tamaño de ventana y no el propagador.
+    """
+    z = 12000
+    assert cintura(W0, LAMB, z) > L0 / 2
+
+    U_estrecha, X, Y = gauss_beam(N, DELTA, W0, device="cpu")
+    rms_estrecha = _rms_contra_analitico(
+        fft_asm(U_estrecha, DELTA, LAMB, z, device="cpu"), X, Y, z)
+
+    delta_ancha = (8 * L0) / (N - 1)
+    U_ancha, X_a, Y_a = gauss_beam(N, delta_ancha, W0, device="cpu")
+    rms_ancha = _rms_contra_analitico(
+        fft_asm(U_ancha, delta_ancha, LAMB, z, device="cpu"), X_a, Y_a, z)
+
+    assert rms_estrecha > 0.1, "con la ventana justa debería aliasar"
+    assert rms_ancha < 0.01, "con ventana holgada debería seguir al analítico"
+
+
+if __name__ == "__main__":
+    # Ejecutar este fichero con `python tests/test_propagadores.py` (o con el
+    # botón de Run del editor) lanza pytest sobre él. Sin esto, Python lo
+    # importaría, no encontraría ningún `main` y terminaría sin hacer nada:
+    # las pruebas las recolecta y ejecuta pytest, no el intérprete.
+    raise SystemExit(pytest.main([__file__, "-v"]))
