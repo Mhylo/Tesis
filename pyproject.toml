@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "CamposT"
+version = "0.1.0"
+description = "Propagadores de campo optico con control de muestreo, en CPU y GPU"
+requires-python = ">=3.10"
+# matplotlib lo usa scripts/comparacion.py para las figuras del benchmark; se
+# importa dentro de la funcion que grafica, pero sin el la corrida falla al
+# final, despues de haber medido todo.
+dependencies = ["numpy", "matplotlib"]
+
+# CuPy no va aqui: el paquete que hay que instalar depende de la version de
+# CUDA (cupy-cuda12x, cupy-cuda11x...) y el codigo cae a NumPy si no esta.
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+# Solo para correr los repos de terceros de referencia/carlos/, no CamposT.
+# pyLHM importa skimage y xarray en la cabecera de myfunctions.py (los usa
+# unicamente en helpers de visualizacion y autofoco, pero el import falla igual
+# y tumba el modulo entero) y sus scripts leen imagenes con imageio.
+referencia = ["scikit-image", "xarray", "imageio", "opencv-python", "plotly", "scipy"]
+
+[tool.setuptools]
+packages = ["CamposT"]
