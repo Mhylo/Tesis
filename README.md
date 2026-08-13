@@ -22,11 +22,14 @@ y qué parte del cambio de precisión.
       parchar_referencias.py
                         Arregla los repos de terceros para que corran en este
                         entorno. Ver más abajo.
+      figura_escenario.py
+                        Dibuja el escenario de la Tabla 1 del paper: apertura,
+                        frente de onda y ambos tras propagar.
 
     tests/              Verificación de los propagadores (pytest).
       test_propagadores.py
 
-    resultados/         Salidas del benchmark: figuras y CSV. Se regeneran.
+    resultados/         Salidas de los scripts: figuras y CSV. Se regeneran.
 
     referencia/
       zhao2020/         Código original de Zhao et al., Opt. Lett. 45, 5937
