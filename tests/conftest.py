@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from CamposT.backend import gpu_disponible, liberar_memoria
-from CamposT.propagadores import gauss_beam
+from CamposT.referencias import gauss_beam
 
 # --- parámetros del campo de prueba ------------------------------------------
 # Tabla 1 del paper (haz gaussiano, sin lente) con N reducido: la matriz
