@@ -26,8 +26,9 @@ import pytest
 from conftest import (DELTA, L0, LAMB, N, W0, Z_CERCANO, Z_TODOS,
                       energia, error_relativo)
 
-from CamposT.propagadores import (blas, fft_asm, gauss_analytic, gauss_beam,
-                                  kf_auto, mpasm, transfer_function)
+from CamposT.propagadores import (blas, fft_asm, kf_auto, mpasm,
+                                  transfer_function)
+from CamposT.referencias import gauss_analytic, gauss_beam
 
 
 def solo_campo(resultado):
@@ -245,6 +246,108 @@ def test_r_y_mag_controlan_la_malla_de_salida(campo):
 
 
 # -------------------------------------------------------------------- kf_auto
+def _gauss_no_cuadrado(M, N, delta, w0):
+    """Gaussiano centrado en una malla M x N. gauss_beam sólo hace cuadradas."""
+    x = (np.arange(N) - N / 2) * delta
+    y = (np.arange(M) - M / 2) * delta
+    X, Y = np.meshgrid(x, y)
+    return np.exp(-(X**2 + Y**2) / w0**2).astype(complex), X, Y
+
+
+def test_kf_se_calcula_por_eje_en_campos_no_cuadrados():
+    """La Tabla 1 del paper lista K_fx y K_fy por separado.
+
+    Kf sale como ~1/sqrt(N), así que el eje corto necesita MÁS compresión que
+    el largo. Usar el de un solo eje para los dos submuestrea el corto en
+    silencio: ni avisa ni falla, sólo alía. Y los sensores de DLHM no son
+    cuadrados (1024x1280, 1200x1920), así que esto aparece en cuanto se
+    procesen hologramas reales.
+    """
+    M, N, z = 32, 64, 12000
+    U0, _, _ = _gauss_no_cuadrado(M, N, DELTA, W0)
+    _, Kf = mpasm(U0, DELTA, LAMB, z, s=2, device="cpu")
+    assert isinstance(Kf, tuple), "en malla no cuadrada Kf debe venir por eje"
+    Kfy, Kfx = Kf
+    assert Kfy == pytest.approx(kf_auto(M, DELTA, LAMB, z, s=2))
+    assert Kfx == pytest.approx(kf_auto(N, DELTA, LAMB, z, s=2))
+    assert Kfy > Kfx, "el eje corto necesita más compresión"
+
+
+def test_en_malla_cuadrada_kf_sigue_siendo_un_escalar():
+    """Los dos ejes coinciden, así que devolver la pareja sólo estorbaría."""
+    U0, _, _ = _gauss_no_cuadrado(48, 48, DELTA, W0)
+    _, Kf = mpasm(U0, DELTA, LAMB, 12000, s=2, device="cpu")
+    assert isinstance(Kf, float)
+
+
+def test_kf_por_eje_evita_el_aliasing_del_eje_corto():
+    """La prueba física del arreglo, con un target USAF en malla rectangular.
+
+    Hace falta contenido de alta frecuencia para que el aliasing aparezca: con
+    un gaussiano suave las dos variantes dan lo mismo, porque no hay nada
+    cerca del límite de banda que se pueda plegar. Por eso aquí se propaga un
+    target de barras y no el haz de las demás pruebas.
+
+    Referencia: el mismo campo con s alto, donde el muestreo en frecuencia es
+    lo bastante fino como para que la compresión apenas actúe.
+    """
+    from CamposT.campos import usaf_like
+
+    M, N, z, s = 64, 128, 150.0, 4
+    delta, lamb = 3.45e-3, 405e-6          # sensor y láser del montaje DLHM
+    U0 = usaf_like(N)[(N - M) // 2:(N + M) // 2, :].astype(complex)
+
+    referencia, _ = mpasm(U0, delta, lamb, z, s=16, device="cpu")
+
+    def error(U):
+        a, b = np.abs(np.asarray(U)), np.abs(np.asarray(referencia))
+        return float(np.sqrt(np.mean((a / a.max() - b / b.max()) ** 2)))
+
+    por_eje, _ = mpasm(U0, delta, lamb, z, s=s, device="cpu")
+    unico, _ = mpasm(U0, delta, lamb, z, s=s,
+                     Kf=kf_auto(N, delta, lamb, z, s=s), device="cpu")
+
+    assert error(por_eje) < error(unico) / 5, (
+        f"por eje {error(por_eje):.2e} vs Kf único {error(unico):.2e}")
+
+
+def test_transponer_el_campo_transpone_el_resultado():
+    """Invariancia que no necesita ninguna referencia externa.
+
+    Propagar U0 y propagar U0.T tienen que dar resultados transpuestos entre
+    sí, porque el problema es el mismo con los ejes cambiados de nombre. Si
+    K_fy y K_fx se aplicaran al eje equivocado, o si un solo Kf se usara para
+    los dos, esta igualdad se rompe: el eje corto y el largo dejarían de
+    tratarse como lo que son.
+
+    Hace falta precisamente porque las pruebas que comparan contra un campo
+    de referencia calculado con el mismo mpasm no lo verían: el error estaría
+    también en la referencia.
+    """
+    M, N, z = 32, 64, 12000
+    U0, _, _ = _gauss_no_cuadrado(M, N, DELTA, W0)
+    directo, _ = mpasm(U0, DELTA, LAMB, z, s=2, device="cpu")
+    transpuesto, _ = mpasm(np.ascontiguousarray(U0.T), DELTA, LAMB, z, s=2,
+                           device="cpu")
+    assert error_relativo(directo, np.asarray(transpuesto).T) < 1e-12
+
+
+def test_la_amplitud_absoluta_es_correcta_en_malla_no_cuadrada():
+    """Contrasta la ESCALA, no la forma.
+
+    Todas las demás comparaciones normalizan por el máximo, así que un error
+    global de normalización —por ejemplo Kfx² donde debería ir Kfx·Kfy— pasa
+    inadvertido. Aquí se compara la amplitud absoluta contra el valor exacto
+    del haz gaussiano, en un régimen donde el haz cabe holgadamente en la
+    ventana corta y el truncamiento no falsea el máximo.
+    """
+    M, N, w0, z = 32, 64, 0.25, 1000
+    U0, X, Y = _gauss_no_cuadrado(M, N, DELTA, w0)
+    U, _ = mpasm(U0, DELTA, LAMB, z, s=4, device="cpu")
+    esperado = gauss_analytic(X, Y, w0, LAMB, z).max()
+    assert float(np.abs(np.asarray(U)).max()) == pytest.approx(esperado, rel=1e-3)
+
+
 def test_kf_es_uno_en_z_cero():
     assert kf_auto(64, DELTA, LAMB, 0) == 1.0
 

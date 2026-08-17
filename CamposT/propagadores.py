@@ -1,7 +1,10 @@
 """Propagadores de campo óptico bajo una interfaz común, en CPU o en GPU.
 
-Port del código de Zhao et al., Opt. Lett. 45, 5937 (2020), más FFT-ASM y BLAS
-para comparación. Punto de partida del Objetivo 1.
+Port del código de Zhao et al., Opt. Lett. 45, 5937 (2020), más FFT-ASM y
+BL-ASM para comparación. Punto de partida del Objetivo 1.
+
+Sólo los métodos. Contra qué se contrastan está en referencias.py, cómo se
+mide la discrepancia en metricas.py, y quién los orquesta en pipeline.py.
 
 Todas las funciones aceptan device='gpu'|'cpu'|'auto' y un dtype de trabajo.
 El cuerpo del algoritmo es el mismo en ambos casos (ver backend.py): lo único
@@ -23,7 +26,7 @@ Ver kf_auto(..., formula='codigo') para reproducir el comportamiento original.
 import numpy as np
 
 from CamposT import backend as bk
-from CamposT.backend import (a_dispositivo, a_numpy, bloques, dtype_por_defecto,
+from CamposT.backend import (a_dispositivo, bloques, dtype_por_defecto,
                              fase_a_complejo, get_xp, phasor)
 
 
@@ -64,6 +67,11 @@ def mpasm(U0, delta, lamb, z, s=10, Kf=None, r=1, mag=1.0, formula="paper",
     """Espectro angular por producto matricial.
 
     Devuelve (campo_salida, Kf_usado). Con s=Kf=r=mag=1 es equivalente a FFT-ASM.
+
+    Kf se calcula por eje (K_fy del numero de filas, K_fx del de columnas) y
+    se devuelve como escalar cuando los dos coinciden -- toda malla cuadrada,
+    que es el caso habitual -- y como pareja (Kfy, Kfx) cuando no. El
+    parametro Kf acepta las dos formas.
     El campo devuelto vive en el dispositivo pedido; usa backend.a_numpy() para
     bajarlo.
 
@@ -76,8 +84,17 @@ def mpasm(U0, delta, lamb, z, s=10, Kf=None, r=1, mag=1.0, formula="paper",
 
     M, N = U0.shape
     Ms, Ns = s * M, s * N
+    # Kf por eje: la Tabla 1 del paper lista K_fx y K_fy por separado, y Kf va
+    # como ~1/sqrt(N), asi que en malla rectangular el eje corto necesita mas
+    # compresion que el largo. Aplicar el de un solo eje a los dos submuestrea
+    # el corto sin avisar (medido: RMS 1.3e-2 frente a 4.8e-4).
     if Kf is None:
-        Kf = kf_auto(N, delta, lamb, z, s=s, formula=formula)
+        Kfy = kf_auto(M, delta, lamb, z, s=s, formula=formula)
+        Kfx = kf_auto(N, delta, lamb, z, s=s, formula=formula)
+    elif isinstance(Kf, (tuple, list)):
+        Kfy, Kfx = (float(v) for v in Kf)
+    else:
+        Kfy = Kfx = float(Kf)
 
     if dev == "gpu":
         bk.comprobar_memoria(memoria_mpasm(M, N, s, r, dtype),
@@ -87,13 +104,13 @@ def mpasm(U0, delta, lamb, z, s=10, Kf=None, r=1, mag=1.0, formula="paper",
     # mallas en doble precisión: son coordenadas, no datos de campo
     x = (np.arange(N) - N / 2) * delta
     y = (np.arange(M) - M / 2) * delta
-    fx = (np.arange(Ns) - Ns / 2) / (s * delta * N) / Kf
-    fy = (np.arange(Ms) - Ms / 2) / (s * delta * M) / Kf
+    fx = (np.arange(Ns) - Ns / 2) / (s * delta * N) / Kfx
+    fy = (np.arange(Ms) - Ms / 2) / (s * delta * M) / Kfy
 
     # DFT como triple producto matricial, Ec. (3)
     Mx = phasor(x, fx, -1, xp, dtype)                    # (N, Ns)
     My = phasor(fy, y, -1, xp, dtype)                    # (Ms, M)
-    norma = float(s**2 * M * N * Kf**2)
+    norma = float(s**2 * M * N * Kfx * Kfy)
     F = ((My @ U0 @ Mx) / norma).astype(dtype, copy=False)
     del Mx, My
 
@@ -106,7 +123,7 @@ def mpasm(U0, delta, lamb, z, s=10, Kf=None, r=1, mag=1.0, formula="paper",
     y1 = (np.arange(r * M) - r * M / 2) * delta * mag
     Mx1 = phasor(fx, x1, +1, xp, dtype)                  # (Ns, rN)
     My1 = phasor(y1, fy, +1, xp, dtype)                  # (rM, Ms)
-    return My1 @ F @ Mx1, Kf
+    return My1 @ F @ Mx1, (Kfy if Kfy == Kfx else (Kfy, Kfx))
 
 
 # ------------------------------------------------------- función de transferencia
@@ -177,82 +194,3 @@ def blas(U0, delta, lamb, z, device="auto", dtype=None):
     F = xp.fft.fftshift(xp.fft.fft2(U0))
     return xp.fft.ifft2(xp.fft.ifftshift(F * H))
 
-
-# ------------------------------------------------------- referencias analíticas
-def gauss_beam(N, delta, w0, device="auto", dtype=None):
-    """Devuelve (U0 en el dispositivo, X, Y en NumPy para las referencias)."""
-    xp, dev = get_xp(device)
-    dtype = dtype or dtype_por_defecto(dev)
-    x = (np.arange(N) - N / 2) * delta
-    X, Y = np.meshgrid(x, x)
-    U0 = np.exp(-(X**2 + Y**2) / w0**2)
-    return a_dispositivo(U0, xp, dtype), X, Y
-
-
-def gauss_analytic(X, Y, w0, lamb, z):
-    """Amplitud de un haz gaussiano propagado (solución exacta)."""
-    zR = np.pi * w0**2 / lamb
-    wz = w0 * np.sqrt(1 + (z / zR) ** 2)
-    return (w0 / wz) * np.exp(-(X**2 + Y**2) / wz**2)
-
-
-# ------------------------------------------------------------------- métricas
-def sam(U, ref):
-    """Error RMS entre amplitudes normalizadas. Reemplazar por el SAM del paper
-    una vez se confirme su definición exacta. Acepta arrays de CPU o de GPU."""
-    a = np.abs(a_numpy(U)).astype(np.float64)
-    b = np.abs(a_numpy(ref)).astype(np.float64)
-    a /= a.max()
-    b /= b.max()
-    return float(np.sqrt(np.mean((a - b) ** 2)))
-
-
-if __name__ == "__main__":
-    from CamposT.backend import cronometrar, gpu_disponible, info_gpu, liberar_memoria
-
-    # Parámetros de la Tabla 1 del paper (sin la lente)
-    L0, N, w0, lamb = 5.0, 512, 1.0, 632.8e-6      # mm
-    delta = L0 / (N - 1)
-    Z = (500, 2000, 6000, 12000, 30000, 80000, 200000)
-
-    if gpu_disponible():
-        gi = info_gpu()
-        print(f"GPU: {gi['nombre']} (cc {gi['capacidad']}), "
-              f"{gi['VRAM total [GB]']:.1f} GB, CuPy {gi['cupy']}")
-    else:
-        print("Sin GPU: todo en CPU.")
-
-    # --- exactitud contra la solución analítica -------------------------------
-    U0_cpu, X, Y = gauss_beam(N, delta, w0, device="cpu")
-    print("\nExactitud (SAM contra el gaussiano analítico), CPU complex128:")
-    print(f"{'z [mm]':>8} {'Kf':>7} {'MPASM':>9} {'FFT-ASM':>9} {'BLAS':>9}")
-    for z in Z:
-        ref = gauss_analytic(X, Y, w0, lamb, z)
-        Um, Kf = mpasm(U0_cpu, delta, lamb, z, device="cpu")
-        print(f"{z:8d} {Kf:7.2f} {sam(Um, ref):9.5f} "
-              f"{sam(fft_asm(U0_cpu, delta, lamb, z, device='cpu'), ref):9.5f} "
-              f"{sam(blas(U0_cpu, delta, lamb, z, device='cpu'), ref):9.5f}")
-
-    # --- coste de la precisión simple en GPU ----------------------------------
-    if gpu_disponible():
-        print("\nEfecto del dtype en GPU (SAM contra el analítico):")
-        print(f"{'z [mm]':>8} {'c64':>9} {'c128':>9} {'CPU c128':>9}")
-        for z in Z:
-            ref = gauss_analytic(X, Y, w0, lamb, z)
-            U64, _ = mpasm(U0_cpu, delta, lamb, z, device="gpu", dtype=np.complex64)
-            U128, _ = mpasm(U0_cpu, delta, lamb, z, device="gpu", dtype=np.complex128)
-            Ucpu, _ = mpasm(U0_cpu, delta, lamb, z, device="cpu")
-            print(f"{z:8d} {sam(U64, ref):9.5f} {sam(U128, ref):9.5f} "
-                  f"{sam(Ucpu, ref):9.5f}")
-            liberar_memoria()
-
-        # --- tiempos ----------------------------------------------------------
-        z = 12000
-        print(f"\nTiempos a z = {z} mm, N = {N}, s = 10 (con sincronización):")
-        print(f"{'método':>16} {'CPU c128 [s]':>13} {'GPU c64 [s]':>12} {'x':>7}")
-        for nombre, fn in (("MPASM", mpasm), ("FFT-ASM", fft_asm), ("BLAS", blas)):
-            _, t_cpu = cronometrar(fn, U0_cpu, delta, lamb, z, device="cpu")
-            _, t_gpu = cronometrar(fn, U0_cpu, delta, lamb, z, device="gpu",
-                                   dtype=np.complex64)
-            print(f"{nombre:>16} {t_cpu:13.3f} {t_gpu:12.3f} {t_cpu / t_gpu:7.1f}")
-            liberar_memoria()
