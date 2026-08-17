@@ -6,16 +6,29 @@ y qué parte del cambio de precisión.
 
 ## Estructura
 
-    CamposT/            El paquete. Todo el código propio vive aquí.
-      backend.py        Elige CuPy (GPU) o NumPy (CPU) y fija la política de
-                        precisión: fases en float64 siempre, campos en
-                        complex64 en GPU.
-      propagadores.py   MPASM, FFT-ASM, BLAS y SAM bajo una interfaz común.
-      campos.py         Construye los campos de entrada (imagen, target USAF).
+    CamposT/            El paquete. Todo el código propio vive aquí. Los
+                        módulos, en el orden que recorre un campo:
+      campos.py         Construye el campo de entrada: una imagen, o el target
+                        sintético de barras con su geometría (ancho de barra,
+                        periodo, pares de línea por mm).
+      propagadores.py   Lo propaga. MPASM, FFT-ASM y BL-ASM bajo una firma
+                        común, más kf_auto y la función de transferencia.
+      referencias.py    Contra qué se contrasta: el gaussiano analítico
+                        (cerrado, paraxial) y la Rayleigh-Sommerfeld I
+                        (cuadratura, no paraxial).
+      metricas.py       Cómo se mide la discrepancia: SAM en dB (más alto
+                        mejor) y rms_amplitud (más bajo mejor).
+      pipeline.py       Orquesta lo anterior: diagnostico() dice si hace falta
+                        MPASM, propagar() lo ejecuta, guardar() lo escribe.
+      backend.py        Debajo de todo: elige CuPy (GPU) o NumPy (CPU) y fija
+                        la política de precisión: fases en float64 siempre,
+                        campos en complex64 en GPU.
 
     scripts/
       comparacion.py    Benchmark CPU vs GPU del Objetivo 1: escalado con el
                         tamaño de malla N y con el sobremuestreo s.
+      exactitud.py      SAM [dB] de cada método contra el gaussiano analítico
+                        sobre siete órdenes de z: la tabla de la Figura 4.
       contraste_referencias.py
                         Contrasta CamposT contra pyDHM sobre el gaussiano
                         analítico, que hace de árbitro entre las dos.
@@ -26,10 +39,17 @@ y qué parte del cambio de precisión.
                         Dibuja el escenario de la Tabla 1 del paper: apertura,
                         frente de onda y ambos tras propagar.
 
-    tests/              Verificación de los propagadores (pytest).
-      test_propagadores.py
+    tests/              Verificación (pytest). Un fichero por módulo:
+      test_propagadores.py   propiedades de los propagadores, Kf por eje
+      test_rs1.py            la Rayleigh-Sommerfeld y su reducción a 1-D
+      test_metricas.py       el SAM del paper y la errata de su Ec. (16)
+      test_campos.py         geometría del target USAF y su conversión a lp/mm
 
     resultados/         Salidas de los scripts: figuras y CSV. Se regeneran.
+      campos/           Los campos propagados, una carpeta por propagador
+                        (fft/, blas/, mpasm/), para que el método se lea en
+                        la ruta. Los parámetros van en el nombre:
+                        mpasm/z0020_s2.png es MPASM a z = 20 mm con s = 2.
 
     referencia/
       zhao2020/         Código original de Zhao et al., Opt. Lett. 45, 5937
@@ -71,10 +91,17 @@ Barridos concretos:
 Tesis_env/Scripts/python.exe -m scripts.comparacion --n 256 512 1024 --smax 8
 ```
 
-Los módulos del paquete también corren solos, con una demostración cada uno:
+El pipeline corre solo, con una demostración de extremo a extremo que propaga
+el target por los tres métodos y escribe los PNG:
 
 ```bash
-Tesis_env/Scripts/python.exe -m CamposT.propagadores
+Tesis_env/Scripts/python.exe -m CamposT.pipeline
+```
+
+Y la tabla de exactitud del Objetivo 1:
+
+```bash
+Tesis_env/Scripts/python.exe -m scripts.exactitud
 ```
 
 ## Tests
@@ -108,9 +135,11 @@ hay CUDA. Lo que se verifica y por qué está en el docstring de
   que impone complex64 frente a complex128.
 
 Las tolerancias no están ajustadas hasta que la suite pase: salen de la
-mantisa del dtype. La suite se validó por mutación (seis bugs inyectados a
-mano en `CamposT/`, seis detectados), porque un test escrito después del
-código y que pasa a la primera no demuestra nada por sí solo.
+mantisa del dtype. La suite se validó por mutación: se inyectan bugs a mano en
+`CamposT/` y se comprueba que la suite los detecta, porque un test escrito
+después del código y que pasa a la primera no demuestra nada por sí solo. Los
+huecos encontrados así están anotados donde salieron; el único que sigue
+abierto a propósito está documentado en `referencias.n_phi_auto`.
 
 ## referencia/carlos/
 

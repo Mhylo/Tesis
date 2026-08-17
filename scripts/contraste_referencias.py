@@ -28,7 +28,8 @@ import numpy as np
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from CamposT.propagadores import blas, fft_asm, gauss_analytic, gauss_beam, mpasm
+from CamposT.propagadores import blas, fft_asm, mpasm
+from CamposT.referencias import gauss_analytic, gauss_beam
 
 #: ruta del paquete pyDHM dentro de referencia/carlos/
 PYDHM = (pathlib.Path(__file__).resolve().parent.parent

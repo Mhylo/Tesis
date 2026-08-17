@@ -39,7 +39,8 @@ import numpy as np
 from CamposT import backend as bk
 from CamposT.backend import a_dispositivo, gpu_disponible, liberar_memoria
 from CamposT.campos import usaf_like
-from CamposT.propagadores import blas, fft_asm, memoria_mpasm, mpasm, sam
+from CamposT.metricas import rms_amplitud
+from CamposT.propagadores import blas, fft_asm, memoria_mpasm, mpasm
 
 #: parámetros del montaje DLHM (mm)
 DELTA = 3.45e-3
@@ -131,7 +132,7 @@ def punto(metodo, N, s, saltar_cpu):
     if "cpu_64" in tiempos and "gpu_64" in tiempos:
         fila["x_iso"] = round(tiempos["cpu_64"] / tiempos["gpu_64"], 1)
     if "cpu_128" in campos and "gpu_64" in campos:
-        fila["sam"] = sam(campos["gpu_64"], campos["cpu_128"])
+        fila["rms_gpu_cpu"] = rms_amplitud(campos["gpu_64"], campos["cpu_128"])
     if "gpu_64" in tiempos and "gpu_64_tr" in tiempos:
         fila["frac_transf"] = round(
             1 - tiempos["gpu_64"] / tiempos["gpu_64_tr"], 3)
@@ -167,13 +168,13 @@ def barrido_s(lista_s, N=512):
 
 # -------------------------------------------------------------------- salidas
 COLUMNAS = ["metodo", "N", "s", "cpu_128", "cpu_64", "gpu_128", "gpu_64",
-            "gpu_64_tr", "x", "x_iso", "frac_transf", "sam"]
+            "gpu_64_tr", "x", "x_iso", "frac_transf", "rms_gpu_cpu"]
 
 
 def imprimir_cabecera():
     print(f"{'método':>7} {'N':>5} {'s':>3} {'CPU c128':>9} {'CPU c64':>9} "
           f"{'GPU c128':>9} {'GPU c64':>9} {'+transf':>9} {'x':>6} "
-          f"{'x_iso':>6} {'SAM':>9}")
+          f"{'x_iso':>6} {'RMS g/c':>9}")
 
 
 def imprimir_fila(f):
@@ -186,7 +187,7 @@ def imprimir_fila(f):
           + " ".join(celda(k, 9, ".4f") for k in
                      ("cpu_128", "cpu_64", "gpu_128", "gpu_64", "gpu_64_tr"))
           + " " + celda("x", 6, ".1f") + " " + celda("x_iso", 6, ".1f")
-          + " " + celda("sam", 9, ".2e"))
+          + " " + celda("rms_gpu_cpu", 9, ".2e"))
 
 
 def guardar_csv(filas, path):
