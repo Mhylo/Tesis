@@ -36,8 +36,11 @@ y qué parte del cambio de precisión.
                         Arregla los repos de terceros para que corran en este
                         entorno. Ver más abajo.
       figura_escenario.py
-                        Dibuja el escenario de la Tabla 1 del paper: apertura,
-                        frente de onda y ambos tras propagar.
+                        Dibuja el escenario de la Tabla 1 del paper en tres
+                        figuras: la apertura, el frente de onda propagado y el
+                        corte axial x-z del haz. Este ultimo comprueba que el
+                        radio 1/e sigue a w0(R+z)/R, o sea que la lente del
+                        paper es un pinhole virtual.
 
     tests/              Verificación (pytest). Un fichero por módulo:
       test_propagadores.py   propiedades de los propagadores, Kf por eje
@@ -46,6 +49,7 @@ y qué parte del cambio de precisión.
       test_campos.py         geometría del target USAF y su conversión a lp/mm
 
     resultados/         Salidas de los scripts: figuras y CSV. Se regeneran.
+      escenario/        Las tres figuras del escenario de la Tabla 1.
       campos/           Los campos propagados, una carpeta por propagador
                         (fft/, blas/, mpasm/), para que el método se lea en
                         la ruta. Los parámetros van en el nombre:
