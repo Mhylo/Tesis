@@ -36,9 +36,20 @@ def kf_auto(N, delta, lamb, z, s=1, formula="paper"):
 
     Es aritmética escalar: se hace siempre en doble precisión en CPU, sin
     importar el backend con el que luego se propague.
+
+    Depende de |z|, no de z. La compresión existe para que el intervalo
+    espectral cubra el ancho de banda de la función de transferencia, y ese
+    ancho es el mismo propagando hacia adelante que hacia atrás: H(-z) =
+    conj(H(z)). La Ec. (14) está escrita para z > 0 y al aplicarla tal cual a
+    z < 0 salía fmax negativo, con lo que el max(1.0, ...) devolvía 1 y
+    apagaba la compresión sin avisar. Como retropropagacion.py propaga
+    siempre a -z, eso dejaba a MPASM corriendo como un FFT-ASM rellenado de
+    ceros en TODA reconstrucción (medido: RMS 2.3e-1 contra 1.7e-3 con el Kf
+    correcto).
     """
     if z == 0:
         return 1.0
+    z = abs(z)
     Ns = s * N
     A = (Ns * lamb) ** 2
     B = (8 * Ns * lamb * z) ** 2
@@ -62,6 +73,33 @@ def memoria_mpasm(M, N, s=10, r=1, dtype=np.complex64):
     return elementos * itemsize + bk.PRESUPUESTO_BLOQUE
 
 
+def _comprobar_ventana(r, mag, s, Kfy, Kfx):
+    """La ventana de salida no puede exceder el periodo espacial del espectro.
+
+    El espectro se muestrea cada 1/(s·N·delta·Kf), así que el campo que
+    describe se repite en el espacio cada s·N·delta·Kf. La malla de salida
+    abarca r·N·delta·mag. Si lo segundo supera a lo primero, la salida sale
+    con copias periódicas del campo superpuestas: no falla, no avisa,
+    simplemente devuelve otra cosa (medido contra el gaussiano analítico:
+    error relativo 1.0, es decir, nada que ver).
+
+    N y M se cancelan en la desigualdad, así que la condición es r·mag <= s·Kf
+    por eje, y manda el eje con menos compresión. La igualdad se admite: ahí
+    la ventana cubre exactamente un periodo y no hay solape.
+
+    Es el único acoplamiento entre los cuatro parámetros de la Tabla 1 que no
+    se ve leyendo sus definiciones por separado, y el más fácil de violar sin
+    enterarse al subir mag para ampliar la ventana de observación.
+    """
+    holgura = s * min(Kfy, Kfx)
+    if r * mag > holgura * (1 + 1e-12):
+        raise ValueError(
+            f"la ventana de salida no cabe en el periodo del espectro: "
+            f"r·mag = {r * mag:g} > s·Kf = {holgura:g}. El campo saldría con "
+            f"copias periódicas superpuestas. Sube s a >= "
+            f"{int(np.ceil(r * mag / min(Kfy, Kfx)))}, o baja r o mag.")
+
+
 def mpasm(U0, delta, lamb, z, s=10, Kf=None, r=1, mag=1.0, formula="paper",
           device="auto", dtype=None):
     """Espectro angular por producto matricial.
@@ -72,6 +110,13 @@ def mpasm(U0, delta, lamb, z, s=10, Kf=None, r=1, mag=1.0, formula="paper",
     se devuelve como escalar cuando los dos coinciden -- toda malla cuadrada,
     que es el caso habitual -- y como pareja (Kfy, Kfx) cuando no. El
     parametro Kf acepta las dos formas.
+
+    r y mag no son libres: la ventana de salida tiene que caber en el periodo
+    espacial que impone el muestreo del espectro, o sea r·mag <= s·Kf. Se
+    comprueba y se aborta si no se cumple (ver _comprobar_ventana). Ampliar la
+    ventana de observación exige, por tanto, subir s o dejar que Kf crezca con
+    z: no basta con subir mag.
+
     El campo devuelto vive en el dispositivo pedido; usa backend.a_numpy() para
     bajarlo.
 
@@ -95,6 +140,7 @@ def mpasm(U0, delta, lamb, z, s=10, Kf=None, r=1, mag=1.0, formula="paper",
         Kfy, Kfx = (float(v) for v in Kf)
     else:
         Kfy = Kfx = float(Kf)
+    _comprobar_ventana(r, mag, s, Kfy, Kfx)
 
     if dev == "gpu":
         bk.comprobar_memoria(memoria_mpasm(M, N, s, r, dtype),
