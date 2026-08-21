@@ -236,13 +236,57 @@ def test_gpu_y_cpu_dan_el_mismo_campo(nombre, z, campo):
 # ----------------------------------------------------------- malla de salida
 def test_r_y_mag_controlan_la_malla_de_salida(campo):
     """r fija el número de puntos de salida y mag el paso, Ecs. (6)-(8).
-    Es lo que permite reconstruir un plano más fino sin repropagar."""
+    Es lo que permite reconstruir un plano más fino sin repropagar.
+
+    El caso r = 2 va con s = 2 porque duplicar los puntos con mag = 1 duplica
+    la ventana, y la ventana tiene que caber en el periodo del espectro:
+    r·mag <= s·Kf. Con s = 1 esto devolvía la extensión periódica del campo
+    en lugar del campo, y esta prueba no se enteraba porque sólo miraba la
+    forma del array.
+    """
     N_entrada = campo.shape[0]
-    U, _ = mpasm(campo, DELTA, LAMB, 2000, s=1, Kf=1.0, r=2, device="cpu")
+    U, _ = mpasm(campo, DELTA, LAMB, 2000, s=2, Kf=1.0, r=2, device="cpu")
     assert U.shape == (2 * N_entrada, 2 * N_entrada)
 
     U, _ = mpasm(campo, DELTA, LAMB, 2000, s=1, Kf=1.0, mag=0.5, device="cpu")
     assert U.shape == (N_entrada, N_entrada)
+
+
+# ------------------------------------------ ventana de salida contra periodo
+@pytest.mark.parametrize("s, r, mag", [(1, 1, 2.0), (1, 2, 1.0), (4, 2, 4.0)])
+def test_mpasm_aborta_si_la_ventana_no_cabe_en_el_periodo(s, r, mag, campo):
+    """r·mag > s·Kf significa que la malla de salida abarca más de un periodo
+    espacial del espectro, y el campo sale con copias de sí mismo encima.
+
+    Antes no fallaba ni avisaba: devolvía un array de la forma pedida con el
+    contenido equivocado (medido contra el gaussiano analítico, error
+    relativo 1.0). Un fallo ruidoso es lo único aceptable aquí, porque el
+    síntoma —un halo periódico en el borde— es fácil de confundir con
+    difracción de verdad.
+    """
+    with pytest.raises(ValueError, match="periodo del espectro"):
+        mpasm(campo, DELTA, LAMB, 2000, s=s, Kf=1.0, r=r, mag=mag, device="cpu")
+
+
+def test_la_ventana_justa_es_legal_y_correcta(campo, malla):
+    """El límite r·mag = s·Kf no es conservador: justo ahí la ventana cubre
+    exactamente un periodo, no hay solape, y el campo sigue siendo el bueno.
+
+    Se compara con el doble de holgura: si el límite estuviera mal puesto, los
+    dos errores no coincidirían.
+    """
+    z = 2000
+    justa, _ = mpasm(campo, DELTA, LAMB, z, s=2, Kf=1.0, mag=2.0, device="cpu")
+    holgada, _ = mpasm(campo, DELTA, LAMB, z, s=4, Kf=1.0, mag=2.0, device="cpu")
+
+    def rms(U):
+        n = U.shape[0]
+        xo = (np.arange(n) - n / 2) * DELTA * 2.0
+        XO, YO = np.meshgrid(xo, xo)
+        return _rms_contra_analitico(U, XO, YO, z)
+
+    assert rms(justa) < 1e-3
+    assert rms(justa) == pytest.approx(rms(holgada), rel=0.2)
 
 
 # -------------------------------------------------------------------- kf_auto
@@ -346,6 +390,44 @@ def test_la_amplitud_absoluta_es_correcta_en_malla_no_cuadrada():
     U, _ = mpasm(U0, DELTA, LAMB, z, s=4, device="cpu")
     esperado = gauss_analytic(X, Y, w0, LAMB, z).max()
     assert float(np.abs(np.asarray(U)).max()) == pytest.approx(esperado, rel=1e-3)
+
+
+@pytest.mark.parametrize("z", Z_TODOS)
+def test_kf_no_depende_del_signo_de_z(z):
+    """La compresión la fija el ancho de banda de H, y H(-z) = conj(H(z)):
+    mismo ancho, mismo Kf.
+
+    Aplicando la Ec. (14) tal cual a z < 0 salía fmax < 0 y el max(1.0, ...)
+    devolvía 1, o sea compresión apagada. Como retropropagacion.py propaga
+    siempre a -z, eso dejaba a MPASM sin lo único que lo distingue de FFT-ASM
+    en TODA reconstrucción, y en silencio.
+    """
+    assert kf_auto(N, DELTA, LAMB, -z, s=4) == kf_auto(N, DELTA, LAMB, z, s=4)
+
+
+def test_mpasm_retropropaga_igual_de_bien_que_propaga():
+    """La consecuencia física de lo anterior, sin referencia externa.
+
+    Para cualquier propagador de espacio libre  U(-z) = conj(P(+z){conj(U)}),
+    porque H(-z) = conj(H(z)) y conjugar el campo conjuga la transformada. Eso
+    da una referencia para z < 0 construida por el camino z > 0, que es donde
+    la Ec. (14) está escrita y donde se sabe que Kf funciona.
+
+    Se propaga un target de barras, no el gaussiano de las demás pruebas:
+    hace falta contenido de alta frecuencia para que la falta de compresión
+    alíe. Con Kf apagado el error medido era 5.4, con Kf correcto es 1.1e-2.
+    """
+    from CamposT.campos import usaf_like
+
+    n, delta, lamb, z, s = 128, 3.45e-3, 633e-6, 400.0, 4
+    U0 = usaf_like(n).astype(complex)
+
+    referencia = np.conj(np.asarray(
+        mpasm(np.conj(U0), delta, lamb, z, s=s, device="cpu")[0]))
+    vuelta, Kf = mpasm(U0, delta, lamb, -z, s=s, device="cpu")
+
+    assert Kf > 1, "el caso debe caer en el régimen comprimido"
+    assert error_relativo(vuelta, referencia) < 0.1
 
 
 def test_kf_es_uno_en_z_cero():
