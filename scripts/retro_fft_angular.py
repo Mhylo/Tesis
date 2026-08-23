@@ -102,7 +102,7 @@ LAMB = 633e-6
 DELTA = 3.45e-3
 
 #: Distancia objeto <-> sensor [mm], POSITIVA. La ida va a +Z y la vuelta a -Z.
-Z = 90.0
+Z = 100.0
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Y esto solo si hace falta
