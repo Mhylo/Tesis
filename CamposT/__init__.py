@@ -1,6 +1,6 @@
 """Propagación de campos ópticos en CPU o GPU con el mismo código.
 
-Seis módulos, cada uno con una responsabilidad. Leídos en este orden se sigue
+Siete módulos, cada uno con una responsabilidad. Leídos en este orden se sigue
 el camino que recorre un campo:
 
     campos        construye el campo de entrada U0: una imagen, o el target
@@ -26,6 +26,13 @@ el camino que recorre un campo:
     backend       debajo de todo: elige CuPy o NumPy y fija la política de
                   precisión (fases en float64 siempre, campos en complex64 en
                   GPU).
+
+Y el camino de vuelta, que se apoya en todo lo anterior:
+
+    retropropagacion  del holograma medido al objeto. Toma una imagen de
+                  intensidad que elige el usuario y la retropropaga con los
+                  tres métodos sobre un barrido de distancias, porque la de
+                  enfoque no se conoce de antemano.
 
 Para empezar por algún sitio: `python -m CamposT.pipeline` propaga el target
 por los tres métodos y escribe los PNG en resultados/campos/.

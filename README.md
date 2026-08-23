@@ -20,6 +20,10 @@ y qué parte del cambio de precisión.
                         mejor) y rms_amplitud (más bajo mejor).
       pipeline.py       Orquesta lo anterior: diagnostico() dice si hace falta
                         MPASM, propagar() lo ejecuta, guardar() lo escribe.
+      retropropagacion.py
+                        El camino de vuelta: de un holograma medido al objeto.
+                        Toma la imagen que le des y la retropropaga con los
+                        tres métodos sobre un barrido de distancias.
       backend.py        Debajo de todo: elige CuPy (GPU) o NumPy (CPU) y fija
                         la política de precisión: fases en float64 siempre,
                         campos en complex64 en GPU.
@@ -35,6 +39,15 @@ y qué parte del cambio de precisión.
       parchar_referencias.py
                         Arregla los repos de terceros para que corran en este
                         entorno. Ver más abajo.
+      mi_holograma.py   Retropropaga TU holograma con los parámetros como
+                        constantes editables: pegas la ruta y le das a Run.
+                        Llama al main() de CamposT.retropropagacion, no
+                        duplica nada.
+      retro_fft_angular.py
+                        La misma retropropagación en una sola pieza, con el
+                        angularSpectrum de pyDHM (más tres arreglos, marcados
+                        en su docstring). Dibuja el barrido de z en una
+                        rejilla. Para leer el algoritmo, no para producir.
       figura_escenario.py
                         Dibuja el escenario de la Tabla 1 del paper en tres
                         figuras: la apertura, el frente de onda propagado y el
@@ -47,6 +60,9 @@ y qué parte del cambio de precisión.
       test_rs1.py            la Rayleigh-Sommerfeld y su reducción a 1-D
       test_metricas.py       el SAM del paper y la errata de su Ec. (16)
       test_campos.py         geometría del target USAF y su conversión a lp/mm
+      test_retropropagacion.py
+                             re-localización del objeto, convención de signo y
+                             la ambigüedad de la imagen gemela
 
     resultados/         Salidas de los scripts: figuras y CSV. Se regeneran.
       escenario/        Las tres figuras del escenario de la Tabla 1.
@@ -54,6 +70,8 @@ y qué parte del cambio de precisión.
                         (fft/, blas/, mpasm/), para que el método se lea en
                         la ruta. Los parámetros van en el nombre:
                         mpasm/z0020_s2.png es MPASM a z = 20 mm con s = 2.
+      retropropagacion/ Las reconstrucciones, una subcarpeta por holograma y
+                        dentro una por propagador.
 
     referencia/
       zhao2020/         Código original de Zhao et al., Opt. Lett. 45, 5937
@@ -107,6 +125,31 @@ Y la tabla de exactitud del Objetivo 1:
 ```bash
 Tesis_env/Scripts/python.exe -m scripts.exactitud
 ```
+
+### Retropropagar un holograma
+
+La imagen la eliges tú en cada corrida. Como la distancia de enfoque no se
+conoce de antemano, `--z` acepta dos valores y barre entre ellos:
+
+```bash
+Tesis_env/Scripts/python.exe -m CamposT.retropropagacion holograma.png --z 20 40 --pasos 25
+```
+
+Los PNG salen en `resultados/retropropagacion/holograma/{fft,blas,mpasm}/`,
+uno por distancia. `--delta` y `--lamb` fijan el montaje (por defecto 3.45 µm
+y 405 nm), `--metodos` acota los propagadores y `--s` sube el sobremuestreo de
+MPASM — con cuidado: su matriz espectral es (s·N)² *por distancia*, así que en
+un barrido el defecto es `s=1`.
+
+Si prefieres no escribir la línea de órdenes, `scripts/mi_holograma.py` hace lo
+mismo con los parámetros como constantes editables: pegas la ruta en `RUTA`,
+ajustas `DELTA`, `LAMB` y `Z`, y le das a Run. Llama al `main()` de la CLI, así
+que los dos caminos no pueden divergir.
+
+Dos límites que conviene conocer antes de leer una reconstrucción, ambos
+documentados en el módulo y fijados en su suite: asume iluminación colimada
+(sin la corrección de fuente puntual del DLHM), y la reconstrucción trae la
+imagen gemela superpuesta, que no se suprime.
 
 ## Tests
 

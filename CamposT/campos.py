@@ -25,6 +25,15 @@ def load_field(path, N=None, mode="amplitud", phase_depth=np.pi, invert=False):
         'amplitud'      -> objeto de amplitud puro. U0 = t, con t en [0,1].
         'fase'          -> objeto de fase puro.    U0 = exp(i·phase_depth·t).
         'transmitancia' -> amplitud binarizada (útil para targets tipo USAF).
+        'holograma'     -> la imagen es INTENSIDAD medida, no transmitancia:
+                           U0 = sqrt(t). Es el modo para retropropagar (ver
+                           retropropagacion.py). Un sensor registra |U|², así
+                           que tomar la imagen como amplitud —lo que hace
+                           'amplitud'— eleva el campo al cuadrado y falsea
+                           tanto el contraste como la distancia a la que
+                           enfoca la reconstrucción. La fase se pierde en la
+                           medida y no hay nada que hacer al respecto aquí:
+                           es el problema de la imagen gemela.
 
     invert=True intercambia zonas opacas y transparentes (según cómo venga
     escaneado el target).
@@ -42,6 +51,8 @@ def load_field(path, N=None, mode="amplitud", phase_depth=np.pi, invert=False):
         return np.exp(1j * phase_depth * t)
     if mode == "transmitancia":
         return (t > 0.5).astype(float).astype(complex)
+    if mode == "holograma":
+        return np.sqrt(t).astype(complex)
     raise ValueError(f"mode desconocido: {mode}")
 
 # ------------------------------------------------------------- objeto de prueba
