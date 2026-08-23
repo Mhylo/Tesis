@@ -46,7 +46,7 @@ import pytest
 
 from conftest import DELTA, LAMB, N, W0
 
-from CamposT.metricas import alfa_sam, sam
+from CamposT.metricas import alfa_sam, rms_amplitud, sam
 from CamposT.propagadores import fft_asm, mpasm
 from CamposT.referencias import gauss_analytic
 
@@ -120,6 +120,50 @@ def test_sam_de_un_campo_consigo_mismo_es_infinito():
     puede ser un ZeroDivisionError ni un nan."""
     U = campo_de_intensidad(np.random.default_rng(0).random((16, 16)) + 0.5)
     assert sam(U, U) == np.inf
+
+
+# ------------------------------------------------------- casos degenerados
+def test_sam_de_un_campo_nulo_no_sale_perfecto():
+    """Regresión, y la peor de las tres: un campo idénticamente nulo daba +inf.
+
+    Con I = 0 salen α = 0 y residuo = 0, así que la Ec. (15) es 0/0. La rama
+    que devuelve +inf sólo miraba el residuo y no se enteraba de que el
+    numerador también se había anulado, de modo que la métrica daba por
+    PERFECTA la peor reconstrucción posible. En un barrido de métodos eso la
+    deja ganando, y una pantalla en negro es justo lo que sale cuando la señal
+    se va entera fuera de la ventana.
+    """
+    ref = campo_de_intensidad(np.random.default_rng(2).random((16, 16)) + 0.5)
+    with pytest.raises(ValueError, match="nulo"):
+        sam(np.zeros((16, 16), dtype=complex), ref)
+
+
+def test_sam_contra_una_referencia_nula_falla():
+    """El denominador de la Ec. (16) se anula: antes salía NaN con un aviso de
+    NumPy, y un aviso no sobrevive a un barrido de cien distancias."""
+    U = campo_de_intensidad(np.random.default_rng(3).random((16, 16)) + 0.5)
+    with pytest.raises(ValueError, match="referencia es idénticamente nula"):
+        sam(U, np.zeros((16, 16), dtype=complex))
+
+
+def test_sam_exige_que_las_dos_mallas_coincidan():
+    """NumPy difunde (N,1) contra (N,N) sin quejarse, así que comparar un
+    perfil radial -lo que devuelve rs1_radial- contra un plano entero daba un
+    número creíble calculado sobre otra cosa. Medido antes del arreglo: +inf.
+    """
+    ref = campo_de_intensidad(np.random.default_rng(4).random((16, 16)) + 0.5)
+    with pytest.raises(ValueError, match="misma malla"):
+        sam(ref[:, :1], ref)
+
+
+def test_rms_amplitud_rechaza_lo_mismo():
+    """La métrica de paridad GPU/CPU tenía las dos grietas: normalizar por el
+    máximo de un campo nulo es 0/0, y las formas tampoco se comprobaban."""
+    U = campo_de_intensidad(np.ones((8, 8)))
+    with pytest.raises(ValueError, match="nulo"):
+        rms_amplitud(np.zeros((8, 8), dtype=complex), U)
+    with pytest.raises(ValueError, match="misma malla"):
+        rms_amplitud(U[:, :1], U)
 
 
 # ------------------------------------------------- qué mide y qué no mide SAM
