@@ -138,7 +138,7 @@ if __name__ == "__main__":
     # --- parámetros de ejemplo (unidades: mm) ---
     N = 512
     delta = 3.45e-3        # paso de píxel del sensor, 3.45 µm
-    lamb = 405e-6          # 405 nm
+    lamb = 633e-6          # 633 nm
 
     if gpu_disponible():
         gi = info_gpu()
