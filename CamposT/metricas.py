@@ -30,6 +30,33 @@ def _intensidad(U):
     return np.abs(a_numpy(U)).astype(np.float64) ** 2
 
 
+def _intensidades(U, ref):
+    """Las dos intensidades, comprobando que describen la misma malla.
+
+    NumPy difunde (N,1) contra (N,N) sin quejarse, así que comparar un perfil
+    radial -lo que devuelve referencias.rs1_radial- contra un plano entero
+    daba un número perfectamente creíble calculado sobre otra cosa. Es el
+    único error de uso de esta métrica que no se delata solo.
+    """
+    I, I_ref = _intensidad(U), _intensidad(ref)
+    if I.shape != I_ref.shape:
+        raise ValueError(
+            f"campo y referencia no viven en la misma malla: {I.shape} frente "
+            f"a {I_ref.shape}. Recorta o interpola antes de medir.")
+    return I, I_ref
+
+
+def _alfa(I, I_ref, formula):
+    """α sobre intensidades ya calculadas. Ver alfa_sam() para el porqué."""
+    den = np.sum(I_ref) if formula == "literal" else np.sum(I_ref * I_ref)
+    if den == 0.0:
+        raise ValueError(
+            "la referencia es idénticamente nula: no hay nada a lo que ajustar "
+            "la escala y la Ec. (16) queda 0/0. Antes devolvía NaN con un aviso "
+            "de NumPy, que se pierde en cualquier barrido.")
+    return float(np.sum(I * I_ref) / den)
+
+
 def alfa_sam(U, ref, formula="corregida"):
     """Factor de escala α que mejor ajusta la referencia al campo medido.
 
@@ -59,9 +86,8 @@ def alfa_sam(U, ref, formula="corregida"):
     Ec. (14). Es para poder contrastar contra la Figura 4 publicada, no para
     usarla.
     """
-    I_ref = _intensidad(ref)
-    den = np.sum(I_ref) if formula == "literal" else np.sum(I_ref * I_ref)
-    return float(np.sum(_intensidad(U) * I_ref) / den)
+    I, I_ref = _intensidades(U, ref)
+    return _alfa(I, I_ref, formula)
 
 
 def sam(U, ref, formula="corregida"):
@@ -75,6 +101,11 @@ def sam(U, ref, formula="corregida"):
     Devuelve +inf cuando el residuo se anula (campo idéntico a la referencia
     salvo escala). Acepta arrays de CPU o de GPU.
 
+    Un campo idénticamente nulo NO da +inf: da error. Con I = 0 salen α = 0 y
+    residuo = 0, y el cociente es 0/0, no infinito; devolver +inf declaraba
+    perfecta la peor reconstrucción posible, y en un barrido de métodos eso la
+    dejaba ganando. Lo mismo con una referencia nula (ver alfa_sam).
+
     Lo que NO mide: como α es un factor de escala ajustado, SAM es ciego a un
     error de normalización global. Mide la forma del campo, no su nivel, y
     sólo sobre intensidades: dos campos con la misma intensidad y distinta
@@ -82,12 +113,17 @@ def sam(U, ref, formula="corregida"):
 
     Sobre formula="literal", ver alfa_sam().
     """
-    I = _intensidad(U)
-    alfa = alfa_sam(U, ref, formula=formula)
-    residuo = float(np.sum(np.abs(I - alfa * _intensidad(ref))))
+    I, I_ref = _intensidades(U, ref)
+    total = float(np.sum(I))
+    if total == 0.0:
+        raise ValueError(
+            "el campo es idénticamente nulo: la Ec. (15) queda 0/0, no +inf. "
+            "Si viene de una propagación, mira si toda la señal se salió de la "
+            "ventana de salida.")
+    residuo = float(np.sum(np.abs(I - _alfa(I, I_ref, formula) * I_ref)))
     if residuo == 0.0:
         return np.inf
-    return float(10 * np.log10(np.sum(I) / residuo))
+    return float(10 * np.log10(total / residuo))
 
 
 def rms_amplitud(U, ref):
@@ -100,4 +136,12 @@ def rms_amplitud(U, ref):
     """
     a = np.abs(a_numpy(U)).astype(np.float64)
     b = np.abs(a_numpy(ref)).astype(np.float64)
+    if a.shape != b.shape:
+        raise ValueError(
+            f"campo y referencia no viven en la misma malla: {a.shape} frente "
+            f"a {b.shape}.")
+    if a.max() == 0.0 or b.max() == 0.0:
+        raise ValueError(
+            "uno de los dos campos es idénticamente nulo: normalizar por su "
+            "máximo daba 0/0, o sea NaN con un aviso de NumPy.")
     return float(np.sqrt(np.mean((a / a.max() - b / b.max()) ** 2)))
