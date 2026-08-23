@@ -233,6 +233,21 @@ def test_metodo_desconocido_falla():
         list(retropropagar(U_h, DELTA, LAMB, [Z], metodos=["kreuzer"]))
 
 
+@pytest.mark.parametrize("z_malo", [-Z, 0.0])
+def test_una_distancia_no_positiva_falla(z_malo):
+    """El signo es del método, no del llamante.
+
+    Una distancia negativa propagaría hacia adelante, y sobre la intensidad eso
+    NO se ve: para entrada real |U(-z)|² = |U(+z)|², que es lo que mide
+    test_un_holograma_real_no_distingue_el_signo. Sería un error mudo del mismo
+    tipo que el Kf apagado a z < 0, así que se comprueba en la función y no
+    sólo en la CLI: nada obliga a pasar por ella.
+    """
+    U_h = np.ones((8, 8), dtype=complex)
+    with pytest.raises(ValueError, match="positivas"):
+        list(retropropagar(U_h, DELTA, LAMB, [z_malo]))
+
+
 def test_parametro_ajeno_falla():
     """Un kwarg mal escrito se tragaría en silencio si sólo se filtrara por
     método: 'ss=2' no llegaría a nadie y MPASM correría con s=10."""
