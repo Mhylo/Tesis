@@ -72,6 +72,8 @@ y qué parte del cambio de precisión.
                         mpasm/z0020_s2.png es MPASM a z = 20 mm con s = 2.
       retropropagacion/ Las reconstrucciones, una subcarpeta por holograma y
                         dentro una por propagador.
+      exactitud/        sam_vs_z.csv y sam_vs_z.png: la reproducción de la
+                        Figura 4, con la Ec. (16) corregida.
 
     referencia/
       zhao2020/         Código original de Zhao et al., Opt. Lett. 45, 5937
@@ -120,7 +122,10 @@ el target por los tres métodos y escribe los PNG:
 Tesis_env/Scripts/python.exe -m CamposT.pipeline
 ```
 
-Y la tabla de exactitud del Objetivo 1:
+Y la exactitud del Objetivo 1: la tabla por pantalla, y en
+`resultados/exactitud/` el CSV y la curva SAM vs z que reproduce la Figura 4
+del paper. Tarda un par de minutos: el barrido son 30 distancias por tres
+métodos en CPU y doble precisión, que es la fila de referencia.
 
 ```bash
 Tesis_env/Scripts/python.exe -m scripts.exactitud
