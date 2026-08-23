@@ -210,6 +210,12 @@ def _llenar_transferencia(dst, fx, fy, lamb, z, xp, multiplicar=False):
 
 # -------------------------------------------------------------------- FFT-ASM
 def fft_asm(U0, delta, lamb, z, device="auto", dtype=None):
+    """Espectro angular por FFT. El caso de referencia, sin control de muestreo.
+
+    H se aplica sobre el espectro in situ, igual que en mpasm(): materializarla
+    y multiplicar por ella pedía dos arrays del tamaño del plano —la propia H y
+    el producto— que aquí no hacen falta. El resultado es bit a bit el mismo.
+    """
     xp, dev = get_xp(device)
     dtype = dtype or dtype_por_defecto(dev)
     U0 = a_dispositivo(U0, xp, dtype)
@@ -217,14 +223,21 @@ def fft_asm(U0, delta, lamb, z, device="auto", dtype=None):
     M, N = U0.shape
     fx = (np.arange(N) - N / 2) / (delta * N)
     fy = (np.arange(M) - M / 2) / (delta * M)
-    H = transfer_function(fx, fy, lamb, z, xp, dtype)
     F = xp.fft.fftshift(xp.fft.fft2(U0))
-    return xp.fft.ifft2(xp.fft.ifftshift(F * H))
+    aplicar_transferencia(F, fx, fy, lamb, z, xp)
+    return xp.fft.ifft2(xp.fft.ifftshift(F))
 
 
 # ----------------------------------------------------------------------- BLAS
 def blas(U0, delta, lamb, z, device="auto", dtype=None):
-    """Espectro angular de banda limitada, Matsushima & Shimobaba (2009)."""
+    """Espectro angular de banda limitada, Matsushima & Shimobaba (2009).
+
+    El límite de banda es un rectángulo centrado, y fx y fy van en orden
+    creciente: las frecuencias que sobreviven son un tramo contiguo, así que
+    basta anular las cuatro bandas de fuera por rodajas. La máscara completa
+    costaba dos meshgrid en float64, un booleano del tamaño del plano y una
+    pasada más sobre todo él. Bit a bit da lo mismo.
+    """
     xp, dev = get_xp(device)
     dtype = dtype or dtype_por_defecto(dev)
     U0 = a_dispositivo(U0, xp, dtype)
@@ -232,11 +245,16 @@ def blas(U0, delta, lamb, z, device="auto", dtype=None):
     M, N = U0.shape
     fx = (np.arange(N) - N / 2) / (delta * N)
     fy = (np.arange(M) - M / 2) / (delta * M)
-    H = transfer_function(fx, fy, lamb, z, xp, dtype)
     flim_x = 1 / (lamb * np.sqrt((2 * z / (delta * N)) ** 2 + 1))
     flim_y = 1 / (lamb * np.sqrt((2 * z / (delta * M)) ** 2 + 1))
-    FX, FY = xp.meshgrid(xp.asarray(fx), xp.asarray(fy))
-    H *= ((xp.abs(FX) < flim_x) & (xp.abs(FY) < flim_y))
+
     F = xp.fft.fftshift(xp.fft.fft2(U0))
-    return xp.fft.ifft2(xp.fft.ifftshift(F * H))
+    aplicar_transferencia(F, fx, fy, lamb, z, xp)
+    # side='right' en el extremo negativo y 'left' en el positivo reproduce la
+    # desigualdad estricta |f| < flim de la formulación original.
+    F[:, :np.searchsorted(fx, -flim_x, side="right")] = 0
+    F[:, np.searchsorted(fx, flim_x, side="left"):] = 0
+    F[:np.searchsorted(fy, -flim_y, side="right")] = 0
+    F[np.searchsorted(fy, flim_y, side="left"):] = 0
+    return xp.fft.ifft2(xp.fft.ifftshift(F))
 
