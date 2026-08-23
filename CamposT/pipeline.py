@@ -28,13 +28,26 @@ from CamposT.propagadores import blas, fft_asm, kf_auto, mpasm
 
 
 # ----------------------------------------------------- relleno y recorte
-def pad_field(U0, factor=2):
+def pad_field(U0, factor=2, xp=np):
     """Rodea el campo de ceros. Evita el wrap-around de la convolución circular
     en FFT-ASM y BLAS. MPASM no lo necesita, pero para comparar en igualdad de
-    condiciones conviene aplicarlo a todos."""
+    condiciones conviene aplicarlo a todos.
+
+    El relleno se construye con el módulo de arrays que se le pase, para poder
+    hacerlo donde ya vive el campo: rellenarlo en CPU cuando va a la GPU obliga
+    a bajarlo y volver a subirlo sólo para ponerle ceros alrededor, y además
+    convierte de dtype el campo ya rellenado, que tiene factor² veces más
+    elementos que el original.
+
+    Aislado eso son 7.3 ms por llamada frente a 1.2 (512², pad=2, RTX 3050),
+    pero conviene no leer ese número como una ganancia de tiempo: en un barrido
+    en GPU no se nota (0.240 s antes y 0.237 s después, 10 distancias por tres
+    métodos), porque el trabajo de CPU se solapa con los kernels ya encolados.
+    Lo que sí se gana siempre es una copia de ida y vuelta y un array del
+    tamaño rellenado en memoria de sistema."""
     M, N = U0.shape
     Mp, Np = int(M * factor), int(N * factor)
-    out = np.zeros((Mp, Np), dtype=U0.dtype)
+    out = xp.zeros((Mp, Np), dtype=U0.dtype)
     i, j = (Mp - M) // 2, (Np - N) // 2
     out[i:i + M, j:j + N] = U0
     return out
@@ -60,8 +73,12 @@ def propagar(U0, delta, lamb, z, metodo="mpasm", pad=2, device="auto", dtype=Non
     dtype = dtype or dtype_por_defecto(dev)
 
     M, N = U0.shape
-    Up = pad_field(a_numpy(U0), pad) if pad and pad > 1 else U0
-    Up = a_dispositivo(Up, xp, dtype)
+    # Primero al dispositivo y luego el relleno, no al revés: así los ceros se
+    # escriben donde se va a propagar y se convierte de dtype el campo pequeño
+    # en vez del rellenado, que tiene factor² veces más elementos.
+    Up = a_dispositivo(U0, xp, dtype)
+    if pad and pad > 1:
+        Up = pad_field(Up, pad, xp)
 
     if metodo == "mpasm":
         Uz, Kf = mpasm(Up, delta, lamb, z, device=dev, dtype=dtype, **kw)
@@ -97,7 +114,11 @@ def guardar(I, path, gamma=1.0):
     """Guarda un mapa de intensidad como PNG de 8 bits. Baja de la GPU si hace
     falta."""
     A = a_numpy(I).astype(np.float64)
-    A = np.clip(A / A.max(), 0, 1) ** gamma
+    # Un campo idénticamente nulo daba 0/0: NaN por todo el array y un PNG de
+    # basura, sin error y sin aviso. Un negro es un resultado legítimo y hay
+    # que poder verlo como tal.
+    m = A.max()
+    A = np.clip(A / m, 0, 1) ** gamma if m > 0 else np.zeros_like(A)
     Image.fromarray((A * 255).astype(np.uint8)).save(path)
 
 

@@ -108,9 +108,21 @@ def retropropagar(U_h, delta, lamb, zs, metodos=METODOS, pad=2, device="auto",
         raise ValueError(f"parámetros no reconocidos: {ajenos}. "
                          f"Sólo MPASM acepta extras: {list(KW_MPASM)}")
 
+    zs = np.atleast_1d(np.asarray(zs, dtype=float)).ravel()
+    # El signo se comprueba aquí y no sólo en la CLI. Una distancia negativa
+    # propagaría a +z, o sea hacia adelante, y sobre la intensidad eso no se
+    # ve: para entrada real |U(-z)|² = |U(+z)|², que es justo la ambigüedad
+    # que documenta el módulo. Sería un error mudo, del mismo tipo que el Kf
+    # apagado a z < 0, y la suite no puede vigilar a quien llame a la función
+    # sin pasar por la CLI.
+    if np.any(zs <= 0):
+        raise ValueError(
+            f"las distancias son sensor-objeto, positivas: el signo lo pone la "
+            f"retropropagación. Recibidas {zs[zs <= 0]}.")
+
     for metodo in metodos:
         extra = kw if metodo == "mpasm" else {}
-        for z in np.atleast_1d(np.asarray(zs, dtype=float)).ravel():
+        for z in zs:
             U, info = propagar(U_h, delta, lamb, -float(z), metodo=metodo,
                                pad=pad, device=device, dtype=dtype, **extra)
             yield metodo, float(z), U, info
