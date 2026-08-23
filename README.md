@@ -44,10 +44,22 @@ y qué parte del cambio de precisión.
                         Llama al main() de CamposT.retropropagacion, no
                         duplica nada.
       retro_fft_angular.py
-                        La misma retropropagación en una sola pieza, con el
-                        angularSpectrum de pyDHM (más tres arreglos, marcados
-                        en su docstring). Dibuja el barrido de z en una
-                        rejilla. Para leer el algoritmo, no para producir.
+      retro_blas.py
+      retro_mpasm.py    La misma ida y vuelta en una sola pieza, un script por
+                        propagador, sin importar CamposT: contraste
+                        independiente del paquete. Para leer el algoritmo, no
+                        para producir. Cada uno enseña lo suyo:
+                        · fft: el angularSpectrum de pyDHM tal cual, con dos
+                          defectos suyos medidos (ejes cruzados, evanescentes).
+                        · blas: sin referencia de terceros -no hay ningún
+                          BL-ASM en referencia/- pero mide cuánta banda
+                          descarta la máscara a cada z, y comprueba que corta
+                          todas las evanescentes, que es lo que hace que no
+                          reviente al retropropagar.
+                        · mpasm: el MatrixDftCPU de Zhao copiado tal cual como
+                          referencia. Enseña las dos erratas del original
+                          corriendo: el A²·B de la Ec. (14) y el Kf que se
+                          apaga a z < 0.
       figura_escenario.py
                         Dibuja el escenario de la Tabla 1 del paper en tres
                         figuras: la apertura, el frente de onda propagado y el
