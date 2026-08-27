@@ -12,3 +12,18 @@ Tesis_env/
 # tienen su propia historia en GitHub y 172 MB son salidas de plotly.
 Carlos/
 referencia/carlos/
+
+# Pilas de foco de los barridos (scripts/retro_*.py con GUARDAR_BARRIDO, y
+# scripts/retro_intensidad.py siempre). Son regenerables y crecen sin techo:
+# una carpeta por objeto x metodo, y un PNG por distancia. Los resultados
+# curados de resultados/campos/ si van al repo; estos son material de trabajo
+# para mirar el barrido, no un resultado.
+resultados/reconstruccion/
+resultados/retro_intensidad/
+
+# Figuras que escribe tests/test_intensidad_pura.py al correr. Regenerables
+# con `pytest tests/test_intensidad_pura.py`, como el resto de las pilas.
+resultados/intensidad_pura/
+
+# Salida generada, 17 MB.
+test.html
