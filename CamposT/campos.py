@@ -24,6 +24,22 @@ def load_field(path, N=None, mode="amplitud", phase_depth=np.pi, invert=False):
     mode:
         'amplitud'      -> objeto de amplitud puro. U0 = t, con t en [0,1].
         'fase'          -> objeto de fase puro.    U0 = exp(i·phase_depth·t).
+        'mixto'         -> absorbe Y retarda, con la fase acoplada a la
+                           amplitud: U0 = t·exp(i·phase_depth·t). Es el caso
+                           general del que 'amplitud' (phase_depth = 0) y
+                           'fase' (t ≡ 1) son los extremos, y el que modela una
+                           muestra real, que ni es opaca ni es transparente
+                           del todo.
+
+                           OJO: sobre un objeto BINARIO es degenerado y
+                           phase_depth NO HACE NADA. Con t ∈ {0, 1} queda 0
+                           donde t = 0 y exp(i·phase_depth) donde t = 1, o sea
+                           el campo entero multiplicado por una constante de
+                           módulo 1: una fase GLOBAL, que se cancela en |U|² y
+                           conmuta con la propagación. usaf_like() es binario.
+                           Este modo necesita una imagen en escala de grises
+                           para significar algo. Lo fija
+                           tests/test_objeto_mixto.py.
         'transmitancia' -> amplitud binarizada (útil para targets tipo USAF).
         'holograma'     -> la imagen es INTENSIDAD medida, no transmitancia:
                            U0 = sqrt(t). Es el modo para retropropagar (ver
@@ -49,6 +65,8 @@ def load_field(path, N=None, mode="amplitud", phase_depth=np.pi, invert=False):
         return t.astype(complex)
     if mode == "fase":
         return np.exp(1j * phase_depth * t)
+    if mode == "mixto":
+        return t * np.exp(1j * phase_depth * t)
     if mode == "transmitancia":
         return (t > 0.5).astype(float).astype(complex)
     if mode == "holograma":
