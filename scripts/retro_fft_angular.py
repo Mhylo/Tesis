@@ -1,83 +1,33 @@
-"""Ida y vuelta con el espectro angular: objeto -> +z -> holograma -> -z -> objeto.
+"""Ida y vuelta con el espectro angular: objeto -> +Z -> holograma -> -Z -> objeto.
 
-Propaga la imagen de entrada una distancia Z, y retropropaga el resultado -Z
-para ver si vuelve a enfocar donde debe. Un solo metodo, escrito a mano, sin
-importar CamposT: sirve de contraste independiente del paquete.
+Un solo propagador, angularSpectrum(), copiado tal cual de la implementacion de
+referencia y sin tocar una linea. Ida, vuelta, y una figura de seis paneles:
+|U|^2 arriba, fase abajo.
 
-CPU o GPU con el mismo cuerpo de algoritmo (ver DISPOSITIVO). Lo unico que
-cambia es si el modulo de arrays es NumPy o CuPy.
+Tres cosas que conviene saber al leer la figura:
 
-EL PROPAGADOR
--------------
-angularSpectrum() esta TAL CUAL, sin tocar una linea, y es la referencia.
-espectro_angular() calcula lo mismo pero cabe en la tarjeta: la equivalencia
-entre las dos se comprueba en cada corrida y se imprime (comprobar_equivalencia).
+  - LA INTENSIDAD ES |U|^2, sin gamma. Una gamma de 0.5 sobre una intensidad es
+    la amplitud, porque (|U|^2/max)^0.5 = |U|/sqrt(max).
 
-Dos cosas de angularSpectrum() que conviene saber, medidas, no supuestas:
+  - LA FASE VA PESADA POR LA AMPLITUD. Donde el campo vale ~1e-16, np.angle()
+    de un negativo de 1e-17 devuelve pi: sin pesar, el fondo sale de confeti y
+    tapa la estructura. El fondo del panel es gris y no blanco porque en
+    twilight el +-pi ES blanco.
 
-  - dfx = 1/(dx*M) y dfy = 1/(dy*N) estan CRUZADOS: al eje de N columnas le
-    toca el espaciado que corresponde a las M filas. En malla cuadrada da
-    igual y no pasa nada. En malla RECTANGULAR el error contra el gaussiano
-    analitico es 2.95e-01 frente a 8.41e-06 con los ejes en su sitio. Es
-    autoconsistente —pasa la prueba de transponer a 3.5e-16—, asi que solo se
-    ve con una referencia externa. BenchmarkTarget.png es 4000x3000: si
-    trabajas con el sin recortar a cuadrado, esto te afecta. EJES_CRUZADOS lo
-    controla y el script avisa al arrancar.
+  - NO HAY RELLENO DE CEROS. La FFT convoluciona en circulo y lo que sale por
+    un borde reentra por el opuesto. La vuelta no lo nota -el doblez es
+    reversible-, pero el holograma que se pinta lo lleva dentro.
 
-  - Las ondas evanescentes (lamb^2 f^2 > 1) se dejan decaer en vez de
-    anularse. Propagando hacia adelante decaen y esta bien; RETROPROPAGANDO
-    el mismo factor crece, y con delta = lamb/4 el campo devuelto llega a
-    2.87e+110. Con delta = 3.45 um contra lamb/2 = 0.32 um no hay ninguna en
-    la malla y la linea no se activa; con la magnificacion de DLHM si.
+La vuelta se hace desde el CAMPO COMPLEJO, asi que devuelve el objeto exacto.
+Desde sqrt(|U|^2) -lo unico que da un sensor- devolveria el objeto con su
+imagen gemela encima, y solo el 46% de la energia caeria sobre el.
 
-PRECISION EN GPU
-----------------
-El campo va en complex64 y la fase en float64 SIEMPRE, se propague donde se
-propague. La fase 2*pi*z*sqrt(1/lamb^2 - f^2) vale ~2e5 rad a z = 20 mm, y en
-float32 eso son 0.02 rad de error solo por la mantisa. Calcularla en doble y
-bajar al dtype de trabajo unicamente el fasor —que ya esta acotado a modulo
-1— cuesta cero y quita el problema.
-
-complex64 no es una concesion: en una GeForce la doble precision va a 1/32 del
-ritmo de la simple. Medido a 2048^2, fft2+ifft2: 2.6 ms en complex64, 32.4 ms
-en complex128, 454 ms en CPU. Y con PAD = 2 sobre 4000x3000 la malla es
-6000x8000, o sea 0.36 GB por array en complex64 y 0.72 en complex128: en una
-tarjeta de 4 GB lo segundo no cabe.
-
-UNIDADES: milimetros para todo. Da igual cual sea mientras sea la MISMA en
-lambda, delta y z: el espectro angular solo ve lambda*z/delta^2.
-
-    633 nm -> 633e-6 mm     3.45 um -> 3.45e-3 mm     20 mm -> 20.0
-
-LAS DOS VUELTAS, Y POR QUE SON DISTINTAS
-----------------------------------------
-  A) desde el CAMPO COMPLEJO que sale de la ida. Es propagacion invertida y
-     punto: tiene que devolver el objeto. Si esto no cierra, el fallo esta en
-     el codigo o en los parametros, no en la fisica.
-
-  B) desde sqrt(|U|^2), que es lo unico que da un sensor real. La fase se
-     perdio en la medida y vuelve el objeto con su imagen gemela encima.
-
-Cuanto estropea la gemela depende del objeto. Si es mayormente OPACO (barras
-claras sobre fondo negro, como campos.usaf_like) no queda haz sin tocar que
-haga de onda de referencia, y sin referencia no hay holograma de Gabor que
-reconstruir. Con el target invertido (barras oscuras sobre fondo claro, que es
-como se ve un DLHM real) si reconstruye: INVERTIR lo cambia.
-
-EL SIGNO DE Z
--------------
-Z es la separacion objeto-sensor, POSITIVA. La ida usa +Z y la vuelta -Z.
-
-Ese signo no se puede comprobar mirando la intensidad: el campo de la vuelta B
-es real (sqrt de una intensidad), y para entrada real U(-z) = conj(U(+z)),
-luego |U(-z)|^2 = |U(+z)|^2 exactamente. Con el signo cambiado la figura sale
-identica. Solo se nota en la fase, y en cuanto se encadene algo no real
-(correccion de fuente puntual, filtro complejo, recuperacion de fase).
+UNIDADES: milimetros para todo.  633 nm -> 633e-6    3.45 um -> 3.45e-3
 """
 
 import pathlib
-import time
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -87,12 +37,12 @@ try:
 except Exception:                      # sin CuPy, sin CUDA, o CuPy roto
     cp = None
 
+
 # ════════════════════════════════════════════════════════════════════════════
-#  EDITA ESTOS CUATRO
+#  PARAMETROS
 # ════════════════════════════════════════════════════════════════════════════
 
-#: Imagen del OBJETO (transmitancia), no un holograma. Barras normales o
-#: r"..." para que \U no se lea como escape.
+#: Imagen del OBJETO (transmitancia), no un holograma.
 RUTA = r"C:\Users\User\Desktop\Tesis\referencia\carlos\DLHM-model-main\DLHM-model-main\data\BenchmarkTarget.png"
 
 #: Longitud de onda [mm].
@@ -101,48 +51,57 @@ LAMB = 633e-6
 #: Paso de pixel [mm].
 DELTA = 3.45e-3
 
-#: Distancia objeto <-> sensor [mm], POSITIVA. La ida va a +Z y la vuelta a -Z.
-Z = 100.0
-
-# ════════════════════════════════════════════════════════════════════════════
-#  Y esto solo si hace falta
-# ════════════════════════════════════════════════════════════════════════════
+#: Distancia objeto <-> sensor [mm], POSITIVA: la ida usa +Z y la vuelta -Z.
+Z = 10.0
 
 #: "auto" usa la GPU si hay CuPy con CUDA; "cpu" y "gpu" fuerzan.
 DISPOSITIVO = "auto"
 
-#: dtype del campo. complex64 en GPU (ver PRECISION EN GPU); la fase va en
-#: float64 en los dos casos pase lo que pase.
+#: dtype del campo. complex64 en GPU: en una GeForce la doble precision va a
+#: 1/32 del ritmo de la simple. La fase se calcula en float64 siempre.
 DTYPE = None                 # None = complex64 en GPU, complex128 en CPU
 
-#: Reduce la imagen a este lado mayor antes de propagar, o None para dejarla.
-#: OJO: si lo cambias, DELTA deja de ser el de tu sensor y hay que escalarlo
-#: por (lado_original / lado_nuevo). El script lo hace y lo dice.
-REDUCIR_A = None
-
-#: True mantiene los ejes cruzados de angularSpectrum() tal como los escribiste.
-#: False los pone por eje. Solo cambia algo en malla rectangular.
+#: True reproduce los ejes cruzados de angularSpectrum(). Hace falta en True
+#: para que comprobar_equivalencia() cierre en malla rectangular.
 EJES_CRUZADOS = True
-
-#: Relleno de ceros. La FFT convoluciona de forma circular: lo que sale por un
-#: borde reentra por el opuesto. Con 2 ese doblez queda fuera del recorte.
-PAD = 2
-
-#: True invierte la imagen (barras oscuras sobre fondo claro). Es lo que le da
-#: onda de referencia al holograma y hace que la vuelta B reconstruya.
-INVERTIR = False
-
-#: Distancias del barrido de foco, como fraccion de Z. None lo desactiva.
-BARRIDO = np.linspace(0.4, 1.6, 25)
-
-#: Carpeta donde escribir las figuras, o None para solo mostrarlas.
-SALIDA = None
 
 #: Filas por bloque al evaluar el kernel. Baja si la GPU se queda sin memoria.
 FILAS_POR_BLOQUE = 512
 
+#: True pinta la fase con la OPACIDAD proporcional a la amplitud; False la
+#: pinta cruda, como np.angle() a secas.
+#:
+#: Con True, donde no hay campo no se pinta nada. Con False ves lo que hay de
+#: verdad en el array, incluido el fondo. Cual quieres depende del caso:
+#:
+#:   - IDA Y VUELTA DESDE EL CAMPO COMPLEJO (lo que hace este script por
+#:     defecto): el fondo es cero NUMERICO. Medido sobre el USAF a Z = 10, el
+#:     91.3% del plano tiene |U| ~ 1.3e-16 -o sea 1e-16 veces el maximo- y
+#:     contiene el 2.9e-29% de la energia. np.angle() de esos numeros da ruido
+#:     uniforme en (-pi, pi], y con False se come la figura entera. Ahi True es
+#:     lo correcto.
+#:
+#:   - HOLOGRAMA REAL, OBJETO DE FASE, O RECONSTRUCCION DESDE LA INTENSIDAD:
+#:     el fondo tiene amplitud de verdad y su fase SIGNIFICA algo. Ahi False te
+#:     ensena cosas que True esconde.
+#:
+#: En la duda, mira las dos. La opacidad es una decision de dibujo, no un
+#: filtro sobre los datos: el array es el mismo.
+PESAR_FASE = False
 
-# ------------------------------------------------- propagador de referencia
+#: Distancias del barrido de foco, como fraccion de Z. None lo desactiva.
+#: A cada z se retropropaga y se miden las dos metricas: nitidez (donde
+#: enfoca) y RMS de fase (cuanto se parece la fase a la del objeto).
+BARRIDO = np.linspace(0.4, 1.6, 25)
+
+#: Carpeta donde guardar las figuras, o None para solo mostrarlas.
+SALIDA = None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  PROPAGADOR
+# ════════════════════════════════════════════════════════════════════════════
+
 def angularSpectrum(field, z, wavelength, dx, dy, scale_factor=1):
     """
     Propagación angular del frente de onda usando el espectro angular
@@ -151,11 +110,9 @@ def angularSpectrum(field, z, wavelength, dx, dy, scale_factor=1):
     wavelength: longitud de onda
     dx, dy: pasos espaciales
     """
-    # Inputs:
-    # field - complex field
-    # wavelength - wavelength
-    # z - propagation distance
-    # dxy - sampling pitches
+    # NO EDITAR: copiada tal cual de la implementacion de referencia. Ojo a
+    # dfx = 1/(dx*M) y dfy = 1/(dy*N): estan CRUZADOS. En malla cuadrada da
+    # igual; en rectangular no.
     field = np.array(field)
     M, N = field.shape
     x = np.arange(0, N, 1)  # array x
@@ -300,94 +257,201 @@ def comprobar_equivalencia(xp, dtype, cruzados):
     return float(np.max(np.abs(rap - ref)) / np.max(np.abs(ref)))
 
 
-# ------------------------------------------------------------------ utilidades
-def cargar_objeto(ruta, invertir=False, reducir_a=None, delta=DELTA):
-    """Imagen -> (transmitancia en [0,1] como campo complejo, delta efectivo).
-
-    La entrada es el OBJETO, no un holograma: la imagen ES la transmitancia y
-    el campo es t, no sqrt(t). (Un holograma es intensidad medida y ahi si va
-    la raiz; ver el docstring del modulo.)
-
-    Reducir la imagen agranda el pixel: delta se escala por el mismo factor, o
-    la escala fisica de la propagacion cambiaria sin que nadie lo note.
-    """
-    img = Image.open(ruta).convert("L")
-    if reducir_a is not None and max(img.size) > reducir_a:
-        factor = reducir_a / max(img.size)
-        nuevo = (max(1, round(img.size[0] * factor)),
-                 max(1, round(img.size[1] * factor)))
-        delta = delta * (img.size[0] / nuevo[0])
-        img = img.resize(nuevo, Image.LANCZOS)
-    t = np.asarray(img, dtype=float) / 255.0
-    if invertir:
-        t = 1.0 - t
-    return t, delta
-
-
-def propagar(U, z, delta, lamb, pad, xp, dtype, cruzados):
-    """espectro_angular con relleno de ceros y recorte al tamano original."""
-    M, N = U.shape
-    if pad > 1:
-        rel = xp.zeros((M * pad, N * pad), dtype=dtype)
-        i, j = (rel.shape[0] - M) // 2, (rel.shape[1] - N) // 2
-        rel[i:i + M, j:j + N] = xp.asarray(U, dtype=dtype)
-    else:
-        rel, i, j = xp.asarray(U, dtype=dtype), 0, 0
-    fuera = espectro_angular(rel, z, lamb, delta, delta, xp=xp, dtype=dtype,
-                             cruzados=cruzados)
-    del rel
-    # copia, no vista: una vista mantendria viva la malla rellena entera, que
-    # con PAD = 2 sobre 4000x3000 son 0.36 GB por reconstruccion del barrido
-    recorte = fuera[i:i + M, j:j + N].copy()
-    del fuera
-    return recorte
-
+# ════════════════════════════════════════════════════════════════════════════
+#  METRICAS  --  copias literales de las de retro_blas.py y retro_mpasm.py,
+#  que tests/test_nitidez_foco.py, test_pico_de_foco.py y test_fases_retro.py
+#  comprueban que no diverjan. No las edites solo aqui.
+# ════════════════════════════════════════════════════════════════════════════
 
 def nitidez(I):
-    """Energia del gradiente, normalizada. Maxima en el plano de foco.
+    """Energia del gradiente, normalizada por la MEDIA. Maxima en el foco.
 
     Un objeto de amplitud enfocado tiene bordes duros; desenfocado los tiene
     difuminados. La suma de |grad I|^2 lo mide sin necesitar saber cual era el
     objeto, que es lo que hace falta en un barrido de una medida real.
+
+    POR LA MEDIA Y NO POR EL MAXIMO, y esto no es un detalle de estilo. El
+    maximo no es una constante del problema: es una cantidad que DEPENDE DEL
+    FOCO. Al enfocar, la luz se concentra y el maximo sube, asi que dividir por
+    el cancela justo el efecto que se quiere medir. Sobre una gaussiana de
+    energia fija, estrechar el pico de 30 a 5 pixeles dejaba la metrica en
+    x0.96 -DECRECIA- normalizando por el maximo, y da x1247 por la media.
+
+    Lo que costaba: con el maximo, el pico del barrido acertaba el 25 % de las
+    veces y erraba hasta un 15 %. Con la media acierta el 100 % con un error
+    medio del 0.3 %, medido sobre siete distancias y cuatro resoluciones de
+    barrido. Tambien quita el sesgo de la vuelta A a z larga con BL-ASM, que
+    se venia atribuyendo al estrechamiento de la mascara de banda: no era la
+    mascara.
+
+    La media es la energia por pixel, y la propagacion la conserva salvo lo que
+    escapa por los bordes: es un normalizador estable con z, que es exactamente
+    lo que el maximo no es. Normalizar hace falta de todos modos, o la metrica
+    mediria el brillo del plano en vez de su estructura.
+
+    Un plano identicamente nulo daria 0/0. No tiene estructura: su nitidez es 0.
     """
     I = np.asarray(a_cpu(I), dtype=float)
-    I = I / I.max()
-    gy, gx = np.gradient(I)
+    m = I.mean()
+    if m <= 0:
+        return 0.0
+    gy, gx = np.gradient(I / m)
     return float(np.mean(gx**2 + gy**2))
 
 
-def parecido(a, b):
-    """Correlacion entre dos mapas, normalizados por su maximo."""
-    a = np.asarray(a_cpu(a), float).ravel()
-    b = np.asarray(a_cpu(b), float).ravel()
-    return float(np.corrcoef(a / a.max(), b / b.max())[0, 1])
+def pico_de_foco(zs, curva, margen=0.15):
+    """Distancia del maximo de la curva, o None si el barrido no acota el foco.
+
+    El argmax siempre existe. Si el barrido no contiene el plano de foco, el
+    argmax devuelve el extremo mas alto, y publicarlo con dos decimales lo
+    convierte en una medida que nadie ha hecho.
+
+    Al acercarse al plano del holograma la reconstruccion tiende al holograma
+    mismo, que es un patron de franjas densas: nitidez maxima. Es una tendencia
+    monotona hacia z -> 0, no un pico. Cuando el pico verdadero es debil -la
+    vuelta B, con la gemela encima- esa tendencia gana y el argmax se va al
+    extremo corto.
+
+    Medido sobre 24 casos (dos propagadores x dos vueltas x dos rangos x tres
+    distancias): los 4 que erraban tenian el argmax dentro del margen y los 20
+    que acertaban, fuera. Sin excepciones en ninguno de los dos sentidos.
+
+    La prominencia del pico -(max - mediana) / desviacion- NO separa: los
+    aciertos bajan a 0.9 sigma y los fallos suben a 1.9. Por eso la guarda es
+    geometrica y no estadistica, que era lo que parecia a primera vista.
+    """
+    curva = np.asarray(curva, dtype=float)
+    k = int(np.argmax(curva))
+    n = len(curva)
+    if k < margen * n or k > (1 - margen) * n:
+        return None
+    return float(np.asarray(zs, dtype=float)[k])
 
 
-# ---------------------------------------------------------------------- main
+def sin_piston(U, mask):
+    """angle(U) con la fase global quitada, pesando por amplitud.
+
+    Propagar multiplica el campo por una fase global -el exp(ikz) y lo que
+    arrastre la normalizacion-. Esa constante es la eleccion de origen de
+    fases, no un error de reconstruccion: compararla sin quitarla mide una
+    constante irrelevante.
+
+    El piston es el angulo del fasor MEDIO, no la media de los angulos. La
+    media de angulos falla justo cuando el piston vale pi: angle() reparte
+    esos pixeles entre +3.14 y -3.14, la media sale ~0, y entonces no quita
+    nada y no avisa. sum(U) no corta el circulo, asi que no tiene ese
+    problema, y de paso pesa por amplitud, que es lo que se quiere: donde no
+    hay senal la fase es ruido y no debe votar.
+    """
+    U = a_cpu(U)
+    piston = np.angle(np.sum(U[mask]))
+    return np.angle(U * np.exp(-1j * piston))
+
+
+def rms_fase(U, U0, mask):
+    """Error RMS de fase [rad] contra el objeto, sobre la mascara y sin piston.
+
+    U0 es la transmitancia del objeto: real y positiva, o sea de fase 0. Por
+    eso su fase es un dato conocido con el que contrastar y no hace falta otra
+    referencia.
+
+    Es ciega a la amplitud, al reves que parecido(). Las dos conviven aqui a
+    proposito: la vuelta A y la vuelta B se parecen mucho en modulo y se
+    distinguen en la fase, que es justo lo que un sensor no mide.
+
+    Escala de lectura: una fase sin ninguna informacion, uniforme en
+    (-pi, pi], da pi/sqrt(3) = 1.8138 rad = 103.9 grados.
+    """
+    d = a_cpu(U)[mask] * np.conj(a_cpu(U0)[mask])
+    d = d * np.exp(-1j * np.angle(np.sum(d)))
+    return float(np.sqrt(np.mean(np.angle(d) ** 2)))
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  FIGURA
+# ════════════════════════════════════════════════════════════════════════════
+
+def pinta_intensidad(ax, U, titulo):
+    """|U|^2 dividido por su maximo. Sin gamma."""
+    I = np.abs(U) ** 2
+    m = I.max()
+    ax.imshow(I / m if m > 0 else I, cmap="gray", vmin=0, vmax=1)
+    ax.set_title(titulo, fontsize=10)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+
+def pinta_fase(ax, U):
+    """angle(U), con la opacidad pesada por la amplitud si PESAR_FASE.
+
+    El fondo del panel es GRIS y no blanco: en twilight el +-pi ES blanco, asi
+    que sobre blanco no se distingue "la fase vale pi" de "aqui no hay campo".
+    """
+    if not PESAR_FASE:
+        alfa = None
+    else:
+        alfa = np.abs(U).astype(float)
+        p = np.percentile(alfa, 99.5)
+        alfa = np.clip(alfa / p, 0, 1) ** 0.45 if p > 0 else np.zeros_like(alfa)
+    im = ax.imshow(np.angle(U), cmap="twilight", vmin=-np.pi, vmax=np.pi,
+                   alpha=alfa, interpolation="nearest")
+    ax.set_facecolor("0.62")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    return im
+
+
+def pinta_complejo(ax, U):
+    """El campo complejo ENTERO en un panel: tono = fase, brillo = amplitud.
+
+    Es coloreado de dominio. Los paneles de arriba parten el campo en dos
+    mitades -|U|^2 pierde la fase, angle(U) pierde la amplitud- y ninguna de
+    las dos sola dice donde esta el campo Y cuanto vale su fase a la vez. Aqui
+    van juntas: el color dice la fase, la luminosidad dice cuanta amplitud hay
+    detras de esa fase.
+
+    Negro = no hay campo. Por eso este panel no necesita PESAR_FASE: el peso no
+    es una decision de dibujo aqui, es la mitad de la informacion.
+
+    El brillo va a la 0.45 y no lineal, por la misma razon que en pinta_fase:
+    con un objeto que es 91% fondo, lineal deja el panel casi todo negro.
+    """
+    fase, mag = np.angle(U), np.abs(U)
+    p = np.percentile(mag, 99.5)
+    v = np.clip(mag / p, 0, 1) ** 0.45 if p > 0 else np.zeros_like(mag)
+    hsv = np.stack([(fase + np.pi) / (2 * np.pi), np.ones_like(v), v], axis=-1)
+    ax.imshow(mcolors.hsv_to_rgb(hsv), interpolation="nearest")
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  MAIN
+# ════════════════════════════════════════════════════════════════════════════
+
 def main():
     if not pathlib.Path(RUTA).is_file():
         raise SystemExit(f"No encuentro la imagen en:\n    {RUTA}\n\n"
                          "Edita la constante RUTA al principio del archivo.")
-    if Z <= 0:
-        raise SystemExit(
-            f"Z = {Z} pero es la distancia objeto-sensor y va POSITIVA: los "
-            f"signos los ponen la ida (+Z) y la vuelta (-Z).\nPon Z = {abs(Z)}.")
 
     xp, dev = elegir_dispositivo(DISPOSITIVO)
     dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
 
-    t_obj, delta = cargar_objeto(RUTA, INVERTIR, REDUCIR_A, DELTA)
-    M, N = t_obj.shape
-    comprobar_memoria(xp, M * PAD, N * PAD, dtype)
+    I = np.asarray(Image.open(RUTA).convert("L"), dtype=np.float64) / 255.0
+    M, N = I.shape
+    comprobar_memoria(xp, M, N, dtype)
+
+    # kw viaja a todas las llamadas: el cuerpo del algoritmo es el mismo en las
+    # dos maquinas, asi que comparar tiempos compara dispositivos y no dos
+    # implementaciones distintas.
+    kw = dict(xp=xp, dtype=dtype, cruzados=EJES_CRUZADOS)
+
+    holograma = espectro_angular(I, +Z, LAMB, DELTA, DELTA, **kw)
+    retropropagado = espectro_angular(holograma, -Z, LAMB, DELTA, DELTA, **kw)
 
     print(f"objeto {RUTA}")
-    print(f"  malla {M}x{N}, ventana {N * delta:.3f} x {M * delta:.3f} mm "
-          f"(con relleno x{PAD}: {N * PAD * delta:.3f} mm)")
-    if delta != DELTA:
-        print(f"  imagen reducida a {max(M, N)} px: delta escalado de "
-              f"{DELTA * 1e3:.3f} a {delta * 1e3:.3f} um")
-    print(f"  lambda {LAMB * 1e6:.1f} nm | delta {delta * 1e3:.3f} um | "
-          f"ida +{Z:.3f} mm, vuelta {-Z:+.3f} mm")
+    print(f"  malla {M}x{N} | lambda {LAMB * 1e6:.1f} nm | "
+          f"delta {DELTA * 1e3:.3f} um | ida +{Z:g} mm, vuelta {-Z:+g} mm")
     print(f"  dispositivo {dev.upper()} | dtype {np.dtype(dtype).name} | "
           f"fase en float64")
     if dev == "gpu":
@@ -395,114 +459,102 @@ def main():
         print(f"  {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}, "
               f"{libre / 2**30:.2f} de {total / 2**30:.2f} GB libres")
 
+    # angularSpectrum() es la referencia y NO acepta CuPy: su primera linea es
+    # np.array(field). Corre siempre en CPU y complex128, y sirve para
+    # comprobar que espectro_angular -que si va en la tarjeta- calcula lo mismo.
     eq = comprobar_equivalencia(xp, dtype, EJES_CRUZADOS)
     print(f"  espectro_angular vs angularSpectrum (referencia): {eq:.2e}")
 
-    if M != N and EJES_CRUZADOS:
-        print(f"\n  AVISO: la malla es RECTANGULAR ({M}x{N}) y EJES_CRUZADOS "
-              f"esta en True.\n  angularSpectrum usa dfx = 1/(dx*M) y "
-              f"dfy = 1/(dy*N), o sea cada eje con la\n  longitud del otro. En "
-              f"cuadrada da igual; aqui NO. Contra el gaussiano\n  analitico el "
-              f"error es 2.95e-01 asi frente a 8.41e-06 con los ejes en su\n"
-              f"  sitio. Pon EJES_CRUZADOS = False, o recorta la imagen a "
-              f"cuadrada.")
+    err = np.abs(a_cpu(retropropagado) - I).max() / I.max()
+    print(f"  ida y vuelta del campo complejo: error max relativo = {err:.2e}"
+          f"   <- es la identidad, tiene que ser ~1e-15 (1e-7 en complex64)")
 
-    f_nyq = 1 / (2 * delta)
-    Np = N * PAD
-    f_util = Np * delta / (LAMB * np.sqrt(4 * Z**2 + (Np * delta) ** 2))
-    # la fraccion se satura en 1: f_util > f_Nyquist quiere decir que la malla
-    # muestrea la funcion de transferencia entera, no que aproveche un 619 %
-    frac = min(f_util / f_nyq, 1.0)
-    print(f"\n  f_Nyquist {f_nyq:.1f} 1/mm | banda util {frac * 100:.1f} %"
-          + ("  (la malla la muestrea entera)" if frac >= 1.0 else ""))
-    if frac < 0.5:
-        print("  AVISO: a esta z el espectro angular alia mas de lo que "
-              "propaga. Es el limite del metodo: usa BL-ASM o MPASM.")
-    fondo = t_obj.mean() / t_obj.max()
-    print(f"  fondo del objeto: {fondo:.2f} del maximo"
-          + ("" if fondo >= 0.25 else
-             "  <- oscuro: sin onda de referencia, la vuelta B no reconstruye"))
-
-    def cronometrar(f):
-        if dev == "gpu":
-            cp.cuda.Stream.null.synchronize()
-        t0 = time.perf_counter()
-        r = f()
-        if dev == "gpu":
-            cp.cuda.Stream.null.synchronize()
-        return r, time.perf_counter() - t0
-
-    kw = dict(xp=xp, dtype=dtype, cruzados=EJES_CRUZADOS)
-    U0 = xp.asarray(t_obj, dtype=dtype)
-
-    U_h, t_ida = cronometrar(lambda: propagar(U0, +Z, delta, LAMB, PAD, **kw))
-    I_h = xp.abs(U_h) ** 2
-    U_a, t_a = cronometrar(lambda: propagar(U_h, -Z, delta, LAMB, PAD, **kw))
-    U_b, t_b = cronometrar(
-        lambda: propagar(xp.sqrt(I_h).astype(dtype), -Z, delta, LAMB, PAD, **kw))
-
-    print(f"\n  ida {t_ida * 1e3:.0f} ms | vuelta A {t_a * 1e3:.0f} ms | "
-          f"vuelta B {t_b * 1e3:.0f} ms")
-    print(f"  vuelta A (campo complejo)  correlacion con el objeto = "
-          f"{parecido(xp.abs(U_a), xp.abs(U0)):+.4f}   <- tiene que ser ~1")
-    print(f"  vuelta B (solo intensidad) correlacion con el objeto = "
-          f"{parecido(xp.abs(U_b), xp.abs(U0)):+.4f}")
-
-    # --- barrido de foco -----------------------------------------------------
-    zs = curva_a = curva_b = None
+    # ---- barrido de foco ----------------------------------------------------
+    zs = nit = rms = None
     if BARRIDO is not None:
+        U0 = xp.asarray(I, dtype=dtype)
+        mascara = I > 0.5 * I.max()          # donde el objeto brilla
         zs = np.asarray(BARRIDO, float) * Z
-        raiz_I = xp.sqrt(I_h).astype(dtype)
-        curva_a, curva_b = [], []
-        t0 = time.perf_counter()
+        nit, rms = [], []
         for k, z in enumerate(zs):
-            Ua = propagar(U_h, -z, delta, LAMB, PAD, **kw)
-            curva_a.append(nitidez(xp.abs(Ua) ** 2)); del Ua
-            Ub = propagar(raiz_I, -z, delta, LAMB, PAD, **kw)
-            curva_b.append(nitidez(xp.abs(Ub) ** 2)); del Ub
+            U = espectro_angular(holograma, -z, LAMB, DELTA, DELTA, **kw)
+            nit.append(nitidez(xp.abs(U) ** 2))
+            rms.append(rms_fase(U, U0, mascara))
+            del U
             liberar(xp)
             print(f"    barrido {k + 1}/{len(zs)}   z = {z:7.2f} mm", end="\r")
-        if dev == "gpu":
-            cp.cuda.Stream.null.synchronize()
-        dt = time.perf_counter() - t0
-        del raiz_I
-        liberar(xp)
-        curva_a, curva_b = np.array(curva_a), np.array(curva_b)
+        nit, rms = np.array(nit), np.array(rms)
         print(" " * 48, end="\r")
-        print(f"\n  barrido de foco: {len(zs)} distancias de {zs[0]:.1f} a "
-              f"{zs[-1]:.1f} mm en {dt:.1f} s "
-              f"({dt / (2 * len(zs)) * 1e3:.0f} ms por propagacion)")
-        print(f"    vuelta A enfoca en z = {zs[curva_a.argmax()]:.2f} mm")
-        print(f"    vuelta B enfoca en z = {zs[curva_b.argmax()]:.2f} mm")
-        print(f"    esperado:            z = {Z:.2f} mm")
 
-    # --- figuras -------------------------------------------------------------
-    obj = a_cpu(xp.abs(U0))
-    paneles = [("objeto (entrada)", obj),
-               (f"holograma  |U|^2 a +{Z:g} mm", a_cpu(I_h)),
-               (f"vuelta A: del campo complejo\ncorr = {parecido(xp.abs(U_a), xp.abs(U0)):+.3f}",
-                a_cpu(xp.abs(U_a)) ** 2),
-               (f"vuelta B: de la intensidad\ncorr = {parecido(xp.abs(U_b), xp.abs(U0)):+.3f}",
-                a_cpu(xp.abs(U_b)) ** 2)]
-    fig, ax = plt.subplots(1, 4, figsize=(17, 4.6))
-    for a, (titulo, im) in zip(ax, paneles):
-        im = np.asarray(im, float)
-        a.imshow((im / im.max()) ** 0.5, cmap="gray")
-        a.set_title(titulo, fontsize=10)
-        a.axis("off")
-    fig.tight_layout()
+        z_nit = pico_de_foco(zs, nit)
+        z_rms = pico_de_foco(zs, -rms)        # el RMS MINIMIZA en el foco
+        print(f"\nbarrido de foco: {len(zs)} distancias de {zs[0]:.1f} a "
+              f"{zs[-1]:.1f} mm")
+        print(f"    nitidez maxima  en z = {z_nit:.2f} mm" if z_nit is not None
+              else "    nitidez: el maximo cae en un extremo del barrido, que "
+                   "NO acota el foco. Ensancha BARRIDO.")
+        print(f"    RMS de fase minimo en z = {z_rms:.2f} mm" if z_rms is not None
+              else "    RMS: el minimo cae en un extremo del barrido.")
+        print(f"    esperado:            z = {Z:.2f} mm")
+        print(f"    RMS en el foco: {np.degrees(rms[np.argmin(np.abs(zs - Z))]):.2f} deg"
+              f"   (sin informacion de fase saldrian "
+              f"{np.degrees(np.pi / np.sqrt(3)):.1f} deg)")
+
+    # a_cpu antes de pintar: matplotlib no dibuja arrays de CuPy
+    campos = [("objeto (entrada)", I.astype(complex)),
+              (f"holograma a +{Z:g} mm", a_cpu(holograma)),
+              (f"retropropagado a {-Z:+g} mm", a_cpu(retropropagado))]
+
+    fig, ax = plt.subplots(3, 3, figsize=(13.5, 12.6))
+    for k, (titulo, U) in enumerate(campos):
+        pinta_intensidad(ax[0, k], U, titulo)
+        im = pinta_fase(ax[1, k], U)
+        pinta_complejo(ax[2, k], U)
+    for fila, etiqueta in ((0, "$|U|^2$"), (1, "fase"), (2, "campo complejo")):
+        ax[fila, 0].text(-0.04, 0.5, etiqueta, transform=ax[fila, 0].transAxes,
+                         rotation=90, va="center", ha="right", fontsize=11)
+
+    ticks = [-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi]
+    etiq = ["-pi", "-pi/2", "0", "pi/2", "pi"]
+    cb = fig.colorbar(im, ax=ax[1, :], fraction=0.030, pad=0.015, ticks=ticks)
+    cb.ax.set_yticklabels(etiq)
+    cb.set_label("fase [rad]" + (" | opacidad = amplitud" if PESAR_FASE else ""),
+                 fontsize=9)
+
+    # la barra de la fila compleja es HSV porque es el tono que se pinta ahi.
+    # No se puede reutilizar la de arriba: twilight y hsv no son el mismo mapa.
+    sm = plt.cm.ScalarMappable(cmap="hsv",
+                               norm=mcolors.Normalize(-np.pi, np.pi))
+    cb2 = fig.colorbar(sm, ax=ax[2, :], fraction=0.030, pad=0.015, ticks=ticks)
+    cb2.ax.set_yticklabels(etiq)
+    cb2.set_label("fase = tono | amplitud = brillo", fontsize=9)
+    fig.suptitle(f"Espectro angular, ida y vuelta -- Z = {Z:g} mm, "
+                 f"delta = {DELTA * 1e3:.2f} um, lambda = {LAMB * 1e6:.0f} nm",
+                 fontsize=12)
+
     figuras = [("ida_y_vuelta.png", fig)]
 
     if zs is not None:
-        fig2, a2 = plt.subplots(figsize=(7.2, 4.2))
-        a2.plot(zs, curva_a / curva_a.max(), "o-", ms=3, label="A: campo complejo")
-        a2.plot(zs, curva_b / curva_b.max(), "s-", ms=3, label="B: solo intensidad")
-        a2.axvline(Z, color="k", ls="--", lw=1, label=f"z real = {Z:g} mm")
+        fig2, a2 = plt.subplots(figsize=(7.6, 4.4))
+        l_nit, = a2.plot(zs, nit / nit.max(), "o-", ms=3, color="C0",
+                         label="nitidez (energia del gradiente)")
         a2.set_xlabel("distancia de reconstruccion [mm]")
-        a2.set_ylabel("nitidez (energia del gradiente, normalizada)")
-        a2.set_title(f"Donde enfoca la retropropagacion  ({dev.upper()})",
-                     fontsize=11)
-        a2.legend(fontsize=9)
+        a2.set_ylabel("nitidez normalizada", color="C0")
+        a2.tick_params(axis="y", labelcolor="C0")
+        a3 = a2.twinx()
+        l_rms, = a3.plot(zs, np.degrees(rms), "s-", ms=3, color="C3",
+                         label="RMS de fase")
+        a3.set_ylabel("RMS de fase [deg]", color="C3")
+        a3.tick_params(axis="y", labelcolor="C3")
+        l_z = a2.axvline(Z, color="k", ls="--", lw=1, label=f"z real = {Z:g} mm")
+
+
+        # a mano: a2.get_lines() arrastraria la axvline con su nombre interno
+        # y la leyenda saldria con un "_child1" dentro
+        lineas = [l_nit, l_rms, l_z]
+        a2.legend(lineas, [l.get_label() for l in lineas], fontsize=9,
+                  loc="center right")
+        a2.set_title("Donde enfoca la retropropagacion", fontsize=11)
         fig2.tight_layout()
         figuras.append(("foco.png", fig2))
 
