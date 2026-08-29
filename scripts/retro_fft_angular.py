@@ -1,4 +1,4 @@
-"""Ida y vuelta con el espectro angular: objeto -> +Z -> holograma -> -Z -> objeto.
+"""Ida y vuelta con el espectro angular: objeto -> +Z -> sensor -> -Z -> objeto.
 
 Un solo propagador, angularSpectrum(), copiado tal cual de la implementacion de
 referencia y sin tocar una linea. Ida, vuelta, y una figura de seis paneles:
@@ -16,11 +16,18 @@ Tres cosas que conviene saber al leer la figura:
 
   - NO HAY RELLENO DE CEROS. La FFT convoluciona en circulo y lo que sale por
     un borde reentra por el opuesto. La vuelta no lo nota -el doblez es
-    reversible-, pero el holograma que se pinta lo lleva dentro.
+    reversible-, pero el |U|^2 que se pinta lo lleva dentro.
 
 La vuelta se hace desde el CAMPO COMPLEJO, asi que devuelve el objeto exacto.
 Desde sqrt(|U|^2) -lo unico que da un sensor- devolveria el objeto con su
 imagen gemela encima, y solo el 46% de la energia caeria sobre el.
+
+LO QUE ESTE SCRIPT NO ES: una reconstruccion holografica. La vuelta parte del
+CAMPO COMPLEJO en el plano del sensor (campo_sensor), no de lo que un sensor
+mide. Un sensor entrega |U|^2 y tira la fase; retropropagar sqrt(|U|^2) da
+correlacion 0.53 con el objeto en vez de 1.00, y ahi aparece la imagen gemela.
+Por eso la vuelta sale exacta: no reconstruye un holograma, deshace una
+propagacion. Para lo primero esta scripts/retro_intensidad.py.
 
 UNIDADES: milimetros para todo.  633 nm -> 633e-6    3.45 um -> 3.45e-3
 """
@@ -54,6 +61,32 @@ DELTA = 3.45e-3
 #: Distancia objeto <-> sensor [mm], POSITIVA: la ida usa +Z y la vuelta -Z.
 Z = 10.0
 
+#: QUE REPRESENTA LA IMAGEN.
+#:
+#:   "intensidad"  transmitancia en INTENSIDAD. El campo es su raiz: A = sqrt(img).
+#:                 Es lo que hay que poner si la imagen es una foto de lo que
+#:                 pasa por la muestra, porque un sensor registra |U|^2.
+#:   "amplitud"    la imagen ES la amplitud del campo: A = img.
+#:
+#: Sobre un target BINARIO da igual -sqrt(0)=0 y sqrt(1)=1-, pero en escala de
+#: grises los dos campos difieren hasta 0.43 con PHI_MAX = pi.
+ENTRADA = "intensidad"
+
+#: PROFUNDIDAD DE FASE del objeto, en radianes:  U0 = A * exp(i * PHI_MAX * A)
+#:
+#: 0 es un objeto de amplitud puro (fase 0 en todo el plano), que es lo que
+#: habia antes. pi es el maximo que cabe SIN ENVOLVER: np.angle() devuelve
+#: (-pi, pi], asi que por encima la fase da la vuelta y el panel enseña saltos
+#: de 2*pi que son del display, no del objeto. Medido: con PHI_MAX = 1.2*pi la
+#: fase pedida llega a 3.770 rad y angle() devuelve 3.138.
+#:
+#: OJO: SOBRE UN OBJETO BINARIO ESTO NO HACE NADA. Con A en {0, 1} la fase
+#: queda en {0, PHI_MAX}, o sea el campo entero por una constante de modulo 1:
+#: una fase GLOBAL, que se cancela en |U|^2 y conmuta con la propagacion. El
+#: holograma sale identico para PHI_MAX = 0 que para pi. usaf_like es binario;
+#: el modelo necesita escala de grises. El script lo comprueba y avisa.
+PHI_MAX = 0.0
+
 #: "auto" usa la GPU si hay CuPy con CUDA; "cpu" y "gpu" fuerzan.
 DISPOSITIVO = "auto"
 
@@ -75,7 +108,8 @@ FILAS_POR_BLOQUE = 512
 #: verdad en el array, incluido el fondo. Cual quieres depende del caso:
 #:
 #:   - IDA Y VUELTA DESDE EL CAMPO COMPLEJO (lo que hace este script por
-#:     defecto): el fondo es cero NUMERICO. Medido sobre el USAF a Z = 10, el
+#:     defecto): el fondo es cero NUMERICO. Medido sobre el USAF a Z = 100
+# , el
 #:     91.3% del plano tiene |U| ~ 1.3e-16 -o sea 1e-16 veces el maximo- y
 #:     contiene el 2.9e-29% de la energia. np.angle() de esos numeros da ruido
 #:     uniforme en (-pi, pi], y con False se come la figura entera. Ahi True es
@@ -138,6 +172,33 @@ def angularSpectrum(field, z, wavelength, dx, dy, scale_factor=1):
 
 
 # ------------------------------------------------------ propagador de trabajo
+def indices_centrados(n):
+    """Indices que le corresponden a fftshift(fft(...)):  ..., -1, 0, 1, ...
+
+    Es arange(n) - n/2 cuando n es PAR, y NO lo es cuando n es impar. fftshift
+    deja la componente continua en el indice n//2 en los dos casos, y
+    arange(n) - n/2 vale 0 ahi solo si n es par: con n impar la rejilla queda
+    medio paso corrida, el kernel se evalua fuera de sitio y el campo sale
+    desplazado
+
+        lamb * z * (0.5 / (delta * n)) / delta   pixeles
+
+    Medido contra el gaussiano analitico en malla 65x65: RMS 4.2e-2 con
+    arange(n) - n/2 y 5.5e-4 con esta. En malla par las dos son la misma
+    rejilla hasta el ultimo bit, asi que esto no mueve ningun resultado de
+    lado par.
+
+    El fallo es MUDO: el medio paso se aplica en la ida y en la vuelta y se
+    cancela, asi que la ida y vuelta sigue saliendo a 1e-16 y ninguna prueba
+    de reversibilidad puede verlo. Lo fija tests/test_propagadores.py.
+
+    Copia literal de la de CamposT.propagadores.frecuencias_fft(), que la
+    devuelve ya multiplicada por el paso. Aqui hace falta suelta porque dfx y
+    dfy no siempre salen de n.
+    """
+    return np.fft.fftshift(np.fft.fftfreq(n)) * n
+
+
 def espectro_angular(field, z, wavelength, dx, dy, scale_factor=1,
                      xp=np, dtype=np.complex128, cruzados=True,
                      filas=FILAS_POR_BLOQUE):
@@ -163,6 +224,13 @@ def espectro_angular(field, z, wavelength, dx, dy, scale_factor=1,
 
     cruzados=True reproduce el dfx = 1/(dx*M), dfy = 1/(dy*N) del original.
     Con False cada eje lleva su longitud. Solo difieren en malla rectangular.
+
+    Y una CUARTA diferencia, esta si de algoritmo: la rejilla se centra con
+    indices_centrados() y no con arange(n) - n/2, que angularSpectrum() usa y
+    que solo es correcta con n PAR. En malla par las dos coinciden bit a bit
+    -y por eso comprobar_equivalencia(), que corre en 256x256, sigue cerrando-;
+    con lado impar angularSpectrum() sale desplazado medio paso de frecuencia y
+    esta no. Ver el docstring de indices_centrados().
     """
     U = xp.asarray(field, dtype=dtype)
     M, N = U.shape
@@ -174,8 +242,8 @@ def espectro_angular(field, z, wavelength, dx, dy, scale_factor=1,
 
     # (1, N) y (M, 1): la aritmetica difunde igual que con meshgrid y no
     # materializa dos mallas completas
-    fx = ((np.arange(N) - N / 2) * dfx).astype(np.float64)
-    fy = ((np.arange(M) - M / 2) * dfy).astype(np.float64)
+    fx = (indices_centrados(N) * dfx).astype(np.float64)
+    fy = (indices_centrados(M) * dfy).astype(np.float64)
     fx = xp.asarray(fx)[None, :]
     fy = xp.asarray(fy)[:, None]
 
@@ -425,6 +493,23 @@ def pinta_complejo(ax, U):
     ax.set_yticks([])
 
 
+def objeto(ruta, entrada, phi_max):
+    """Imagen -> campo complejo de entrada. -> (U0, imagen cruda).
+
+        A  = sqrt(img)  si entrada == "intensidad",  img si "amplitud"
+        U0 = A * exp(i * phi_max * A)
+
+    Un objeto que absorbe Y retarda, con la fase acoplada a la amplitud. Los
+    dos extremos son phi_max = 0 (amplitud pura) y A constante (fase pura).
+    """
+    img = np.asarray(Image.open(ruta).convert("L"), dtype=np.float64) / 255.0
+    if entrada not in ("intensidad", "amplitud"):
+        raise SystemExit(f'ENTRADA = "{entrada}" no existe. '
+                         'Pon "intensidad" o "amplitud".')
+    A = np.sqrt(img) if entrada == "intensidad" else img
+    return A * np.exp(1j * phi_max * A), img
+
+
 # ════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ════════════════════════════════════════════════════════════════════════════
@@ -437,8 +522,15 @@ def main():
     xp, dev = elegir_dispositivo(DISPOSITIVO)
     dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
 
-    I = np.asarray(Image.open(RUTA).convert("L"), dtype=np.float64) / 255.0
-    M, N = I.shape
+    U0_obj, img = objeto(RUTA, ENTRADA, PHI_MAX)
+    M, N = img.shape
+
+    if PHI_MAX != 0 and len(np.unique(img)) <= 2:
+        print(f"\n  AVISO: el objeto es BINARIO ({len(np.unique(img))} niveles) "
+              f"y PHI_MAX no hace nada.\n  Con A en {{0, 1}} la fase queda en "
+              f"{{0, PHI_MAX}}: el campo entero por una constante de\n  modulo "
+              f"1, o sea una fase GLOBAL. Se cancela en |U|^2 y conmuta con la "
+              f"propagacion.\n  Usa una imagen en escala de grises.")
     comprobar_memoria(xp, M, N, dtype)
 
     # kw viaja a todas las llamadas: el cuerpo del algoritmo es el mismo en las
@@ -446,8 +538,22 @@ def main():
     # implementaciones distintas.
     kw = dict(xp=xp, dtype=dtype, cruzados=EJES_CRUZADOS)
 
-    holograma = espectro_angular(I, +Z, LAMB, DELTA, DELTA, **kw)
-    retropropagado = espectro_angular(holograma, -Z, LAMB, DELTA, DELTA, **kw)
+    # OJO CON EL NOMBRE. campo_sensor es el CAMPO COMPLEJO en el plano del
+    # sensor: |h| y su fase. NO es un holograma. Un holograma es |h|^2, un mapa
+    # real y no negativo, y en este script no existe como variable: solo se
+    # calcula al dibujar, dentro de pinta_intensidad().
+    #
+    # La distincion no es de vocabulario. Retropropagar campo_sensor deshace la
+    # propagacion -exp(+i*phi)*exp(-i*phi) = 1- y devuelve el objeto exacto.
+    # Retropropagar sqrt(|h|^2), que es lo unico que entrega un sensor, da
+    # correlacion 0.53 con el objeto en vez de 1.00: ahi aparece la imagen
+    # gemela. Los dos campos de partida difieren en 1.707 sobre un modulo
+    # maximo de 1.300, y la diferencia es entera de fase.
+    #
+    # O sea: este script NO reconstruye un holograma, deshace una propagacion.
+    # Para lo primero esta scripts/retro_intensidad.py.
+    campo_sensor = espectro_angular(U0_obj, +Z, LAMB, DELTA, DELTA, **kw)
+    retropropagado = espectro_angular(campo_sensor, -Z, LAMB, DELTA, DELTA, **kw)
 
     print(f"objeto {RUTA}")
     print(f"  malla {M}x{N} | lambda {LAMB * 1e6:.1f} nm | "
@@ -465,19 +571,20 @@ def main():
     eq = comprobar_equivalencia(xp, dtype, EJES_CRUZADOS)
     print(f"  espectro_angular vs angularSpectrum (referencia): {eq:.2e}")
 
-    err = np.abs(a_cpu(retropropagado) - I).max() / I.max()
+    err = (np.abs(a_cpu(retropropagado) - U0_obj).max()
+           / np.abs(U0_obj).max())
     print(f"  ida y vuelta del campo complejo: error max relativo = {err:.2e}"
           f"   <- es la identidad, tiene que ser ~1e-15 (1e-7 en complex64)")
 
     # ---- barrido de foco ----------------------------------------------------
     zs = nit = rms = None
     if BARRIDO is not None:
-        U0 = xp.asarray(I, dtype=dtype)
-        mascara = I > 0.5 * I.max()          # donde el objeto brilla
+        U0 = xp.asarray(U0_obj, dtype=dtype)
+        mascara = np.abs(U0_obj) > 0.5 * np.abs(U0_obj).max()
         zs = np.asarray(BARRIDO, float) * Z
         nit, rms = [], []
         for k, z in enumerate(zs):
-            U = espectro_angular(holograma, -z, LAMB, DELTA, DELTA, **kw)
+            U = espectro_angular(campo_sensor, -z, LAMB, DELTA, DELTA, **kw)
             nit.append(nitidez(xp.abs(U) ** 2))
             rms.append(rms_fase(U, U0, mascara))
             del U
@@ -501,8 +608,8 @@ def main():
               f"{np.degrees(np.pi / np.sqrt(3)):.1f} deg)")
 
     # a_cpu antes de pintar: matplotlib no dibuja arrays de CuPy
-    campos = [("objeto (entrada)", I.astype(complex)),
-              (f"holograma a +{Z:g} mm", a_cpu(holograma)),
+    campos = [("objeto (entrada)", U0_obj),
+              (f"holograma $|U|^2$ a +{Z:g} mm", a_cpu(campo_sensor)),
               (f"retropropagado a {-Z:+g} mm", a_cpu(retropropagado))]
 
     fig, ax = plt.subplots(3, 3, figsize=(13.5, 12.6))
