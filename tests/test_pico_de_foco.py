@@ -1,6 +1,6 @@
 """El máximo de la curva de nitidez, sólo cuando el barrido acota el foco.
 
-Los tres scripts de `scripts/retro_*.py` imprimen dónde enfoca cada vuelta
+Los scripts de `scripts/retro_*.py` imprimen dónde enfoca cada vuelta
 tomando el argmax de la curva de nitidez. El argmax siempre existe: si el
 barrido no contiene el foco, devuelve el extremo más alto y el script lo
 publica con dos decimales como si fuera una medida.
@@ -33,7 +33,7 @@ import numpy as np
 import pytest
 
 MODULOS = ("scripts.retro_mpasm", "scripts.retro_fft_angular",
-           "scripts.retro_blas")
+           "scripts.retro_blas", "scripts.retro_holograma")
 
 
 @pytest.fixture(params=MODULOS)
@@ -91,7 +91,7 @@ def test_una_curva_plana_no_da_foco(mod, zs):
 
 
 # ------------------------------------------------- las tres copias, a la vez
-def test_las_tres_copias_dan_el_mismo_resultado(zs):
+def test_las_copias_dan_el_mismo_resultado(zs):
     """El riesgo de la arquitectura autonoma: que alguien lo arregle en uno."""
     mods = [importlib.import_module(m) for m in MODULOS]
     for curva in (campana(zs, 50.0), np.linspace(1.0, 0.2, len(zs)),
