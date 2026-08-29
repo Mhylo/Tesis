@@ -26,8 +26,8 @@ import pytest
 from conftest import (DELTA, L0, LAMB, N, W0, Z_CERCANO, Z_TODOS,
                       energia, error_relativo)
 
-from CamposT.propagadores import (blas, fft_asm, kf_auto, mpasm,
-                                  transfer_function)
+from CamposT.propagadores import (blas, fft_asm, frecuencias_fft, kf_auto,
+                                  mpasm, transfer_function)
 from CamposT.referencias import gauss_analytic, gauss_beam
 
 
@@ -523,6 +523,97 @@ def test_fft_asm_se_degrada_cuando_el_haz_no_cabe_en_la_ventana():
 
     assert rms_estrecha > 0.1, "con la ventana justa debería aliasar"
     assert rms_ancha < 0.01, "con ventana holgada debería seguir al analítico"
+
+
+# ------------------------------------ rejilla de frecuencias y malla impar
+def rejilla_vieja(n, delta):
+    """La expresión que usaban fft_asm() y blas() antes de frecuencias_fft().
+
+    Sólo coincide con la correcta cuando n es par. Se conserva aquí, y no en
+    el paquete, porque su único uso legítimo es demostrar la diferencia.
+    """
+    return (np.arange(n) - n / 2) / (delta * n)
+
+
+@pytest.mark.parametrize("n", [63, 64, 65, 66])
+def test_la_rejilla_de_frecuencias_centra_la_continua(n):
+    """fftshift deja la continua en el índice n//2, sea n par o impar.
+
+    La rejilla tiene que valer 0 exactamente ahí, o H se evalúa en la
+    frecuencia equivocada. Y tiene que ir creciendo, porque blas() localiza su
+    máscara de banda con searchsorted.
+    """
+    fx = frecuencias_fft(n, DELTA)
+    assert fx[n // 2] == 0.0
+    assert np.all(np.diff(fx) > 0)
+    assert np.allclose(np.diff(fx), 1 / (DELTA * n))
+
+
+@pytest.mark.parametrize("n", [63, 65])
+def test_la_rejilla_vieja_se_corre_medio_paso_en_malla_impar(n):
+    """El fallo, aislado de todo lo demás: medio intervalo de frecuencia."""
+    d = frecuencias_fft(n, DELTA) - rejilla_vieja(n, DELTA)
+    assert np.allclose(d, 0.5 / (DELTA * n))
+    assert rejilla_vieja(n, DELTA)[n // 2] != 0.0
+
+
+@pytest.mark.parametrize("n", [32, 64, 66, 128])
+def test_en_malla_par_las_dos_rejillas_son_la_misma(n):
+    """Por qué arreglar el caso impar no puede mover ningún resultado par."""
+    assert np.allclose(frecuencias_fft(n, DELTA), rejilla_vieja(n, DELTA),
+                       rtol=1e-14, atol=1e-14)
+
+
+def test_en_malla_par_el_cambio_de_rejilla_no_mueve_el_campo(monkeypatch):
+    """Lo anterior, pero sobre el campo propagado y no sobre la rejilla."""
+    import CamposT.propagadores as P
+    U0, _, _ = gauss_beam(N, DELTA, W0, device="cpu")          # N es par
+    nuevo = fft_asm(U0, DELTA, LAMB, 2000.0, device="cpu")
+    monkeypatch.setattr(P, "frecuencias_fft", rejilla_vieja)
+    viejo = fft_asm(U0, DELTA, LAMB, 2000.0, device="cpu")
+    assert error_relativo(nuevo, viejo) < 1e-14
+
+
+@pytest.mark.parametrize("nombre", ["fft_asm", "blas"])
+@pytest.mark.parametrize("n", [63, 65])
+def test_fft_asm_y_blas_siguen_al_analitico_en_malla_impar(nombre, n, monkeypatch):
+    """La regresión de verdad: exactitud física con lado impar.
+
+    Con la rejilla vieja el campo salía desplazado lambda·z·(0.5/(delta·n))/delta
+    píxeles —0.39 px con los números de conftest— y el RMS contra el gaussiano
+    analítico subía de 5.5e-4 a 4.2e-2. La prueba fija los dos lados para que
+    quede demostrado que la causa es la rejilla y no otra cosa.
+
+    mpasm() no aparece aquí: construye su propia rejilla junto con las
+    matrices de la DFT, sin fftshift de por medio, y nunca tuvo el fallo.
+    """
+    import CamposT.propagadores as P
+    z = 2000
+    U0, X, Y = gauss_beam(n, DELTA, W0, device="cpu")
+    assert cintura(W0, LAMB, z) < n * DELTA / 2, "el haz debe caber"
+
+    assert _rms_contra_analitico(
+        PROPAGADORES[nombre](U0, z, device="cpu"), X, Y, z) < 0.01
+
+    monkeypatch.setattr(P, "frecuencias_fft", rejilla_vieja)
+    assert _rms_contra_analitico(
+        PROPAGADORES[nombre](U0, z, device="cpu"), X, Y, z) > 0.01
+
+
+def test_la_reversibilidad_no_veia_el_fallo_de_malla_impar(monkeypatch):
+    """Por qué vivió tanto: la ida y vuelta sale exacta con rejilla o sin ella.
+
+    El medio paso se aplica en la ida y otra vez en la vuelta, con el mismo
+    signo en la rejilla y el opuesto en z, así que se cancela. Ninguna de las
+    pruebas de reversibilidad de este fichero podía verlo, y por eso hizo
+    falta contrastar contra una solución analítica.
+    """
+    import CamposT.propagadores as P
+    monkeypatch.setattr(P, "frecuencias_fft", rejilla_vieja)
+    U0, _, _ = gauss_beam(65, DELTA, W0, device="cpu")
+    ida = fft_asm(U0, DELTA, LAMB, 500.0, device="cpu")
+    vuelta = fft_asm(ida, DELTA, LAMB, -500.0, device="cpu")
+    assert error_relativo(vuelta, U0) < 1e-12
 
 
 if __name__ == "__main__":
