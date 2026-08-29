@@ -1,6 +1,6 @@
 """nitidez() tiene que crecer cuando la luz se concentra. Ver por qué no lo hacía.
 
-Los tres scripts de `scripts/retro_*.py` llevan su propia copia de nitidez(),
+Los scripts de `scripts/retro_*.py` llevan su propia copia de nitidez(),
 que es la métrica con la que el barrido decide dónde enfoca la
 retropropagación. Estas pruebas son el único sitio donde se miran a la vez.
 
@@ -37,9 +37,10 @@ import importlib
 import numpy as np
 import pytest
 
-#: Los tres scripts de ida y vuelta. La prueba corre entera sobre cada uno.
+#: Los tres scripts de ida y vuelta, mas el de retropropagacion sola. La
+#: prueba corre entera sobre cada uno.
 MODULOS = ("scripts.retro_mpasm", "scripts.retro_fft_angular",
-           "scripts.retro_blas")
+           "scripts.retro_blas", "scripts.retro_holograma")
 
 
 @pytest.fixture(params=MODULOS)
@@ -96,7 +97,7 @@ def test_un_campo_nulo_no_revienta(mod):
 
 
 # ------------------------------------------------- las tres copias, a la vez
-def test_las_tres_copias_dan_el_mismo_numero():
+def test_las_copias_dan_el_mismo_numero():
     """El riesgo de la arquitectura autónoma: que alguien lo arregle en uno."""
     I = gaussiana(9.0)
     mods = [importlib.import_module(m) for m in MODULOS]
