@@ -1,15 +1,16 @@
 """Qué sale de la retropropagación cuando la intensidad se deja PURA.
 
 `pipeline.intensidad` calcula |U|², pero por defecto lo divide por su máximo, y
-`guardar` le aplica encima una gamma antes de escribir el PNG. Los tres
-scripts de `scripts/retro_*.py` guardan con gamma 0.5 y sus figuras pintan
-`(im / im.max()) ** 0.5`. O sea que ninguna imagen que sale hoy del barrido es
-|U|²: son |U|.
+`guardar` puede aplicarle encima una gamma antes de escribir el PNG.
 
-Estas pruebas fijan qué hace cada capa por separado, y qué queda si se quitan
-todas. No proponen cambiarlo: describen lo que hay, para que la diferencia
-entre "la reconstrucción es así" y "la estamos pintando así" quede escrita en
-algún sitio y no haya que volver a deducirla mirando figuras.
+CONTEXTO HISTÓRICO, porque estas pruebas nacieron de ahí: los tres scripts de
+`scripts/retro_*.py` guardaban con gamma 0.5 y sus figuras pintaban
+`(im / im.max()) ** 0.5`, así que ninguna imagen que salía del barrido era
+|U|²: eran |U|. Ya no: los tres se reescribieron y pintan |U|² sin gamma. Lo
+que estas pruebas fijan sigue vigente y es lo que hizo ver el problema — qué
+hace cada capa por separado, y qué queda si se quitan todas — para que la
+diferencia entre "la reconstrucción es así" y "la estamos pintando así" quede
+escrita en algún sitio y no haya que volver a deducirla mirando figuras.
 
 LA IDENTIDAD QUE LO RESUME
 
