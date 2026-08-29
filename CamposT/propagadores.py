@@ -208,6 +208,40 @@ def _llenar_transferencia(dst, fx, fy, lamb, z, xp, multiplicar=False):
             dst[i0:i1] = H
 
 
+# ------------------------------------------------------- rejilla de frecuencias
+def frecuencias_fft(n, delta):
+    """Frecuencias que le corresponden a fftshift(fft(...)), en orden creciente.
+
+    Es np.fft.fftfreq() centrado, y no la expresión "obvia"
+    (arange(n) - n/2) / (delta*n), que sólo coincide con ella cuando n ES PAR.
+
+    fftshift() deja la componente continua en el índice n//2 sea n par o impar.
+    La expresión de arriba vale 0 en ese índice sólo si n es par: con n impar
+    queda medio paso corrida, H se evalúa fuera de sitio y el campo propagado
+    sale desplazado
+
+        lambda * z * (0.5 / (delta * n)) / delta   píxeles
+
+    que a 633 nm, delta = 79 um, z = 500 mm son 0.39 px. Medido contra el
+    gaussiano analítico en malla 65x65: 7.9e-2 de error relativo con la
+    expresión vieja y 5.0e-8 con ésta, y en 64x64 las dos dan 5.16e-8 —para n
+    par son la misma rejilla hasta el último bit, así que este cambio no puede
+    mover ningún resultado de malla par.
+
+    El fallo era MUDO: el medio paso se aplica en la ida y en la vuelta y se
+    cancela, así que la ida y vuelta seguía saliendo a 1e-16 y ninguna prueba
+    de reversibilidad podía verlo. Lo fija tests/test_propagadores.py, en
+    test_la_rejilla_de_frecuencias_centra_la_continua y los suyos.
+
+    mpasm() no pasa por aquí y no tenía el fallo: construye su propia rejilla
+    junto con las matrices de la DFT, sin fftshift de por medio.
+
+    El paso sigue siendo 1/(n*delta), así que los límites de banda de blas()
+    valen igual escritos como 2*z/(delta*n).
+    """
+    return np.fft.fftshift(np.fft.fftfreq(n, d=delta))
+
+
 # -------------------------------------------------------------------- FFT-ASM
 def fft_asm(U0, delta, lamb, z, device="auto", dtype=None):
     """Espectro angular por FFT. El caso de referencia, sin control de muestreo.
@@ -221,8 +255,8 @@ def fft_asm(U0, delta, lamb, z, device="auto", dtype=None):
     U0 = a_dispositivo(U0, xp, dtype)
 
     M, N = U0.shape
-    fx = (np.arange(N) - N / 2) / (delta * N)
-    fy = (np.arange(M) - M / 2) / (delta * M)
+    fx = frecuencias_fft(N, delta)
+    fy = frecuencias_fft(M, delta)
     F = xp.fft.fftshift(xp.fft.fft2(U0))
     aplicar_transferencia(F, fx, fy, lamb, z, xp)
     return xp.fft.ifft2(xp.fft.ifftshift(F))
@@ -243,8 +277,8 @@ def blas(U0, delta, lamb, z, device="auto", dtype=None):
     U0 = a_dispositivo(U0, xp, dtype)
 
     M, N = U0.shape
-    fx = (np.arange(N) - N / 2) / (delta * N)
-    fy = (np.arange(M) - M / 2) / (delta * M)
+    fx = frecuencias_fft(N, delta)
+    fy = frecuencias_fft(M, delta)
     flim_x = 1 / (lamb * np.sqrt((2 * z / (delta * N)) ** 2 + 1))
     flim_y = 1 / (lamb * np.sqrt((2 * z / (delta * M)) ** 2 + 1))
 
