@@ -121,3 +121,72 @@ class Roi:
 
     def __str__(self):
         return f"{self.ancho}x{self.alto} px en ({self.x0}, {self.y0})"
+
+
+# ─────────────────────────────────────────────────────────── el cono, y su precio
+
+def radio_del_cono(z, lamb, delta):
+    """Radio en PIXELES sobre el que un punto reparte su luz a distancia z.
+
+    El muestreo a delta acota la frecuencia espacial representable a
+    1/(2*delta), o sea el angulo de difraccion a sin(theta) = lambda/(2*delta).
+    Mas alla de ahi la malla no puede describir la onda, propague quien
+    propague. La luz de un punto llega al otro plano sobre un disco de radio
+    z*tan(theta), y en pixeles eso es z*tan(theta)/delta.
+
+    Es el numero que dice cuanto cuesta recortar. Va con |z|: retropropagar a
+    -z reparte la luz sobre el mismo disco.
+
+    Con lambda >= 2*delta no hay angulo propagante que la malla represente: la
+    raiz se hace imaginaria y se devuelve inf, que es la respuesta correcta -no
+    hay ventana suficientemente grande-.
+    """
+    sin_max = lamb / (2 * delta)
+    if sin_max >= 1:
+        return np.inf
+    return abs(z) * (sin_max / np.sqrt(1 - sin_max**2)) / delta
+
+
+def informe(roi, forma, zs, lamb, delta):
+    """Texto de varias lineas: que se recorta y que cuesta. NO imprime.
+
+    Devolver texto en vez de imprimirlo es lo que permite comprobar en una
+    prueba que el aviso sale cuando toca y no sale cuando no, sin capturar
+    stdout. Las CLIs lo imprimen.
+
+    `forma` es (M, N) ANTES de recortar: la fraccion de la imagen no significa
+    nada contra la imagen ya recortada.
+
+    `zs` acepta un escalar o una secuencia. En un barrido se informa del cono
+    en los DOS EXTREMOS, porque r crece con z y un solo numero mentiria.
+    """
+    M, N = forma
+    zs = np.atleast_1d(np.asarray(zs, dtype=float)).ravel()
+    extremos = sorted({float(zs.min()), float(zs.max())})
+    semilado = min(roi.ancho, roi.alto) / 2
+
+    lineas = [f"  recorte: {roi.como_argumento()}",
+              f"    {roi.ancho}x{roi.alto} de {N}x{M}  "
+              f"({roi.ancho * roi.alto / (M * N):.1%} de la imagen)"]
+
+    corto = False
+    for z in extremos:
+        r = radio_del_cono(z, lamb, delta)
+        corto = corto or semilado < r
+        lineas.append(f"    cono a z = {z:g}: radio {r:.0f} px")
+    lineas.append(f"    (sin theta = lambda/(2 delta) = {lamb / (2 * delta):.4f}"
+                  f"; semilado de la ventana {semilado:.0f} px)")
+
+    if corto:
+        lineas += [
+            "    AVISO: la ventana es mas chica que el cono de un punto.",
+            "      en la VUELTA: tiras parte del cono de cada punto, y la "
+            "reconstruccion sale con menos",
+            "        resolucion y con anillos en los bordes.",
+            "      en la IDA: sube --pad hasta que la malla rellenada cubra ese "
+            "radio, o el cono",
+            "        reentra por el borde opuesto (la FFT convoluciona en "
+            "circulo).",
+            "      Se recorta igual: es tu decision, no una guarda.",
+        ]
+    return "\n".join(lineas)
