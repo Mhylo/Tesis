@@ -47,6 +47,7 @@ import numpy as np
 
 from CamposT.campos import load_field
 from CamposT.pipeline import guardar, intensidad, propagar
+from CamposT.roi import anadir_argumentos, desde_argumentos, informe
 
 #: los tres propagadores comparables sobre el mismo holograma
 METODOS = ("fft", "blas", "mpasm")
@@ -175,6 +176,7 @@ def _parser():
                    help="invertir la imagen antes de tomar la raíz")
     p.add_argument("--salida", type=pathlib.Path, default=None,
                    help="carpeta destino [resultados/retropropagacion/<nombre>]")
+    anadir_argumentos(p)
     return p
 
 
@@ -199,9 +201,23 @@ def main(argv=None):
 
     U_h = load_field(args.holograma, N=args.N, mode="holograma",
                      invert=args.invert)
+    forma = U_h.shape        # antes de recortar: la fraccion se mide sobre esto
 
     print(f"Holograma: {args.holograma}  {U_h.shape}")
     print(f"delta = {args.delta} mm, lamb = {args.lamb} mm, pad = {args.pad}")
+
+    roi = desde_argumentos(args, U_h, args.holograma.name)
+    if roi is not None:
+        if args.roi_interactivo:
+            print(f"\nROI elegida con el raton. Para repetirla:\n"
+                  f"    {roi.como_argumento()}\n")
+        # Recortar ANTES de informar. informe() no comprueba que la ROI quepa
+        # -no es su trabajo- asi que con unas coordenadas malas imprimiria un
+        # porcentaje perfectamente creible de una ventana que no existe, y solo
+        # despues reventaria. Al reves, el error sale primero y limpio.
+        U_h = roi.recortar(U_h)
+        print(informe(roi, forma, zs, args.lamb, args.delta))
+
     print(f"{len(zs)} distancia(s) de {zs[0]:.3f} a {zs[-1]:.3f} mm "
           f"× {len(args.metodos)} método(s)")
 

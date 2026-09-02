@@ -265,3 +265,44 @@ def elegir(I, titulo=""):
             f"da para propagar nada. Arrastra un rectangulo de verdad.")
 
     return Roi(x0, y0, x1 - x0, y1 - y0)
+
+
+# ─────────────────────────────────────────────────────────── enganche a argparse
+
+def anadir_argumentos(parser):
+    """Anade --roi y --roi-interactivo, excluyentes, a un parser.
+
+    Las dos CLIs -la ida y la vuelta- comparten estos dos argumentos y su texto
+    de ayuda. Definirlos por separado en cada una es como divergen dos ayudas
+    que deberian decir exactamente lo mismo.
+    """
+    g = parser.add_mutually_exclusive_group()
+    g.add_argument("--roi", type=int, nargs=4, default=None,
+                   metavar=("X0", "Y0", "ANCHO", "ALTO"),
+                   help="ventana a recortar, en pixeles de la imagen YA "
+                        "cargada, o sea DESPUES de --N. El recorte es seco: "
+                        "se avisa de lo que cuesta y se recorta igual")
+    g.add_argument("--roi-interactivo", action="store_true",
+                   help="arrastra la ventana con el raton y cierra la figura. "
+                        "Al elegirla se imprime la linea --roi que la repite")
+    return parser
+
+
+def desde_argumentos(args, U=None, titulo=""):
+    """La Roi que piden los argumentos, o None si no se pidio ninguna.
+
+    U es el campo que se le ensena al raton, y solo hace falta por el camino
+    interactivo: normalizar |U|^2 aqui evita que las dos CLIs repitan esas dos
+    lineas y que una de las dos las cambie.
+    """
+    if args.roi is not None:
+        return Roi(*args.roi)
+    if not getattr(args, "roi_interactivo", False):
+        return None
+    if U is None:
+        raise ValueError(
+            "--roi-interactivo necesita el campo para ensenartelo, y no se le "
+            "paso ninguno.")
+    I = np.abs(np.asarray(U)) ** 2
+    pico = I.max()
+    return elegir(I / pico if pico > 0 else I, titulo)

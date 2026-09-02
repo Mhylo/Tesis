@@ -201,5 +201,89 @@ def test_importar_roi_no_arrastra_matplotlib():
         f"import CamposT.roi arrastro matplotlib.\n{hecho.stderr}")
 
 
+# --- las dos CLIs comparten los mismos argumentos ----------------------------
+def test_como_argumento_hace_round_trip_por_el_parser_real():
+    """Un formato que solo se comprueba contra si mismo no garantiza nada: se
+    parsea con el parser DE VERDAD de la CLI y tiene que salir la misma Roi."""
+    from CamposT.retropropagacion import _parser
+
+    original = Roi(312, 208, 256, 256)
+    args = _parser().parse_args(
+        ["h.png", "--z", "20", *original.como_argumento().split()])
+    assert Roi(*args.roi) == original
+
+
+def test_roi_y_roi_interactivo_juntos_son_un_error():
+    from CamposT.retropropagacion import _parser
+
+    with pytest.raises(SystemExit):
+        _parser().parse_args(["h.png", "--z", "20", "--roi", "0", "0", "4", "4",
+                              "--roi-interactivo"])
+
+
+def test_sin_roi_no_hay_roi():
+    from CamposT.retropropagacion import _parser
+    from CamposT.roi import desde_argumentos
+
+    args = _parser().parse_args(["h.png", "--z", "20"])
+    assert desde_argumentos(args) is None
+
+
+# --- la CLI de la vuelta -----------------------------------------------------
+def _png_de_prueba(ruta, n=64):
+    """Un holograma diminuto: particula opaca sobre fondo claro."""
+    from PIL import Image
+
+    t = np.full((n, n), 255, dtype=np.uint8)
+    t[n // 2 - 4:n // 2 + 4, n // 2 - 4:n // 2 + 4] = 0
+    Image.fromarray(t).save(ruta)
+    return ruta
+
+
+def test_la_vuelta_recorta_y_el_png_sale_del_tamano_de_la_roi(tmp_path):
+    """La ventana va RECTANGULAR a proposito: con una cuadrada, cruzar los ejes
+    en algun punto de la cadena daria exactamente el mismo tamano y la prueba
+    no se enteraria. PIL da size = (ancho, alto)."""
+    from PIL import Image
+
+    from CamposT.retropropagacion import main
+
+    holo = _png_de_prueba(tmp_path / "h.png", n=64)
+    salida = tmp_path / "out"
+    main([str(holo), "--z", "16", "--delta", "3.45e-3", "--lamb", "405e-6",
+          "--metodos", "fft", "--device", "cpu", "--pad", "1",
+          "--roi", "16", "8", "32", "24", "--salida", str(salida)])
+
+    escritos = sorted((salida / "fft").glob("*.png"))
+    assert len(escritos) == 1
+    assert Image.open(escritos[0]).size == (32, 24)
+
+
+def test_la_roi_se_mide_sobre_la_imagen_YA_redimensionada(tmp_path):
+    """--N redimensiona antes de recortar. Una ROI de 32 px sobre una imagen
+    reducida a 32x32 es la imagen entera; sobre el archivo de 64x64 seria un
+    cuarto. El orden es cargar -> recortar -> propagar."""
+    from PIL import Image
+
+    from CamposT.retropropagacion import main
+
+    holo = _png_de_prueba(tmp_path / "h.png", n=64)
+    salida = tmp_path / "out"
+    main([str(holo), "--z", "16", "--delta", "3.45e-3", "--lamb", "405e-6",
+          "--metodos", "fft", "--device", "cpu", "--pad", "1", "--N", "32",
+          "--roi", "0", "0", "32", "32", "--salida", str(salida)])
+
+    assert Image.open(next((salida / "fft").glob("*.png"))).size == (32, 32)
+
+
+def test_una_roi_que_se_sale_aborta_la_corrida(tmp_path):
+    from CamposT.retropropagacion import main
+
+    holo = _png_de_prueba(tmp_path / "h.png", n=64)
+    with pytest.raises(ValueError, match="se sale"):
+        main([str(holo), "--z", "16", "--device", "cpu",
+              "--roi", "40", "0", "32", "32", "--salida", str(tmp_path / "o")])
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
