@@ -13,17 +13,25 @@ Tesis_env/
 Carlos/
 referencia/carlos/
 
-# Pilas de foco de los barridos (scripts/retro_*.py con GUARDAR_BARRIDO, y
-# scripts/retro_intensidad.py siempre). Son regenerables y crecen sin techo:
-# una carpeta por objeto x metodo, y un PNG por distancia. Los resultados
-# curados de resultados/campos/ si van al repo; estos son material de trabajo
-# para mirar el barrido, no un resultado.
-resultados/reconstruccion/
-resultados/retro_intensidad/
-
-# Figuras que escribe tests/test_intensidad_pura.py al correr. Regenerables
-# con `pytest tests/test_intensidad_pura.py`, como el resto de las pilas.
-resultados/intensidad_pura/
+# TODO resultados/ es regenerable menos resultados/campos/, que son los campos
+# curados que si van al repo. Se ignora por lista blanca y no enumerando lo
+# regenerable, porque enumerar ya fallo una vez: el commit bd80c2f saco del
+# repo las salidas de comparacion.py, figura_escenario.py y la
+# retropropagacion, pero no las anadio aqui, y volvieron a aparecer sin
+# seguimiento a la primera corrida (tarea 71 del cronograma).
+#
+# Lo que cubre hoy: las pilas de foco de los barridos (scripts/retro_*.py con
+# GUARDAR_BARRIDO) en reconstruccion/; tiempos.png, aceleracion.png,
+# escalado_N.csv y escalado_s.csv de comparacion.py; escenario/ de
+# figura_escenario.py; retropropagacion/ de CamposT.retropropagacion; e
+# intensidad_pura/ de tests/test_intensidad_pura.py. Crecen sin techo -una
+# carpeta por objeto x metodo y un PNG por distancia- y son material de
+# trabajo para mirar el barrido, no un resultado.
+#
+# Para meter al repo un resultado curado nuevo: ponlo bajo resultados/campos/,
+# o anade su ruta aqui con un ! delante.
+resultados/*
+!resultados/campos/
 
 # Salida generada, 17 MB.
 test.html
