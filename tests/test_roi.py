@@ -179,5 +179,27 @@ def test_recortar_y_propagar_no_es_propagar_y_recortar():
         f"guarda y hay que actualizar D2 del spec.")
 
 
+# --- matplotlib perezoso -----------------------------------------------------
+def test_importar_roi_no_arrastra_matplotlib():
+    """Un modulo del paquete que al importarse exige un backend grafico deja de
+    poder usarse desde un test, un servidor sin pantalla o un cuaderno. Es la
+    misma politica que hace que CamposT/__init__.py no importe nada, para no
+    arrastrar CuPy.
+
+    Va en un subproceso porque en la sesion de pytest matplotlib ya esta
+    importado por otras pruebas: preguntarle a sys.modules aqui no probaria
+    nada.
+    """
+    import subprocess
+    import sys
+
+    codigo = ("import sys, CamposT.roi; "
+              "sys.exit(1 if 'matplotlib' in sys.modules else 0)")
+    hecho = subprocess.run([sys.executable, "-c", codigo],
+                           capture_output=True, text=True)
+    assert hecho.returncode == 0, (
+        f"import CamposT.roi arrastro matplotlib.\n{hecho.stderr}")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
