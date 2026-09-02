@@ -190,3 +190,78 @@ def informe(roi, forma, zs, lamb, delta):
             "      Se recorta igual: es tu decision, no una guarda.",
         ]
     return "\n".join(lineas)
+
+
+# ──────────────────────────────────────────────────────────── seleccion a raton
+
+def elegir(I, titulo=""):
+    """Abre I, deja arrastrar un rectangulo y devuelve la Roi.
+
+    Bloquea hasta que cierres la ventana. Si la cierras sin haber arrastrado
+    nada, aborta: recortar el plano entero en silencio despues de haber pedido
+    una ventana seria hacer otra cosa distinta de la que se pidio.
+
+    Las coordenadas salen en pixeles enteros y recortadas a la malla, con floor
+    en el origen y ceil en el extremo, de modo que la ventana devuelta CONTIENE
+    lo que arrastraste en vez de quedarse por dentro.
+
+    NO IMPRIME. Devuelve la Roi y quien la use decide que hacer con ella; las
+    dos CLIs imprimen roi.como_argumento() para que puedas repetir el recorte.
+
+    matplotlib se importa AQUI DENTRO, no arriba: `import CamposT.roi` no debe
+    exigir un backend grafico. Lo vigila
+    tests/test_roi.py::test_importar_roi_no_arrastra_matplotlib.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import RectangleSelector
+
+    I = np.asarray(I)
+    if I.ndim != 2:
+        raise ValueError(f"elegir espera una imagen 2D, no {I.shape}.")
+    M, N = I.shape
+    caja = {}
+
+    def al_soltar(inicio, final):
+        caja["xy"] = (inicio.xdata, inicio.ydata, final.xdata, final.ydata)
+
+    alto_fig = 8.0 * M / N
+    fig, ax = plt.subplots(figsize=(8.0, max(3.0, min(alto_fig, 9.0))))
+    ax.imshow(I, cmap="gray", vmin=0, vmax=1)
+    ax.set_title(f"{titulo}\nArrastra la ventana y cierra esta figura",
+                 fontsize=10)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    estilo = dict(facecolor="none", edgecolor="red", linewidth=1.5)
+    try:
+        selector = RectangleSelector(ax, al_soltar, useblit=True, button=[1],
+                                     interactive=True, props=estilo)
+    except TypeError:
+        # matplotlib < 3.5 llamaba rectprops a lo que ahora es props
+        selector = RectangleSelector(ax, al_soltar, useblit=True, button=[1],
+                                     interactive=True, rectprops=estilo)
+    # el selector tiene que sobrevivir a esta funcion mientras la figura este
+    # abierta: sin una referencia viva, el recolector se lo lleva y el raton
+    # deja de hacer nada
+    ax._selector_roi = selector
+
+    plt.show()
+
+    if "xy" not in caja or any(v is None for v in caja["xy"]):
+        raise SystemExit(
+            "Pediste elegir la ventana con el raton y no arrastraste ninguna.\n"
+            "Vuelve a lanzarlo y arrastra sobre la imagen, o pasa las "
+            "coordenadas a mano con --roi X0 Y0 ANCHO ALTO.")
+
+    xa, ya, xb, yb = caja["xy"]
+    x0 = int(np.clip(np.floor(min(xa, xb)), 0, N - 1))
+    y0 = int(np.clip(np.floor(min(ya, yb)), 0, M - 1))
+    x1 = int(np.clip(np.ceil(max(xa, xb)), x0 + 1, N))
+    y1 = int(np.clip(np.ceil(max(ya, yb)), y0 + 1, M))
+
+    if (x1 - x0) < 2 or (y1 - y0) < 2:
+        raise SystemExit(
+            f"La ventana que arrastraste es de {x1 - x0}x{y1 - y0} pixeles y no "
+            f"da para propagar nada. Arrastra un rectangulo de verdad.")
+
+    return Roi(x0, y0, x1 - x0, y1 - y0)
