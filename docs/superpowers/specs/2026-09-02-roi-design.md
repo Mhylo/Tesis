@@ -233,10 +233,20 @@ class Roi:
     def recortar(self, U):        ...   # -> array (alto, ancho); ValueError si no cabe
     def como_argumento(self):     ...   # -> '--roi 312 208 256 256'
 
-def radio_del_cono(z, lamb, delta):     ...   # -> px, o inf si lamb >= 2*delta
-def informe(roi, forma, z, lamb, delta): ...  # -> str
-def elegir(I, titulo=""):               ...   # -> Roi; matplotlib dentro
+def radio_del_cono(z, lamb, delta):      ...  # -> px, o inf si lamb >= 2*delta
+def informe(roi, forma, zs, lamb, delta): ... # -> str; forma es (M, N) ANTES
+                                              # de recortar. zs escalar o
+                                              # secuencia: informa del cono en
+                                              # los dos extremos del barrido
+def elegir(I, titulo=""):                ...  # -> Roi; matplotlib dentro
+
+def anadir_argumentos(parser):           ...  # --roi / --roi-interactivo
+def desde_argumentos(args, U=None, titulo=""): ...  # -> Roi | None
 ```
+
+Los dos últimos existen porque las dos CLIs piden **los mismos** dos argumentos
+con **la misma** ayuda, y definirlos por separado en cada una es como divergen
+dos textos que deberían decir lo mismo.
 
 Las dos CLIs, con los mismos dos argumentos y excluyentes entre sí:
 
