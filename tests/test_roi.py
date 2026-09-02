@@ -15,7 +15,13 @@ Lo que se protege aquí no es aritmética de índices, son dos DECISIONES:
 import numpy as np
 import pytest
 
-from CamposT.roi import Roi
+from CamposT.pipeline import propagar
+from CamposT.roi import Roi, informe, radio_del_cono
+
+# escenario in-line, el mismo de tests/test_retropropagacion.py
+DELTA = 3.45e-3      # mm, paso de pixel del sensor
+LAMB = 405e-6        # mm
+Z = 16.0             # mm
 
 
 # --- geometría ---------------------------------------------------------------
@@ -78,6 +84,99 @@ def test_la_roi_es_inmutable():
 # --- reproducibilidad --------------------------------------------------------
 def test_como_argumento_da_la_linea_que_repite_el_recorte():
     assert Roi(312, 208, 256, 256).como_argumento() == "--roi 312 208 256 256"
+
+
+def test_str_da_la_forma_legible_que_va_en_los_titulos():
+    """Formato congelado: la Task 6 lo mete en el suptitle de la figura."""
+    assert str(Roi(312, 208, 256, 256)) == "256x256 px en (312, 208)"
+
+
+# --- el cono de difraccion ---------------------------------------------------
+def test_sin_angulo_propagante_el_cono_es_infinito():
+    """Con lambda >= 2*delta no hay onda propagante que la malla represente.
+    inf es la respuesta correcta: no hay ventana suficientemente grande."""
+    assert radio_del_cono(20, lamb=2 * 3.45e-3, delta=3.45e-3) == np.inf
+    assert radio_del_cono(20, lamb=1e-2, delta=3.45e-3) == np.inf
+
+
+def test_el_cono_crece_con_la_distancia():
+    radios = [radio_del_cono(z, 633e-6, 3.45e-3) for z in (20, 60, 150)]
+    assert radios == sorted(radios)
+    # el numero que cita el docstring del modulo, y que hay que corregir si
+    # alguna vez cambia la formula
+    assert radios[0] == pytest.approx(534.1, abs=0.5)
+
+
+def test_el_cono_no_distingue_el_signo():
+    """Va con |z|: retropropagar a -z reparte la luz sobre el mismo disco."""
+    assert (radio_del_cono(-20, 633e-6, 3.45e-3)
+            == radio_del_cono(20, 633e-6, 3.45e-3))
+
+
+# --- el informe --------------------------------------------------------------
+def test_el_informe_avisa_cuando_la_ventana_se_queda_corta():
+    texto = informe(Roi(0, 0, 256, 256), (1024, 1024), 20, 633e-6, 3.45e-3)
+    assert "AVISO" in texto
+    assert "534" in texto, "el radio del cono tiene que salir con un numero"
+    assert "--roi 0 0 256 256" in texto
+
+
+def test_el_informe_no_avisa_cuando_la_ventana_cubre_el_cono():
+    texto = informe(Roi(0, 0, 1400, 1400), (2048, 2048), 20, 633e-6, 3.45e-3)
+    assert "AVISO" not in texto
+
+
+def test_el_informe_da_el_cono_en_los_dos_extremos_del_barrido():
+    """r crece con z: en un barrido, un solo numero miente."""
+    texto = informe(Roi(0, 0, 256, 256), (1024, 1024), [20, 150],
+                    633e-6, 3.45e-3)
+    assert "534" in texto and "4006" in texto
+
+
+def test_el_informe_de_una_sola_distancia_no_la_repite():
+    texto = informe(Roi(0, 0, 256, 256), (1024, 1024), 20, 633e-6, 3.45e-3)
+    assert texto.count("cono a z") == 1
+
+
+# --- lo que cuesta el recorte seco -------------------------------------------
+def test_recortar_y_propagar_no_es_propagar_y_recortar():
+    """LA PRUEBA QUE JUSTIFICA EL MODULO: el coste de D2, medido.
+
+    Recortar y propagar el trozo NO da lo mismo que propagar entero y recortar
+    el resultado, porque la ventana tira la luz que venia de fuera y ademas
+    crea dos bordes duros que el plano entero no tenia.
+
+    Medido en este escenario: error maximo relativo 0.2099 y rms relativo
+    0.1017 con FFT-ASM (con BL-ASM, 0.0903 y 0.0391: la mascara de banda
+    limitada tambien recorta parte de lo que aqui se pierde). El umbral se
+    deja holgado en 0.05 porque lo que la prueba fija es que la diferencia
+    EXISTE y es de este orden, no un valor exacto.
+
+    Es deliberato que no haya una asercion de que el error se concentre en el
+    borde: se comprobo, y NO es asi. En este escenario el maximo cae en el
+    nucleo (0.2099) y el marco de 8 px da la mitad (0.1212), porque el objeto
+    esta en el centro y es donde el campo varia mas. Los anillos en el borde
+    son un rasgo visual de la reconstruccion, no donde vive el error maximo.
+
+    Si algun dia se implementa el margen de guarda, esta es la prueba que dira
+    si funciono.
+    """
+    t = np.ones((128, 128))
+    t[56:72, 56:72] = 0.0                      # particula opaca centrada
+    U = t.astype(complex)
+    roi = Roi(32, 32, 64, 64)
+
+    antes, _ = propagar(roi.recortar(U), DELTA, LAMB, Z, metodo="fft",
+                        pad=1, device="cpu")
+    entero, _ = propagar(U, DELTA, LAMB, Z, metodo="fft", pad=1, device="cpu")
+    despues = roi.recortar(entero)
+
+    assert antes.shape == despues.shape == (64, 64)
+    error = np.max(np.abs(antes - despues)) / np.max(np.abs(despues))
+    assert error > 0.05, (
+        f"error relativo {error:.4f}: recortar y propagar deberia diferir de "
+        f"propagar y recortar. Si esto baja a cero, alguien metio un margen de "
+        f"guarda y hay que actualizar D2 del spec.")
 
 
 if __name__ == "__main__":
