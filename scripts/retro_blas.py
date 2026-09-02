@@ -47,7 +47,7 @@ CAMPO COMPLEJO en el plano del sensor (campo_sensor), no de lo que un sensor
 mide. Un sensor entrega |U|^2 y tira la fase; retropropagar sqrt(|U|^2) da
 correlacion 0.53 con el objeto en vez de 1.00, y ahi aparece la imagen gemela.
 Por eso la vuelta sale exacta: no reconstruye un holograma, deshace una
-propagacion. Para lo primero esta scripts/retro_intensidad.py.
+propagacion. Para lo primero esta scripts/retro_holograma.py.
 
 UNIDADES: milimetros para todo.  633 nm -> 633e-6    3.45 um -> 3.45e-3
 """
@@ -553,7 +553,7 @@ def main():
     # maximo de 1.300, y la diferencia es entera de fase.
     #
     # O sea: este script NO reconstruye un holograma, deshace una propagacion.
-    # Para lo primero esta scripts/retro_intensidad.py.
+    # Para lo primero esta scripts/retro_holograma.py.
     campo_sensor, frac_ida = espectro_angular_bl(U0_obj, +Z, LAMB, DELTA, DELTA, **kw)
     retropropagado, frac_vuelta = espectro_angular_bl(campo_sensor, -Z, LAMB,
                                                       DELTA, DELTA, **kw)
