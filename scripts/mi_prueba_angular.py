@@ -1,3 +1,20 @@
+"""Prueba suelta: ida y vuelta con el angularSpectrum de pyDHM, a pelo.
+
+NO ES UNA PRUEBA DE PYTEST, aunque vivio en tests/mi_test.py hasta el 01/09.
+Ahi su nombre casaba con *_test.py, asi que pytest lo IMPORTABA en cada
+recoleccion; y como el cuerpo del modulo propaga y llama seis veces a
+plt.show(), con el backend TkAgg de esta maquina la recoleccion se quedaba
+COLGADA esperando a que alguien cerrara las ventanas.
+
+Esta superado por scripts/retro_fft_angular.py, que hace la misma ida y vuelta
+con el mismo angularSpectrum copiado tal cual, pero entera: barrido, figura de
+3x3 y las dos erratas del original medidas. Esto se queda como quedo.
+
+OJO: el bloque de parametros de abajo describe un script mas grande que nunca
+se escribio. Solo se leen RUTA, LAMB y DELTA. PASOS, PAD, METODOS, DISPOSITIVO,
+SALIDA y Z no los usa nadie: la distancia va escrita a mano, 10 mm, en las dos
+llamadas del final.
+"""
 import pathlib
 
 import numpy as np
@@ -43,7 +60,7 @@ METODOS = ("referencia", "bloques")
 #: "bloques": "referencia" corre en CPU siempre.
 DISPOSITIVO = "auto"
 
-#: Carpeta destino, o None para resultados/retro_intensidad/<holograma>/
+#: Carpeta destino. SIN USO: ver el docstring.
 SALIDA = None
 
 
