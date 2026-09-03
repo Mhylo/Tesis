@@ -175,8 +175,8 @@ lo contrario de lo que se pide—.
 En cada uno de los tres scripts, una función nueva:
 
 ```python
-def guardar_holograma(campo, destino, z, parametros):
-    """campo_sensor -> tres archivos: .png, .npy y .txt. -> ruta base escrita."""
+def guardar_holograma(campo, z, parametros):
+    """campo_sensor -> tres archivos: .png, .npy y .txt."""
 ```
 
 Y una llamada en `main()`, **justo encima del comentario
@@ -219,7 +219,12 @@ los tocan comprueban funciones compartidas, no los scripts.
 La comprobación es manual, y por primera vez es **medible**. Ésta es la
 definición de terminado:
 
-1. Correr `retro_mpasm.py` tal cual. Tienen que aparecer los tres archivos, y el
+1. Correr `retro_mpasm.py` con `Z = 50` y `S = 1`. **Ojo:** eso NO son los
+   valores por defecto del archivo committeado -que son `Z = 360.0` y
+   `S = 12`- sino los que produjeron las cifras de esta sección, y quedaron
+   fuera del commit a propósito (son ediciones de trabajo del usuario). Quien
+   quiera reproducir el `~0.89` de aquí tiene que poner esos dos valores a
+   mano antes de correr el script. Tienen que aparecer los tres archivos, y el
    `.txt` tiene que decir `S = 1` y el `kf_ida` que la consola imprimió.
 
 2. Coger el `.npy` y ponerlo en `RUTA` de `retro_holograma.py`, con la misma
@@ -272,12 +277,27 @@ estos tres scripts, porque ninguno de los tres propaga con la identidad.**
                         identidad por diseño: devuelve el objeto FILTRADO, y eso
                         es el precio de no aliar. Su propio docstring ya lo dice.
 
-    retro_mpasm         con S = 1 a Z = 50 mm sale Kf = 2.2799, o sea COMPRIME el
-                        espectro, y comprimir es con pérdida. El script lo avisa
-                        por partida doble ("<- comprimiendo el espectro" y
-                        "ida y vuelta del campo complejo: error max relativo =
-                        1.09e+00"). Con S >= 6 el Kf baja a 1.0000 y deja de
-                        comprimir.
+    retro_mpasm         NO es Kf. Rehaciendo la ida a varios S:
+
+                            S= 1  Kf=2.2799  energia en el sensor=74.9%  corr=0.8903
+                            S= 6  Kf=1.0000  energia en el sensor=74.9%  corr=0.8903
+                            S=12  Kf=1.0000  energia en el sensor=74.9%  corr=0.8903
+                            FFT-ASM ida y vuelta          energia=100.0%  corr=1.0000
+
+                        Kf cae a 1.0000 y ni la energia ni la correlacion se
+                        mueven un digito: el mecanismo real es otro, y es
+                        independiente de S, R y Kf para la ventana central.
+                        MPASM evalua la transformada inversa sobre una
+                        ventana de salida explicita y TIRA lo que cae afuera.
+                        A Z = 50 mm el ensanche de difraccion es
+                        sqrt(lambda*z) = 0.178 mm sobre una ventana de
+                        1.766 mm, asi que como un cuarto de la energia se sale
+                        del borde y nunca llega al plano del sensor. FFT-ASM en
+                        cambio envuelve esa energia en vez de tirarla -por eso
+                        le da invertible exacto, corr = 1.0000, energia
+                        100 %-. Agrandar la ventana de salida lo confirma: con
+                        R = 2 se recupera 92.9 % de la energia y con R = 4,
+                        98.2 %. Son condiciones de frontera, no compresion.
 
 Lo que **sí** quedó demostrado, y era el objetivo:
 
