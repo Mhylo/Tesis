@@ -7,7 +7,7 @@ ya existe -no lo genera- y lo lleva de vuelta al plano del objeto, asi que
 llama a CamposT.pipeline.propagar(), que ya tiene FFT-ASM, BL-ASM y MPASM bajo
 una firma comun. No hay una cuarta copia de los propagadores en este archivo.
 
-DOS INTERRUPTORES, los dos de TRUE/FALSE:
+TRES CONTROLES, y no los tres de TRUE/FALSE:
 
   USAR_ANGULAR / USAR_BLAS / USAR_MPASM   que propagador (o cuales) corren.
                 Varios a la vez se comparan en la misma figura, sobre el mismo
@@ -15,8 +15,11 @@ DOS INTERRUPTORES, los dos de TRUE/FALSE:
                 compararlos: mismo dato de entrada, misma z.
 
   RECORTAR      True abre el holograma en una ventana, arrastras un rectangulo
-                con el raton, cierras, y solo ese trozo se retropropaga. Si ROI
-                esta puesta, fija esa ventana sin raton y manda sobre esto.
+                con el raton, cierras, y solo ese trozo se retropropaga.
+
+  ROI           Ventana fija (X0, Y0, ANCHO, ALTO), para repetir un recorte
+                sin raton. No es TRUE/FALSE: si esta puesta, MANDA sobre
+                RECORTAR, que entonces queda sin efecto.
 
 QUE LE ENTREGAS. La extension decide, y no es un detalle de comodidad:
 
@@ -453,10 +456,6 @@ def main():
               f"{gpu['VRAM total [GB]']:.2f} GB libres")
 
     # ---- recorte -----------------------------------------------------------
-    radio = radio_del_cono(Z, LAMB, DELTA)
-    print(f"  cono de difraccion a z = {Z:g} mm: radio {radio:.0f} px "
-          f"(sin theta = lambda/(2 delta) = {LAMB / (2 * DELTA):.4f})")
-
     roi, U_in = None, U_h
     if ROI is not None:
         roi = Roi(*ROI)
@@ -468,8 +467,22 @@ def main():
               f"    ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})\n"
               f"o en la CLI:  {roi.como_argumento()}")
     if roi is not None:
-        print(informe(roi, U_h.shape, Z, LAMB, DELTA))
+        # Recortar ANTES de informar, y no al reves: ROI es una constante sin
+        # validar por argparse (a diferencia de --roi en las dos CLIs), asi
+        # que con coordenadas malas informe() imprimiria un porcentaje
+        # creible de una ventana que no existe y solo despues reventaria
+        # recortar(). Al reves, el error sale primero y limpio.
         U_in = roi.recortar(U_h)
+        # BARRIDO reconstruye de 0.4*Z a 1.6*Z, no solo a Z: informar solo de
+        # Z subestimaria el cono del extremo lejano hasta 1.6x.
+        zs_informe = Z if BARRIDO is None else np.asarray(BARRIDO, float) * Z
+        print(informe(roi, U_h.shape, zs_informe, LAMB, DELTA))
+    else:
+        # Sin ROI, informe() no corre: el cono se imprime aqui para que la
+        # corrida lo reporte siempre, y exactamente una vez.
+        radio = radio_del_cono(Z, LAMB, DELTA)
+        print(f"  cono de difraccion a z = {Z:g} mm: radio {radio:.0f} px "
+              f"(sin theta = lambda/(2 delta) = {LAMB / (2 * DELTA):.4f})")
     Mi, Ni = U_in.shape
 
 
