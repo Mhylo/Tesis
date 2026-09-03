@@ -215,7 +215,14 @@ def main(argv=None):
         # -no es su trabajo- asi que con unas coordenadas malas imprimiria un
         # porcentaje perfectamente creible de una ventana que no existe, y solo
         # despues reventaria. Al reves, el error sale primero y limpio.
-        U_h = roi.recortar(U_h)
+        try:
+            U_h = roi.recortar(U_h)
+        except ValueError as exc:
+            # SystemExit limpio, como el resto de errores de usuario (archivo
+            # que no existe, z no positiva). recortar() sigue lanzando
+            # ValueError para quien la llame desde Python: solo esta frontera
+            # de CLI lo convierte.
+            raise SystemExit(str(exc)) from exc
         print(informe(roi, forma, zs, args.lamb, args.delta))
 
     print(f"{len(zs)} distancia(s) de {zs[0]:.3f} a {zs[-1]:.3f} mm "

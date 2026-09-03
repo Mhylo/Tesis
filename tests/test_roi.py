@@ -152,7 +152,7 @@ def test_recortar_y_propagar_no_es_propagar_y_recortar():
     deja holgado en 0.05 porque lo que la prueba fija es que la diferencia
     EXISTE y es de este orden, no un valor exacto.
 
-    Es deliberato que no haya una asercion de que el error se concentre en el
+    Es deliberado que no haya una asercion de que el error se concentre en el
     borde: se comprobo, y NO es asi. En este escenario el maximo cae en el
     nucleo (0.2099) y el marco de 8 px da la mitad (0.1212), porque el objeto
     esta en el centro y es donde el campo varia mas. Los anillos en el borde
@@ -199,6 +199,40 @@ def test_importar_roi_no_arrastra_matplotlib():
                            capture_output=True, text=True)
     assert hecho.returncode == 0, (
         f"import CamposT.roi arrastro matplotlib.\n{hecho.stderr}")
+
+
+# --- _vista(): la imagen que se le ensena al raton ---------------------------
+def test_vista_usa_la_fase_cuando_la_intensidad_no_tiene_contraste():
+    """Un objeto de fase pura tiene |U| == 1 en todo el plano: la intensidad
+    sale constante y blanca, sin nada que arrastrar con el raton. _vista()
+    tiene que caer en la fase, que ahi si varia."""
+    from CamposT.roi import _vista
+
+    m, n = 30, 40
+    t = np.linspace(0, 2 * np.pi, m * n).reshape(m, n)   # no constante
+    U = np.exp(1j * t)                                    # objeto de fase pura
+
+    I = np.abs(U) ** 2
+    assert I.max() - I.min() < 1e-9, (
+        "un objeto de fase pura tiene que dar |U| ~= 1")
+
+    vista = _vista(U)
+    assert vista.shape == U.shape
+    assert vista.min() >= 0.0 and vista.max() <= 1.0
+    assert vista.std() > 0.05, (
+        "tiene que haber contraste real, no una imagen plana")
+
+
+def test_vista_usa_la_intensidad_para_un_objeto_de_amplitud():
+    """Con contraste real en |U|^2, _vista() no toca la fase: sigue siendo la
+    normalizacion de siempre."""
+    from CamposT.roi import _vista
+
+    t = np.linspace(0.1, 1.0, 30 * 40).reshape(30, 40)
+    U = t.astype(complex)
+    I = np.abs(U) ** 2
+
+    assert np.allclose(_vista(U), I / I.max())
 
 
 # --- las dos CLIs comparten los mismos argumentos ----------------------------
@@ -277,10 +311,12 @@ def test_la_roi_se_mide_sobre_la_imagen_YA_redimensionada(tmp_path):
 
 
 def test_una_roi_que_se_sale_aborta_la_corrida(tmp_path):
+    """La CLI sale con SystemExit limpio, no con el traceback de un
+    ValueError: mismo trato que el resto de errores de usuario."""
     from CamposT.retropropagacion import main
 
     holo = _png_de_prueba(tmp_path / "h.png", n=64)
-    with pytest.raises(ValueError, match="se sale"):
+    with pytest.raises(SystemExit, match="se sale"):
         main([str(holo), "--z", "16", "--device", "cpu",
               "--roi", "40", "0", "32", "32", "--salida", str(tmp_path / "o")])
 
@@ -325,6 +361,16 @@ def test_la_ida_no_acepta_distancias_no_positivas(tmp_path, z_malo):
     with pytest.raises(SystemExit, match="positivas"):
         main([str(obj), "--z", z_malo, "--device", "cpu",
               "--salida", str(tmp_path / "o")])
+
+
+def test_una_roi_que_se_sale_aborta_la_corrida_en_la_ida(tmp_path):
+    """Mismo contrato que en la vuelta: SystemExit limpio, no un traceback."""
+    from CamposT.propagacion import main
+
+    obj = _png_de_prueba(tmp_path / "obj.png", n=64)
+    with pytest.raises(SystemExit, match="se sale"):
+        main([str(obj), "--z", "16", "--device", "cpu",
+              "--roi", "40", "0", "32", "32", "--salida", str(tmp_path / "o")])
 
 
 def test_el_modo_por_defecto_de_la_ida_es_amplitud():

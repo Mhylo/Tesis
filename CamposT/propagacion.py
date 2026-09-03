@@ -123,7 +123,13 @@ def main(argv=None):
         # Recortar ANTES de informar, por la misma razon que en la vuelta: con
         # unas coordenadas malas, informe() imprimiria un porcentaje creible de
         # una ventana que no existe y solo despues reventaria recortar().
-        U0 = roi.recortar(U0)
+        try:
+            U0 = roi.recortar(U0)
+        except ValueError as exc:
+            # SystemExit limpio, igual que retropropagacion.py: recortar()
+            # sigue lanzando ValueError para quien la llame desde Python, solo
+            # esta frontera de CLI lo convierte.
+            raise SystemExit(str(exc)) from exc
         print(informe(roi, forma, zs, args.lamb, args.delta))
 
     print(f"{len(zs)} distancia(s) de {zs[0]:.3f} a {zs[-1]:.3f} mm "
