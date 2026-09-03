@@ -146,10 +146,9 @@ Inserta **justo encima** de esa linea (es el mismo punto en los tres scripts: de
 - [ ] **Step 4: Correr el script y comprobar los tres archivos**
 
 ```bash
-./Tesis_env/Scripts/python.exe scripts/retro_fft_angular.py
+MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe scripts/retro_fft_angular.py
 ```
 
-Se abrirá una figura de matplotlib al final; ciérrala para que el proceso termine.
 
 Expected: en la consola, un bloque `holograma guardado:` con tres rutas bajo `resultados/hologramas/BenchmarkTarget/fft/`. El nombre debe ser `z0010.000` (el `Z` del script es `10.0`).
 
@@ -324,10 +323,9 @@ Inserta **justo encima** de esa linea (es el mismo punto en los tres scripts: de
 - [ ] **Step 4: Correr el script y comprobar los tres archivos**
 
 ```bash
-./Tesis_env/Scripts/python.exe scripts/retro_blas.py
+MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe scripts/retro_blas.py
 ```
 
-Cierra la figura para que el proceso termine.
 
 Expected: bloque `holograma guardado:` con tres rutas bajo `resultados/hologramas/BenchmarkTarget/blas/`, con nombre `z0200.000` (el `Z` del script es `200.0`).
 
@@ -504,10 +502,9 @@ Inserta **justo encima** de esa linea (es el mismo punto en los tres scripts: de
 - [ ] **Step 4: Correr el script y comprobar los tres archivos**
 
 ```bash
-./Tesis_env/Scripts/python.exe scripts/retro_mpasm.py
+MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe scripts/retro_mpasm.py
 ```
 
-Cierra la figura para que el proceso termine.
 
 Expected: bloque `holograma guardado:` con tres rutas bajo `resultados/hologramas/entrada/mpasm/` — **`entrada`, no `BenchmarkTarget`**: el `RUTA` de este script apunta a `resultados/campos/entrada.png`. El nombre es `z0050.000` (su `Z` es `50.0`).
 
@@ -580,15 +577,20 @@ BARRIDO = None
 USAR_ANGULAR = True
 USAR_BLAS = False
 USAR_MPASM = False
+SALIDA = "resultados/circulo/npy"
 ```
+
+`SALIDA` es lo que hace que la figura se escriba a disco: con `MPLBACKEND=Agg` no se abre ninguna ventana, asi que si no la guardas no hay nada que mirar.
 
 (Los valores de `LAMB`, `DELTA` y `Z` deben ser los que diga el `.txt`; los de arriba son los que tiene `retro_mpasm.py` hoy. Si no coinciden, manda el `.txt`.)
 
 ```bash
-./Tesis_env/Scripts/python.exe scripts/retro_holograma.py
+MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe scripts/retro_holograma.py
 ```
 
-Expected: la consola anuncia `campo complejo (la vuelta es exacta, sin gemela)`, y la figura devuelve el objeto **limpio**, sin una copia desenfocada superpuesta.
+Expected: la consola anuncia `campo complejo (la vuelta es exacta, sin gemela)`.
+
+Abre `resultados/circulo/npy/retropropagacion.png` y mirala. La columna de la reconstruccion tiene que devolver el objeto **limpio**, sin una copia desenfocada superpuesta.
 
 - [ ] **Step 2: Reconstruir desde el `.png` — con gemela**
 
@@ -597,13 +599,16 @@ Cambia sólo la extensión de `RUTA`:
 ```python
 RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\entrada\mpasm\z0050.000.png"
 GAMMA_GUARDADO = 1.0
+SALIDA = "resultados/circulo/png"
 ```
 
 ```bash
-./Tesis_env/Scripts/python.exe scripts/retro_holograma.py
+MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe scripts/retro_holograma.py
 ```
 
-Expected: la consola anuncia `intensidad medida, campo = sqrt(I) (con gemela)`, y ahora la reconstrucción trae la **imagen gemela desenfocada encima** del objeto. La diferencia entre esta figura y la del Step 1 es exactamente lo que cuesta que un sensor tire la fase.
+Expected: la consola anuncia `intensidad medida, campo = sqrt(I) (con gemela)`.
+
+Abre `resultados/circulo/png/retropropagacion.png`. Ahora la reconstruccion trae la **imagen gemela desenfocada encima** del objeto. Ponla al lado de la del Step 1: la diferencia entre las dos es exactamente lo que cuesta que un sensor tire la fase.
 
 - [ ] **Step 3: Medir la correlación de los dos caminos contra el objeto**
 
@@ -702,7 +707,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Lo único que cambia entre las tres** es el valor de `METODO`, el nombre del propagador en el `.txt`, y las claves extra: `EJES_CRUZADOS` en fft, `frac_ida` en blas, y `S`/`R`/`MAG`/`KF`/`kf_ida` en mpasm. Las dos últimas son **resultados** de la ida, no ajustes.
 
-**Los tres scripts abren una figura de matplotlib** al final de `main()` y se quedan esperando. Ciérrala para que el proceso termine.
+**Los tres scripts terminan en `plt.show()` y se quedan esperando a que cierres la ventana.** Por eso todas las corridas de este plan van con `MPLBACKEND=Agg` delante: con ese backend `plt.show()` es un no-op y el proceso termina solo. No hace falta tocar ni una linea de los scripts, y las figuras que se guardan con `SALIDA` se escriben igual.
 
 **Los tres tienen `RUTA` y `Z` distintos** hoy (`BenchmarkTarget`/10, `BenchmarkTarget`/200, `entrada`/50), así que escriben en sitios distintos y no se pisan entre sí. No los homogeneices.
 
