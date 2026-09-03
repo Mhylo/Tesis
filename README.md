@@ -68,6 +68,11 @@ y qué parte del cambio de precisión.
                           referencia. Enseña las dos erratas del original
                           corriendo: el A²·B de la Ec. (14) y el Kf que se
                           apaga a z < 0.
+      retro_holograma.py
+                        Retropropaga un holograma ya grabado: se lo entregas,
+                        no lo genera. A diferencia de los tres de arriba no
+                        lleva copia propia -llama a CamposT.pipeline.propagar()-
+                        y corre uno o varios a la vez sobre el mismo dato.
       figura_escenario.py
                         Dibuja el escenario de la Tabla 1 del paper en tres
                         figuras: la apertura, el frente de onda propagado y el
