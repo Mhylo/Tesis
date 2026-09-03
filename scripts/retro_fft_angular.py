@@ -131,6 +131,10 @@ BARRIDO = np.linspace(0.4, 1.6, 25)
 #: Carpeta donde guardar las figuras, o None para solo mostrarlas.
 SALIDA = None
 
+#: Nombre corto del propagador, para la ruta de salida del holograma. Es el
+#: mismo vocabulario que usa METODOS en CamposT: fft, blas, mpasm.
+METODO = "fft"
+
 
 # ════════════════════════════════════════════════════════════════════════════
 #  PROPAGADOR
@@ -510,6 +514,70 @@ def objeto(ruta, entrada, phi_max):
     return A * np.exp(1j * phi_max * A), img
 
 
+def guardar_holograma(campo, z, parametros):
+    """campo_sensor -> tres archivos, y una linea por archivo en consola.
+
+        .png   |campo|^2 normalizado por su maximo, SIN GAMMA. Es lo que mide
+               un sensor: al retropropagarlo sale el objeto CON su imagen
+               gemela encima.
+        .npy   el campo complejo tal cual, en el dtype en que se calculo. Es lo
+               que habia ANTES de medirlo: al retropropagarlo la vuelta deshace
+               la ida y devuelve el objeto exacto.
+        .txt   con que se hizo.
+
+    Los dos primeros no son redundantes: el PNG es lo que un sensor te habria
+    dado, el .npy es lo que habia antes de que lo midiera.
+    scripts/retro_holograma.py distingue los dos por la extension.
+
+    SIN GAMMA A PROPOSITO. Un PNG de intensidad guardado como I^0.6 -lo que
+    hace CamposT/pipeline.py por defecto- se lee luego como I^0.3 al tomarle la
+    raiz, y eso no es solo contraste feo: MUEVE LA DISTANCIA a la que enfoca la
+    reconstruccion, que es justo lo que un barrido intenta medir.
+
+    EL .txt NO ES ADORNO. El nombre del archivo lleva la z y nada mas, asi que
+    dos corridas con la misma z y distinta lambda escriben el mismo nombre y la
+    segunda pisa a la primera. El .txt es lo que impide que eso sea un error
+    mudo: dice con que parametros se hizo el archivo que hay ahi.
+
+    ESTA FUNCION ESTA DUPLICADA en los tres scripts retro_* A PROPOSITO. Podria
+    importarse de CamposT.pipeline.guardar(), que hace casi esto mismo, pero
+    estos tres no importan el paquete: son el contraste INDEPENDIENTE contra el.
+    Si dependieran de el, coincidir con el dejaria de significar algo. Es la
+    misma duplicacion deliberada que ya tienen nitidez(), pico_de_foco(),
+    a_cpu(), objeto() y los tres pinta_*().
+    """
+    A = a_cpu(campo)
+
+    # Bajo la raiz del repo, se lance el script desde donde se lance: una ruta
+    # relativa lo dejaria en el directorio de invocacion.
+    destino = (pathlib.Path(__file__).resolve().parent.parent / "resultados"
+               / "hologramas" / pathlib.Path(RUTA).stem / METODO)
+    destino.mkdir(parents=True, exist_ok=True)
+
+    # z{:08.3f}: el mismo formato que nombre_png() en
+    # CamposT/retropropagacion.py, escrito a mano porque aqui no se importa el
+    # paquete. Tres decimales para que dos z distintas no escriban el mismo
+    # archivo, y ancho fijo para que el orden alfabetico siga al de la z.
+    base = destino / f"z{z:08.3f}"
+
+    I = np.abs(A) ** 2
+    m = I.max()
+    # Un campo identicamente nulo daria 0/0: NaN por todo el array y un PNG de
+    # basura, sin error y sin aviso. Un negro es un resultado legitimo.
+    I = I / m if m > 0 else np.zeros_like(I)
+    Image.fromarray((I * 255).astype(np.uint8)).save(base.with_suffix(".png"))
+
+    np.save(base.with_suffix(".npy"), A)
+
+    with open(base.with_suffix(".txt"), "w", encoding="utf-8") as f:
+        for clave, valor in parametros.items():
+            f.write(f"{clave} = {valor}\n")
+
+    print("holograma guardado:")
+    for ext in (".png", ".npy", ".txt"):
+        print(f"  -> {base.with_suffix(ext)}")
+
+
 # ════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ════════════════════════════════════════════════════════════════════════════
@@ -575,6 +643,23 @@ def main():
            / np.abs(U0_obj).max())
     print(f"  ida y vuelta del campo complejo: error max relativo = {err:.2e}"
           f"   <- es la identidad, tiene que ser ~1e-15 (1e-7 en complex64)")
+
+    # Se guarda aqui y no justo tras la ida para que la consola se lea en
+    # orden: primero con que se hizo, despues que se escribio. campo_sensor ya
+    # existe y nadie lo toca en medio.
+    guardar_holograma(campo_sensor, Z, {
+        "objeto": RUTA,
+        "propagador": "FFT-ASM (espectro angular por FFT)",
+        "lambda [mm]": LAMB,
+        "delta [mm]": DELTA,
+        "Z [mm]": Z,
+        "malla": f"{M}x{N}",
+        "ENTRADA": ENTRADA,
+        "PHI_MAX": PHI_MAX,
+        "dispositivo": dev,
+        "dtype": np.dtype(dtype).name,
+        "EJES_CRUZADOS": EJES_CRUZADOS,
+    })
 
     # ---- barrido de foco ----------------------------------------------------
     zs = nit = rms = None
