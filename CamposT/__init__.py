@@ -7,6 +7,10 @@ el camino que recorre un campo:
                   sintético de barras con su geometría (ancho de barra,
                   periodo, pares de línea por mm).
 
+    roi           recorta una ventana de la imagen para propagar solo eso.
+                  Es un recorte PREVIO al propagador, asi que sirve igual en
+                  los dos sentidos; radio_del_cono() dice lo que cuesta.
+
     propagadores  lo propaga. MPASM, FFT-ASM y BL-ASM bajo una firma común
                   (U0, delta, lamb, z, device, dtype), más kf_auto y la
                   función de transferencia que comparten.
@@ -28,6 +32,10 @@ el camino que recorre un campo:
                   GPU).
 
 Y el camino de vuelta, que se apoya en todo lo anterior:
+
+    propagacion   la corrida de ida de punta a punta desde la linea de
+                  comandos: lee tu imagen, la recorta si hay ROI y la propaga.
+                  No confundir con propagadores.py, que son los algoritmos.
 
     retropropagacion  del holograma medido al objeto. Toma una imagen de
                   intensidad que elige el usuario y la retropropaga con los
