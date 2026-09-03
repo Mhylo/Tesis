@@ -23,7 +23,7 @@ vuelta: aquel existe para poner el signo por dentro y filtrar los kwargs de
 MPASM, o sea para impedir dos errores que aqui no se pueden cometer. Envolver
 propagar() en otra capa que no decide nada seria una capa de mas.
 
-UNIDADES: milimetros para todo.  633 nm -> 633e-6    3.45 um -> 3.45e-3
+UNIDADES: milímetros para todo.  633 nm -> 633e-6    3.45 um -> 3.45e-3
 """
 
 import argparse
@@ -51,7 +51,7 @@ def _parser():
         prog="python -m CamposT.propagacion",
         description="Propaga una imagen hacia adelante con FFT-ASM, BL-ASM y "
                     "MPASM.",
-        epilog="Unidades: usa mm para todo (delta, lamb, z) o um para todo.",
+        epilog="Unidades: usa mm para todo (delta, lamb, z) o µm para todo.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument("imagen", type=pathlib.Path,
                    help="imagen del objeto")
@@ -65,7 +65,7 @@ def _parser():
                         "amplitud, de fase, mixta, binarizada, o intensidad "
                         "medida")
     p.add_argument("--delta", type=float, default=3.45e-3,
-                   help="paso de pixel [mm]")
+                   help="paso de píxel del sensor [mm]")
     p.add_argument("--lamb", type=float, default=405e-6,
                    help="longitud de onda [mm]")
     p.add_argument("--metodos", nargs="+", default=list(METODOS),
@@ -102,9 +102,9 @@ def main(argv=None):
             "--z son distancias de propagacion positivas: este es el camino de "
             "ida. Para el de vuelta, python -m CamposT.retropropagacion.")
 
-    # Las salidas van siempre bajo la raiz del repo, se lance el modulo desde
-    # donde se lance: una ruta relativa las dejaria en el directorio de
-    # invocacion.
+    # Las salidas van siempre bajo la raíz del repo, se lance el módulo desde
+    # donde se lance: una ruta relativa las dejaría en el directorio de
+    # invocación.
     raiz = pathlib.Path(__file__).resolve().parent.parent
     destino = args.salida or (raiz / "resultados" / "propagacion"
                               / args.imagen.stem)
