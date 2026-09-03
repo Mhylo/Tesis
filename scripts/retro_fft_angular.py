@@ -558,6 +558,13 @@ def guardar_holograma(campo, z, parametros):
     # CamposT/retropropagacion.py, escrito a mano porque aqui no se importa el
     # paquete. Tres decimales para que dos z distintas no escriban el mismo
     # archivo, y ancho fijo para que el orden alfabetico siga al de la z.
+    #
+    # OJO: las extensiones se PEGAN con f-string, NO con Path.with_suffix().
+    # Para pathlib "z0010.000" ya tiene sufijo -".000"- y with_suffix(".png")
+    # lo SUSTITUIRIA en vez de anadirlo, dejando z0010.png. Eso se cargaria los
+    # tres decimales enteros: z = 10.0 y z = 10.5 escribirian en el MISMO
+    # archivo, en silencio, que es exactamente lo que este formato existe para
+    # impedir.
     base = destino / f"z{z:08.3f}"
 
     I = np.abs(A) ** 2
@@ -565,17 +572,17 @@ def guardar_holograma(campo, z, parametros):
     # Un campo identicamente nulo daria 0/0: NaN por todo el array y un PNG de
     # basura, sin error y sin aviso. Un negro es un resultado legitimo.
     I = I / m if m > 0 else np.zeros_like(I)
-    Image.fromarray((I * 255).astype(np.uint8)).save(base.with_suffix(".png"))
+    Image.fromarray((I * 255).astype(np.uint8)).save(f"{base}.png")
 
-    np.save(base.with_suffix(".npy"), A)
+    np.save(f"{base}.npy", A)
 
-    with open(base.with_suffix(".txt"), "w", encoding="utf-8") as f:
+    with open(f"{base}.txt", "w", encoding="utf-8") as f:
         for clave, valor in parametros.items():
             f.write(f"{clave} = {valor}\n")
 
     print("holograma guardado:")
     for ext in (".png", ".npy", ".txt"):
-        print(f"  -> {base.with_suffix(ext)}")
+        print(f"  -> {base}{ext}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
