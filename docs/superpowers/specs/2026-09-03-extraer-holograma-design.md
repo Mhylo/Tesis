@@ -241,4 +241,13 @@ dos maneras, reconstruido con el mismo código. Es lo que hace reproducible el
 
 ## Estado
 
-Diseño aprobado el 2026-09-03. Pendiente el plan de implementación.
+Diseño aprobado el 2026-09-03. Implementado en los tres scripts.
+
+Círculo cerrado y medido sobre `resultados/hologramas/entrada/mpasm/z0050.000`,
+reconstruyendo con FFT-ASM contra `resultados/campos/entrada.png`:
+
+    desde el .npy (campo complejo)  corr = 0.8903
+    desde el .png (intensidad)      corr = 0.6297
+
+La segunda es la que un sensor de verdad te deja: la caída es el precio de que
+la medida tire la fase, y es de donde sale la imagen gemela.
