@@ -241,13 +241,56 @@ dos maneras, reconstruido con el mismo código. Es lo que hace reproducible el
 
 ## Estado
 
-Diseño aprobado el 2026-09-03. Implementado en los tres scripts.
+Diseño aprobado el 2026-09-03. Implementado en los tres scripts: los tres
+escriben ya su holograma en los tres formatos, y los archivos están verificados.
 
-Círculo cerrado y medido sobre `resultados/hologramas/entrada/mpasm/z0050.000`,
-reconstruyendo con FFT-ASM contra `resultados/campos/entrada.png`:
+## Lo que midió el círculo, y la sorpresa
 
-    desde el .npy (campo complejo)  corr = 0.8903
-    desde el .png (intensidad)      corr = 0.6297
+Reconstruyendo cada holograma con `CamposT.pipeline.propagar()` y correlacionando
+`|U|²` contra el objeto de partida:
 
-La segunda es la que un sensor de verdad te deja: la caída es el precio de que
-la medida tire la fase, y es de donde sale la imagen gemela.
+    holograma          desde .npy   desde .png    objeto           Z
+    ---------------------------------------------------------------------
+    mpasm/z0050.000      0.8903       0.6297      entrada          50 mm
+    fft/z0010.000        0.8018       0.7885      BenchmarkTarget  10 mm
+    blas/z0200.000       0.9297         —         BenchmarkTarget 200 mm
+
+**El resultado esperado era que la columna del `.npy` diera ~1.00.** No lo da en
+ninguno de los tres, y la razón es distinta en cada uno. Eso NO es un fallo de
+esta implementación —los scripts escriben exactamente lo que calculan— sino algo
+que la medida sacó a la luz: **la vuelta con el paquete no deshace la ida de
+estos tres scripts, porque ninguno de los tres propaga con la identidad.**
+
+    retro_fft_angular   EJES_CRUZADOS = True sobre una malla 3000x4000, o sea NO
+                        cuadrada. Los ejes cruzados son el defecto de la
+                        implementacion de referencia que este script existe para
+                        exhibir; en malla rectangular cambian el resultado, y el
+                        paquete -que los tiene en su sitio- no puede deshacerlo.
+
+    retro_blas          la mascara de banda limitada conservo el 10.6 % del
+                        espectro (frac_ida = 0.105836). BL-ASM no es la
+                        identidad por diseño: devuelve el objeto FILTRADO, y eso
+                        es el precio de no aliar. Su propio docstring ya lo dice.
+
+    retro_mpasm         con S = 1 a Z = 50 mm sale Kf = 2.2799, o sea COMPRIME el
+                        espectro, y comprimir es con pérdida. El script lo avisa
+                        por partida doble ("<- comprimiendo el espectro" y
+                        "ida y vuelta del campo complejo: error max relativo =
+                        1.09e+00"). Con S >= 6 el Kf baja a 1.0000 y deja de
+                        comprimir.
+
+Lo que **sí** quedó demostrado, y era el objetivo:
+
+- El par `.png` / `.npy` del mismo instante permite comparar los dos caminos, y
+  la caída es real y medible. En el caso de MPASM, **0.8903 contra 0.6297**: eso
+  es lo que cuesta que el sensor tire la fase.
+- Las figuras lo confirman cualitativamente: desde el `.npy` la carta USAF sale
+  con las barras nítidas; desde el `.png` el objeto queda casi tapado por la
+  gemela y la autocorrelación.
+
+Lo que **no** quedó demostrado: el `~0.53` que citan cuatro docstrings del repo.
+Sigue sin ser reproducible, y ahora se sabe por qué no bastaba con guardar los
+hologramas: haría falta un caso sin defecto deliberado —malla cuadrada, ejes en
+su sitio, sin banda limitada y sin compresión— que ninguno de estos tres scripts
+ofrece tal como están configurados. Queda pendiente y **no se ha inventado
+ninguna cifra para taparlo**.
