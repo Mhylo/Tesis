@@ -285,5 +285,67 @@ def test_una_roi_que_se_sale_aborta_la_corrida(tmp_path):
               "--roi", "40", "0", "32", "32", "--salida", str(tmp_path / "o")])
 
 
+# --- la CLI de la ida --------------------------------------------------------
+def test_la_ida_recorta_y_el_png_sale_del_tamano_de_la_roi(tmp_path):
+    """Rectangular por la misma razon que en la vuelta: una ventana cuadrada no
+    delataria unos ejes cruzados."""
+    from PIL import Image
+
+    from CamposT.propagacion import main
+
+    obj = _png_de_prueba(tmp_path / "obj.png", n=64)
+    salida = tmp_path / "out"
+    main([str(obj), "--z", "16", "--delta", "3.45e-3", "--lamb", "405e-6",
+          "--metodos", "fft", "--device", "cpu", "--pad", "1",
+          "--roi", "16", "8", "32", "24", "--salida", str(salida)])
+
+    escritos = sorted((salida / "fft").glob("*.png"))
+    assert len(escritos) == 1
+    assert Image.open(escritos[0]).size == (32, 24)
+
+
+def test_la_ida_barre_distancias_como_la_vuelta(tmp_path):
+    from CamposT.propagacion import main
+
+    obj = _png_de_prueba(tmp_path / "obj.png", n=32)
+    salida = tmp_path / "out"
+    main([str(obj), "--z", "10", "20", "--pasos", "3", "--delta", "3.45e-3",
+          "--lamb", "405e-6", "--metodos", "fft", "--device", "cpu",
+          "--pad", "1", "--salida", str(salida)])
+    assert len(list((salida / "fft").glob("*.png"))) == 3
+
+
+@pytest.mark.parametrize("z_malo", ["-16", "0"])
+def test_la_ida_no_acepta_distancias_no_positivas(tmp_path, z_malo):
+    """La ida propaga a +z y la vuelta a -z. Una distancia negativa aqui es
+    pedirle a la ida que haga de vuelta, y hay un modulo para eso."""
+    from CamposT.propagacion import main
+
+    obj = _png_de_prueba(tmp_path / "obj.png", n=32)
+    with pytest.raises(SystemExit, match="positivas"):
+        main([str(obj), "--z", z_malo, "--device", "cpu",
+              "--salida", str(tmp_path / "o")])
+
+
+def test_el_modo_por_defecto_de_la_ida_es_amplitud():
+    from CamposT.propagacion import _parser
+
+    assert _parser().parse_args(["o.png", "--z", "16"]).modo == "amplitud"
+
+
+def test_roi_interactivo_sin_campo_que_ensenar_revienta():
+    """Hueco que dejo la Task 4: desde_argumentos() no puede abrir el selector
+    sin la imagen, y esa guarda no la alcanzaba ninguna prueba. Las dos CLIs
+    siempre le pasan un campo, asi que desde ellas es inalcanzable; esta
+    prueba es la unica forma de que se compruebe, y ahora hay dos CLIs
+    apoyadas en ella."""
+    from CamposT.retropropagacion import _parser
+    from CamposT.roi import desde_argumentos
+
+    args = _parser().parse_args(["h.png", "--z", "20", "--roi-interactivo"])
+    with pytest.raises(ValueError, match="necesita el campo"):
+        desde_argumentos(args)
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
