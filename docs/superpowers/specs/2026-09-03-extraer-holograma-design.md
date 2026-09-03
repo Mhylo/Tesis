@@ -179,8 +179,18 @@ def guardar_holograma(campo, destino, z, parametros):
     """campo_sensor -> tres archivos: .png, .npy y .txt. -> ruta base escrita."""
 ```
 
-Y una llamada en `main()`, justo después de que `campo_sensor` exista y antes de
-la vuelta. Imprime lo que escribió, en el estilo que ya usan las figuras:
+Y una llamada en `main()`, **justo encima del comentario
+`# ---- barrido de foco ---`**, no inmediatamente después de la línea de la ida.
+Ese punto existe en los tres scripts y cae en el mismo sitio: después de todos
+los `print` de parámetros y de los diagnósticos propios de cada propagador,
+antes de que empiece el barrido.
+
+Funcionalmente da igual dónde se ponga —`campo_sensor` ya existe y nadie lo toca
+en medio— pero así la consola se lee en orden: primero con qué se hizo, después
+qué se escribió. En `retro_mpasm.py` eso además deja el `Kf` impreso justo
+encima del `.txt` que lo anota.
+
+Imprime lo que escribió, en el estilo que ya usan las figuras:
 
 ```
 holograma guardado:
