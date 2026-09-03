@@ -575,17 +575,34 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 4: Cerrar el círculo y anotar lo medido
 
 **Files:**
+- Create (temporal, fuera del repo): una copia de trabajo de `scripts/retro_holograma.py` en el scratchpad.
 - Modify: `docs/superpowers/specs/2026-09-03-extraer-holograma-design.md` (sección `## Estado`)
 
 **Interfaces:**
 - Consumes: los hologramas escritos por las Tasks 1-3, en particular `resultados/hologramas/entrada/mpasm/z0050.000.{png,npy,txt}`.
-- Produces: nada de código. El deliverable es la verificación corrida y su resultado anotado.
+- Produces: ningún código. El deliverable son **dos números medidos** y su anotación en el spec.
 
 Ésta es la razón de ser de todo lo anterior: el mismo instante físico, medido de las dos maneras, reconstruido con el mismo código. Es lo que convierte en reproducible el `~0.53` de correlación que cuatro docstrings del repo citan de memoria.
 
-- [ ] **Step 1: Reconstruir desde el `.npy` — la vuelta exacta**
+**NO EDITES `scripts/retro_holograma.py`.** Ese archivo tiene ediciones del usuario sin commitear (`RUTA`, `LAMB`, `Z`, `S_MPASM`) y no son tuyas. Se trabaja sobre una **copia**: es el mismo código, así que verifica lo mismo, y el archivo del usuario no se toca en ningún momento.
 
-Lee el `.txt` para saber con qué parámetros se hizo. Después edita `scripts/retro_holograma.py` y pon **temporalmente**:
+`SCRATCH` es `C:\Users\User\AppData\Local\Temp\claude\C--Users-User-Desktop-Tesis\e41f950c-a3d4-4491-a97f-f2cdabec6da2\scratchpad`.
+
+- [ ] **Step 1: Leer los parámetros reales del holograma**
+
+```bash
+cat resultados/hologramas/entrada/mpasm/z0050.000.txt
+```
+
+Apunta `lambda [mm]`, `delta [mm]` y `Z [mm]`. **Los pasos siguientes usan esos valores, no los que aparezcan escritos aquí**: si el `.txt` dice otra cosa, manda el `.txt`.
+
+- [ ] **Step 2: Hacer la copia de trabajo y ajustarla**
+
+```bash
+cp scripts/retro_holograma.py "$SCRATCH/verifica_circulo.py"
+```
+
+En **la copia**, y sólo en ella, pon estas constantes:
 
 ```python
 RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\entrada\mpasm\z0050.000.npy"
@@ -595,43 +612,43 @@ Z = 50.0
 RECORTAR = False
 ROI = None
 BARRIDO = None
+GAMMA_GUARDADO = 1.0
 USAR_ANGULAR = True
 USAR_BLAS = False
 USAR_MPASM = False
-SALIDA = "resultados/circulo/npy"
+SALIDA = r"C:\Users\User\Desktop\Tesis\resultados\circulo\npy"
 ```
 
-`SALIDA` es lo que hace que la figura se escriba a disco: con `MPLBACKEND=Agg` no se abre ninguna ventana, asi que si no la guardas no hay nada que mirar.
+`SALIDA` es lo que hace que la figura se escriba a disco: con `MPLBACKEND=Agg` no se abre ninguna ventana, así que si no la guardas no hay nada que mirar.
 
-(Los valores de `LAMB`, `DELTA` y `Z` deben ser los que diga el `.txt`; los de arriba son los que tiene `retro_mpasm.py` hoy. Si no coinciden, manda el `.txt`.)
+- [ ] **Step 3: Reconstruir desde el `.npy` — la vuelta exacta**
 
 ```bash
-MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe scripts/retro_holograma.py
+MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe "$SCRATCH/verifica_circulo.py"
 ```
 
 Expected: la consola anuncia `campo complejo (la vuelta es exacta, sin gemela)`.
 
-Abre `resultados/circulo/npy/retropropagacion.png` y mirala. La columna de la reconstruccion tiene que devolver el objeto **limpio**, sin una copia desenfocada superpuesta.
+Abre `resultados/circulo/npy/retropropagacion.png` y **mírala**. La columna de la reconstrucción debe devolver el objeto **limpio**, sin una copia desenfocada superpuesta.
 
-- [ ] **Step 2: Reconstruir desde el `.png` — con gemela**
+- [ ] **Step 4: Reconstruir desde el `.png` — con gemela**
 
-Cambia sólo la extensión de `RUTA`:
+En la copia, cambia sólo dos líneas:
 
 ```python
 RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\entrada\mpasm\z0050.000.png"
-GAMMA_GUARDADO = 1.0
-SALIDA = "resultados/circulo/png"
+SALIDA = r"C:\Users\User\Desktop\Tesis\resultados\circulo\png"
 ```
 
 ```bash
-MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe scripts/retro_holograma.py
+MPLBACKEND=Agg ./Tesis_env/Scripts/python.exe "$SCRATCH/verifica_circulo.py"
 ```
 
 Expected: la consola anuncia `intensidad medida, campo = sqrt(I) (con gemela)`.
 
-Abre `resultados/circulo/png/retropropagacion.png`. Ahora la reconstruccion trae la **imagen gemela desenfocada encima** del objeto. Ponla al lado de la del Step 1: la diferencia entre las dos es exactamente lo que cuesta que un sensor tire la fase.
+Abre `resultados/circulo/png/retropropagacion.png`. Ahora la reconstrucción trae la **imagen gemela desenfocada encima** del objeto. Ponla al lado de la del Step 3: la diferencia entre las dos es exactamente lo que cuesta que un sensor tire la fase.
 
-- [ ] **Step 3: Medir la correlación de los dos caminos contra el objeto**
+- [ ] **Step 5: Medir la correlación de los dos caminos contra el objeto**
 
 Con `resultados/campos/entrada.png` como verdad de terreno:
 
@@ -650,11 +667,9 @@ def corr(a, b):
     a, b = a.ravel() - a.mean(), b.ravel() - b.mean()
     return float(a @ b / np.sqrt((a @ a) * (b @ b)))
 
-# desde el campo complejo
 U = np.load(f'{b}.npy')
 rec_npy, _ = propagar(U, DELTA, LAMB, -Z, metodo='fft', pad=1, device='cpu')
 
-# desde la intensidad medida, que es lo unico que da un sensor
 I = np.asarray(Image.open(f'{b}.png').convert('L'), float) / 255.0
 rec_png, _ = propagar(np.sqrt(I).astype(complex), DELTA, LAMB, -Z, metodo='fft', pad=1, device='cpu')
 
@@ -662,29 +677,19 @@ print(f'desde .npy (campo complejo): corr = {corr(np.abs(rec_npy)**2, obj):.4f}'
 print(f'desde .png (intensidad)    : corr = {corr(np.abs(rec_png)**2, obj):.4f}')"
 ```
 
+**Usa los `LAMB`, `DELTA` y `Z` que dijo el `.txt` del Step 1**, no los de arriba si difieren.
+
 Expected: la primera correlación claramente más alta que la segunda. **Anota los dos números** — son el deliverable de esta tarea.
 
-- [ ] **Step 4: Deshacer los cambios temporales de `retro_holograma.py`**
+- [ ] **Step 6: Comprobar que no tocaste el archivo del usuario**
 
 ```bash
-git checkout scripts/retro_holograma.py
+git diff --stat scripts/retro_holograma.py
 ```
 
-**Cuidado:** ese archivo tenía cambios sin commitear antes de empezar (`LAMB`, `S_MPASM`, `RUTA`, `Z`). Antes de correr el `checkout`, guarda el diff:
+Expected: exactamente el mismo estado que antes de empezar — las ediciones del usuario siguen ahí, sin commitear, y no hay ninguna más. Si el diff muestra algo que tú escribiste, **para y dilo**: has tocado el archivo equivocado.
 
-```bash
-git diff scripts/retro_holograma.py > /tmp/retro_holograma_local.diff
-```
-
-y vuelve a aplicarlo después con `git apply /tmp/retro_holograma_local.diff`. Si el `git diff` sale vacío, no hay nada que restaurar y el `checkout` es seguro.
-
-```bash
-git status --short scripts/
-```
-
-Expected: `scripts/retro_holograma.py` en el mismo estado que tenía al empezar la tarea.
-
-- [ ] **Step 5: Anotar lo medido en el spec**
+- [ ] **Step 7: Anotar lo medido en el spec**
 
 En `docs/superpowers/specs/2026-09-03-extraer-holograma-design.md`, sustituye la sección `## Estado` entera por:
 
@@ -696,16 +701,18 @@ Diseño aprobado el 2026-09-03. Implementado en los tres scripts.
 Círculo cerrado y medido sobre `resultados/hologramas/entrada/mpasm/z0050.000`,
 reconstruyendo con FFT-ASM contra `resultados/campos/entrada.png`:
 
-    desde el .npy (campo complejo)  corr = <valor del Step 3>
-    desde el .png (intensidad)      corr = <valor del Step 3>
+    desde el .npy (campo complejo)  corr = <valor del Step 5>
+    desde el .png (intensidad)      corr = <valor del Step 5>
 
 La segunda es la que un sensor de verdad te deja: la caída es el precio de que
 la medida tire la fase, y es de donde sale la imagen gemela.
 ```
 
-Sustituye `<valor del Step 3>` por los dos números que salieron. **Si no salieron, no inventes ninguno**: escribe en su lugar qué falló.
+Sustituye `<valor del Step 5>` por los dos números que salieron. **Si no salieron, no inventes ninguno**: escribe en su lugar qué falló.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
+
+Añade **sólo** el spec. No añadas nada de `scripts/` ni de `resultados/`.
 
 ```bash
 git add docs/superpowers/specs/2026-09-03-extraer-holograma-design.md
