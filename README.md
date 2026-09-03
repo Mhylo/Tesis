@@ -169,6 +169,11 @@ y 405 nm), `--metodos` acota los propagadores y `--s` sube el sobremuestreo de
 MPASM — con cuidado: su matriz espectral es (s·N)² *por distancia*, así que en
 un barrido el defecto es `s=1`.
 
+Para no propagar la imagen entera, `--roi X0 Y0 ANCHO ALTO` recorta antes de
+propagar, o `--roi-interactivo` para elegir la ventana con el ratón y cerrar
+la figura. El recorte es seco —sin margen de guarda— y la consola avisa de
+cuánto cuesta.
+
 Si prefieres no escribir la línea de órdenes, `scripts/mi_holograma.py` hace lo
 mismo con los parámetros como constantes editables: pegas la ruta en `RUTA`,
 ajustas `DELTA`, `LAMB` y `Z`, y le das a Run. Llama al `main()` de la CLI, así
@@ -178,6 +183,20 @@ Dos límites que conviene conocer antes de leer una reconstrucción, ambos
 documentados en el módulo y fijados en su suite: asume iluminación colimada
 (sin la corrección de fuente puntual del DLHM), y la reconstrucción trae la
 imagen gemela superpuesta, que no se suprime.
+
+### Propagar un objeto hacia adelante
+
+El camino de ida: de una imagen del objeto a su campo propagado a una
+distancia `--z` positiva, con los mismos tres propagadores.
+
+```bash
+Tesis_env/Scripts/python.exe -m CamposT.propagacion objeto.png --z 20 --modo transmitancia
+```
+
+Los PNG salen en `resultados/propagacion/objeto/{fft,blas,mpasm}/`. Comparte
+`--delta`, `--lamb`, `--metodos`, `--pad`, `--roi` y `--roi-interactivo` con
+`CamposT.retropropagacion`; `--modo` fija cómo se interpreta la imagen
+(amplitud, fase, mixta, transmitancia binarizada u holograma).
 
 ## Tests
 
