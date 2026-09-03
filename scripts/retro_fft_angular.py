@@ -521,8 +521,10 @@ def guardar_holograma(campo, z, parametros):
                un sensor: al retropropagarlo sale el objeto CON su imagen
                gemela encima.
         .npy   el campo complejo tal cual, en el dtype en que se calculo. Es lo
-               que habia ANTES de medirlo: al retropropagarlo la vuelta deshace
-               la ida y devuelve el objeto exacto.
+               que habia ANTES de medirlo, con su fase. Retropropagarlo deshace
+               la ida SOLO si el propagador que la hizo es la identidad: exacto
+               con FFT-ASM, filtrado con BL-ASM -que descarta banda a proposito-,
+               y truncado con MPASM, que tira la energia que sale de su ventana.
         .txt   con que se hizo.
 
     Los dos primeros no son redundantes: el PNG es lo que un sensor te habria
