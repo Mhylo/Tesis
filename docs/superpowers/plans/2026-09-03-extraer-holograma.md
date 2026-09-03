@@ -94,6 +94,13 @@ def guardar_holograma(campo, z, parametros):
     # CamposT/retropropagacion.py, escrito a mano porque aqui no se importa el
     # paquete. Tres decimales para que dos z distintas no escriban el mismo
     # archivo, y ancho fijo para que el orden alfabetico siga al de la z.
+    #
+    # OJO: las extensiones se PEGAN con f-string, NO con Path.with_suffix().
+    # Para pathlib "z0010.000" ya tiene sufijo -".000"- y with_suffix(".png")
+    # lo SUSTITUIRIA en vez de anadirlo, dejando z0010.png. Eso se cargaria los
+    # tres decimales enteros: z = 10.0 y z = 10.5 escribirian en el MISMO
+    # archivo, en silencio, que es exactamente lo que este formato existe para
+    # impedir.
     base = destino / f"z{z:08.3f}"
 
     I = np.abs(A) ** 2
@@ -101,17 +108,17 @@ def guardar_holograma(campo, z, parametros):
     # Un campo identicamente nulo daria 0/0: NaN por todo el array y un PNG de
     # basura, sin error y sin aviso. Un negro es un resultado legitimo.
     I = I / m if m > 0 else np.zeros_like(I)
-    Image.fromarray((I * 255).astype(np.uint8)).save(base.with_suffix(".png"))
+    Image.fromarray((I * 255).astype(np.uint8)).save(f"{base}.png")
 
-    np.save(base.with_suffix(".npy"), A)
+    np.save(f"{base}.npy", A)
 
-    with open(base.with_suffix(".txt"), "w", encoding="utf-8") as f:
+    with open(f"{base}.txt", "w", encoding="utf-8") as f:
         for clave, valor in parametros.items():
             f.write(f"{clave} = {valor}\n")
 
     print("holograma guardado:")
     for ext in (".png", ".npy", ".txt"):
-        print(f"  -> {base.with_suffix(ext)}")
+        print(f"  -> {base}{ext}")
 ```
 
 - [ ] **Step 3: Llamarla desde `main()`**
@@ -159,9 +166,9 @@ Comprueba los tres:
 import numpy as np, pathlib
 from PIL import Image
 b = pathlib.Path('resultados/hologramas/BenchmarkTarget/fft/z0010.000')
-im = Image.open(b.with_suffix('.png')); print('png :', im.size, im.mode)
-A = np.load(b.with_suffix('.npy')); print('npy :', A.shape, A.dtype, 'complejo:', np.iscomplexobj(A))
-print('txt :'); print(b.with_suffix('.txt').read_text(encoding='utf-8'))"
+im = Image.open(f'{b}.png'); print('png :', im.size, im.mode)
+A = np.load(f'{b}.npy'); print('npy :', A.shape, A.dtype, 'complejo:', np.iscomplexobj(A))
+print('txt :'); print(pathlib.Path(f'{b}.txt').read_text(encoding='utf-8'))"
 ```
 
 Expected: el PNG en modo `L`, el `.npy` complejo y con la misma forma, y el `.txt` con las once claves, entre ellas `EJES_CRUZADOS`.
@@ -266,6 +273,13 @@ def guardar_holograma(campo, z, parametros):
     # CamposT/retropropagacion.py, escrito a mano porque aqui no se importa el
     # paquete. Tres decimales para que dos z distintas no escriban el mismo
     # archivo, y ancho fijo para que el orden alfabetico siga al de la z.
+    #
+    # OJO: las extensiones se PEGAN con f-string, NO con Path.with_suffix().
+    # Para pathlib "z0010.000" ya tiene sufijo -".000"- y with_suffix(".png")
+    # lo SUSTITUIRIA en vez de anadirlo, dejando z0010.png. Eso se cargaria los
+    # tres decimales enteros: z = 10.0 y z = 10.5 escribirian en el MISMO
+    # archivo, en silencio, que es exactamente lo que este formato existe para
+    # impedir.
     base = destino / f"z{z:08.3f}"
 
     I = np.abs(A) ** 2
@@ -273,17 +287,17 @@ def guardar_holograma(campo, z, parametros):
     # Un campo identicamente nulo daria 0/0: NaN por todo el array y un PNG de
     # basura, sin error y sin aviso. Un negro es un resultado legitimo.
     I = I / m if m > 0 else np.zeros_like(I)
-    Image.fromarray((I * 255).astype(np.uint8)).save(base.with_suffix(".png"))
+    Image.fromarray((I * 255).astype(np.uint8)).save(f"{base}.png")
 
-    np.save(base.with_suffix(".npy"), A)
+    np.save(f"{base}.npy", A)
 
-    with open(base.with_suffix(".txt"), "w", encoding="utf-8") as f:
+    with open(f"{base}.txt", "w", encoding="utf-8") as f:
         for clave, valor in parametros.items():
             f.write(f"{clave} = {valor}\n")
 
     print("holograma guardado:")
     for ext in (".png", ".npy", ".txt"):
-        print(f"  -> {base.with_suffix(ext)}")
+        print(f"  -> {base}{ext}")
 ```
 
 - [ ] **Step 3: Llamarla desde `main()`**
@@ -334,9 +348,9 @@ Expected: bloque `holograma guardado:` con tres rutas bajo `resultados/holograma
 import numpy as np, pathlib
 from PIL import Image
 b = pathlib.Path('resultados/hologramas/BenchmarkTarget/blas/z0200.000')
-im = Image.open(b.with_suffix('.png')); print('png :', im.size, im.mode)
-A = np.load(b.with_suffix('.npy')); print('npy :', A.shape, A.dtype, 'complejo:', np.iscomplexobj(A))
-print('txt :'); print(b.with_suffix('.txt').read_text(encoding='utf-8'))"
+im = Image.open(f'{b}.png'); print('png :', im.size, im.mode)
+A = np.load(f'{b}.npy'); print('npy :', A.shape, A.dtype, 'complejo:', np.iscomplexobj(A))
+print('txt :'); print(pathlib.Path(f'{b}.txt').read_text(encoding='utf-8'))"
 ```
 
 Expected: el `.txt` incluye `frac_ida`, y su valor coincide con la fracción de banda que el script imprimió por consola.
@@ -440,6 +454,13 @@ def guardar_holograma(campo, z, parametros):
     # CamposT/retropropagacion.py, escrito a mano porque aqui no se importa el
     # paquete. Tres decimales para que dos z distintas no escriban el mismo
     # archivo, y ancho fijo para que el orden alfabetico siga al de la z.
+    #
+    # OJO: las extensiones se PEGAN con f-string, NO con Path.with_suffix().
+    # Para pathlib "z0010.000" ya tiene sufijo -".000"- y with_suffix(".png")
+    # lo SUSTITUIRIA en vez de anadirlo, dejando z0010.png. Eso se cargaria los
+    # tres decimales enteros: z = 10.0 y z = 10.5 escribirian en el MISMO
+    # archivo, en silencio, que es exactamente lo que este formato existe para
+    # impedir.
     base = destino / f"z{z:08.3f}"
 
     I = np.abs(A) ** 2
@@ -447,17 +468,17 @@ def guardar_holograma(campo, z, parametros):
     # Un campo identicamente nulo daria 0/0: NaN por todo el array y un PNG de
     # basura, sin error y sin aviso. Un negro es un resultado legitimo.
     I = I / m if m > 0 else np.zeros_like(I)
-    Image.fromarray((I * 255).astype(np.uint8)).save(base.with_suffix(".png"))
+    Image.fromarray((I * 255).astype(np.uint8)).save(f"{base}.png")
 
-    np.save(base.with_suffix(".npy"), A)
+    np.save(f"{base}.npy", A)
 
-    with open(base.with_suffix(".txt"), "w", encoding="utf-8") as f:
+    with open(f"{base}.txt", "w", encoding="utf-8") as f:
         for clave, valor in parametros.items():
             f.write(f"{clave} = {valor}\n")
 
     print("holograma guardado:")
     for ext in (".png", ".npy", ".txt"):
-        print(f"  -> {base.with_suffix(ext)}")
+        print(f"  -> {base}{ext}")
 ```
 
 - [ ] **Step 3: Llamarla desde `main()`**
@@ -513,9 +534,9 @@ Expected: bloque `holograma guardado:` con tres rutas bajo `resultados/holograma
 import numpy as np, pathlib
 from PIL import Image
 b = pathlib.Path('resultados/hologramas/entrada/mpasm/z0050.000')
-im = Image.open(b.with_suffix('.png')); print('png :', im.size, im.mode)
-A = np.load(b.with_suffix('.npy')); print('npy :', A.shape, A.dtype, 'complejo:', np.iscomplexobj(A))
-print('txt :'); print(b.with_suffix('.txt').read_text(encoding='utf-8'))"
+im = Image.open(f'{b}.png'); print('png :', im.size, im.mode)
+A = np.load(f'{b}.npy'); print('npy :', A.shape, A.dtype, 'complejo:', np.iscomplexobj(A))
+print('txt :'); print(pathlib.Path(f'{b}.txt').read_text(encoding='utf-8'))"
 ```
 
 Expected: el `.txt` incluye `S`, `R`, `MAG`, `KF` y `kf_ida`, y `kf_ida` coincide con el valor que el script imprimió en la línea `Kf: ... en la ida`.
@@ -630,11 +651,11 @@ def corr(a, b):
     return float(a @ b / np.sqrt((a @ a) * (b @ b)))
 
 # desde el campo complejo
-U = np.load(b.with_suffix('.npy'))
+U = np.load(f'{b}.npy')
 rec_npy, _ = propagar(U, DELTA, LAMB, -Z, metodo='fft', pad=1, device='cpu')
 
 # desde la intensidad medida, que es lo unico que da un sensor
-I = np.asarray(Image.open(b.with_suffix('.png')).convert('L'), float) / 255.0
+I = np.asarray(Image.open(f'{b}.png').convert('L'), float) / 255.0
 rec_png, _ = propagar(np.sqrt(I).astype(complex), DELTA, LAMB, -Z, metodo='fft', pad=1, device='cpu')
 
 print(f'desde .npy (campo complejo): corr = {corr(np.abs(rec_npy)**2, obj):.4f}')
