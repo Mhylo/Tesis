@@ -95,6 +95,10 @@ class Roi:
         tendria la forma que pediste y el contenido de otra region: un
         resultado creible y falso, que es justo el fallo que este repo trata
         igual en SinMedir y en _comprobar_ventana().
+
+        Devuelve una COPIA, no una vista de U: una vista mantendria vivo el
+        array entero de origen a traves de su .base mientras dure la corrida,
+        y el proposito de la ROI es justo que la propagacion quepa en memoria.
         """
         U = np.asarray(U)
         if U.ndim != 2:
@@ -109,7 +113,8 @@ class Roi:
                 f" No se ajusta al borde a proposito. Corrige las coordenadas, o "
                 f"comprueba si --N redimensiono la imagen: la ROI se mide sobre "
                 f"la imagen YA redimensionada.")
-        return U[self.y0:self.y0 + self.alto, self.x0:self.x0 + self.ancho]
+        return np.ascontiguousarray(
+            U[self.y0:self.y0 + self.alto, self.x0:self.x0 + self.ancho])
 
     def como_argumento(self):
         """La linea que repite este recorte manana.
@@ -174,7 +179,7 @@ def informe(roi, forma, zs, lamb, delta):
         r = radio_del_cono(z, lamb, delta)
         corto = corto or semilado < r
         lineas.append(f"    cono a z = {z:g}: radio {r:.0f} px")
-    lineas.append(f"    (sin theta = lambda/(2 delta) = {lamb / (2 * delta):.4f}"
+    lineas.append(f"    (lambda/(2 delta) = {lamb / (2 * delta):.4f}"
                   f"; semilado de la ventana {semilado:.0f} px)")
 
     if corto:
@@ -267,6 +272,29 @@ def elegir(I, titulo=""):
     return Roi(x0, y0, x1 - x0, y1 - y0)
 
 
+def _vista(U):
+    """La imagen que se le ensena al raton, normalizada a [0, 1].
+
+    Es |U|^2 normalizada, la vista de siempre. PERO un objeto de fase pura
+    -campos.load_field(mode='fase')- tiene |U| == 1 en todo el plano, asi que
+    esa intensidad sale constante y la imagen se veria blanca: no hay nada que
+    arrastrar. Ahi se ensena np.angle(U) en su lugar, porque para un objeto de
+    fase la fase ES donde esta el objeto.
+
+    isclose() y no ==: exp(i*t) da |U|^2 = 1 en aritmetica exacta, pero con
+    ruido de redondeo de punto flotante (~1e-16), asi que == casi nunca es
+    cierto y dejaria pasar la rama de la intensidad igual.
+    """
+    U = np.asarray(U)
+    I = np.abs(U) ** 2
+    if not np.isclose(I.min(), I.max()):
+        return I / I.max()
+    fase = np.angle(U)
+    lo, hi = fase.min(), fase.max()
+    return ((fase - lo) / (hi - lo) if hi > lo
+            else np.zeros_like(fase, dtype=float))
+
+
 # ─────────────────────────────────────────────────────────── enganche a argparse
 
 def anadir_argumentos(parser):
@@ -292,8 +320,8 @@ def desde_argumentos(args, U=None, titulo=""):
     """La Roi que piden los argumentos, o None si no se pidio ninguna.
 
     U es el campo que se le ensena al raton, y solo hace falta por el camino
-    interactivo: normalizar |U|^2 aqui evita que las dos CLIs repitan esas dos
-    lineas y que una de las dos las cambie.
+    interactivo: _vista(U) aqui evita que las dos CLIs repitan esa cuenta y
+    que una de las dos la cambie.
     """
     if args.roi is not None:
         return Roi(*args.roi)
@@ -303,6 +331,4 @@ def desde_argumentos(args, U=None, titulo=""):
         raise ValueError(
             "--roi-interactivo necesita el campo para ensenartelo, y no se le "
             "paso ninguno.")
-    I = np.abs(np.asarray(U)) ** 2
-    pico = I.max()
-    return elegir(I / pico if pico > 0 else I, titulo)
+    return elegir(_vista(U), titulo)
