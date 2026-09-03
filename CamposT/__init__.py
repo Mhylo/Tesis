@@ -1,14 +1,14 @@
 """Propagación de campos ópticos en CPU o GPU con el mismo código.
 
-Siete módulos, cada uno con una responsabilidad. Leídos en este orden se sigue
+Nueve módulos, cada uno con una responsabilidad. Leídos en este orden se sigue
 el camino que recorre un campo:
 
     campos        construye el campo de entrada U0: una imagen, o el target
                   sintético de barras con su geometría (ancho de barra,
                   periodo, pares de línea por mm).
 
-    roi           recorta una ventana de la imagen para propagar solo eso.
-                  Es un recorte PREVIO al propagador, asi que sirve igual en
+    roi           recorta una ventana de la imagen para propagar sólo eso.
+                  Es un recorte PREVIO al propagador, así que sirve igual en
                   los dos sentidos; radio_del_cono() dice lo que cuesta.
 
     propagadores  lo propaga. MPASM, FFT-ASM y BL-ASM bajo una firma común
@@ -31,9 +31,10 @@ el camino que recorre un campo:
                   precisión (fases en float64 siempre, campos en complex64 en
                   GPU).
 
-Y el camino de vuelta, que se apoya en todo lo anterior:
+Y las dos corridas de punta a punta, una por sentido, que se apoyan en todo
+lo anterior:
 
-    propagacion   la corrida de ida de punta a punta desde la linea de
+    propagacion   la corrida de ida de punta a punta desde la línea de
                   comandos: lee tu imagen, la recorta si hay ROI y la propaga.
                   No confundir con propagadores.py, que son los algoritmos.
 
