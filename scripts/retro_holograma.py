@@ -15,7 +15,8 @@ DOS INTERRUPTORES, los dos de TRUE/FALSE:
                 compararlos: mismo dato de entrada, misma z.
 
   RECORTAR      True abre el holograma en una ventana, arrastras un rectangulo
-                con el raton, cierras, y solo ese trozo se retropropaga.
+                con el raton, cierras, y solo ese trozo se retropropaga. Si ROI
+                esta puesta, fija esa ventana sin raton y manda sobre esto.
 
 QUE LE ENTREGAS. La extension decide, y no es un detalle de comodidad:
 
@@ -51,7 +52,7 @@ punto del objeto llega al sensor repartida sobre un disco de radio
 
     r = z * tan(theta) / delta   pixeles
 
-que con 633 nm, 3.45 um y z = 20 mm son ~532 px. Si la ventana que recortas es
+que con 633 nm, 3.45 um y z = 20 mm son 534 px. Si la ventana que recortas es
 mas chica que ese disco estas tirando parte del cono de cada punto: la
 reconstruccion sale con menos resolucion y con anillos en los bordes. El script
 imprime r siempre y avisa cuando la ROI se queda corta, pero RECORTA IGUAL. Es
@@ -89,12 +90,12 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
-from matplotlib.widgets import RectangleSelector
 
 from CamposT.backend import a_numpy, info_gpu, liberar_memoria
 from CamposT.campos import load_field
 from CamposT.pipeline import propagar
 from CamposT.propagadores import memoria_mpasm
+from CamposT.roi import Roi, elegir, informe, radio_del_cono
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -137,6 +138,13 @@ USAR_MPASM = True
 #:
 #: Lee "QUE CUESTA RECORTAR" arriba antes de interpretar el resultado.
 RECORTAR = True
+
+#: Ventana fija, como (X0, Y0, ANCHO, ALTO), para repetir un recorte sin raton.
+#: None la desactiva. Si esta puesta, MANDA sobre RECORTAR: el raton es para
+#: explorar y esto es para repetir lo que ya exploraste.
+#:
+#: La imprime la propia corrida interactiva, en la forma --roi X0 Y0 ANCHO ALTO.
+ROI = None
 
 #: Sobremuestreo del espectro de MPASM. El defecto de mpasm() es 10, pero la
 #: matriz espectral es (s*N)^2 POR DISTANCIA: en un barrido eso no cabe.
@@ -340,92 +348,6 @@ def cargar_holograma(ruta, invertir=False, gamma=1.0):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  RECORTE
-# ════════════════════════════════════════════════════════════════════════════
-
-def radio_del_cono(z, lamb, delta):
-    """Radio en PIXELES sobre el que un punto del objeto reparte su luz.
-
-    El muestreo a delta acota la frecuencia espacial representable a 1/(2delta),
-    o sea el angulo de difraccion a sin(theta) = lambda/(2*delta). Mas alla de
-    ahi la malla no puede describir la onda, propague quien propague. La luz de
-    un punto llega al sensor sobre un disco de radio z*tan(theta), y en
-    pixeles eso es z*tan(theta)/delta.
-
-    Es el numero que dice cuanto cuesta recortar: una ventana mas chica que
-    este disco corta el cono de cada punto del objeto que cae dentro de ella.
-
-    Con lambda >= 2*delta no hay angulo propagante que la malla represente: la
-    raiz se hace imaginaria y se devuelve inf, que es la respuesta correcta -no
-    hay ventana suficientemente grande-.
-    """
-    sin_max = lamb / (2 * delta)
-    if sin_max >= 1:
-        return np.inf
-    return abs(z) * (sin_max / np.sqrt(1 - sin_max**2)) / delta
-
-
-def elegir_roi(I, titulo):
-    """Abre I, deja arrastrar un rectangulo y devuelve (x0, y0, ancho, alto).
-
-    Bloquea hasta que cierres la ventana. Si la cierras sin haber arrastrado
-    nada, aborta: propagar el plano entero en silencio despues de haber pedido
-    un recorte seria hacer otra cosa distinta de la que se pidio.
-
-    Las coordenadas salen en pixeles enteros y recortadas a la malla, con
-    floor en el origen y ceil en el extremo, de modo que la ventana devuelta
-    CONTIENE lo que arrastraste en vez de quedarse por dentro.
-    """
-    M, N = I.shape
-    caja = {}
-
-    def al_soltar(inicio, final):
-        caja["xy"] = (inicio.xdata, inicio.ydata, final.xdata, final.ydata)
-
-    alto = 8.0 * M / N
-    fig, ax = plt.subplots(figsize=(8.0, max(3.0, min(alto, 9.0))))
-    ax.imshow(I, cmap="gray", vmin=0, vmax=1)
-    ax.set_title(f"{titulo}\nArrastra la ventana a retropropagar y cierra "
-                 f"esta figura", fontsize=10)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    estilo = dict(facecolor="none", edgecolor="red", linewidth=1.5)
-    try:
-        selector = RectangleSelector(ax, al_soltar, useblit=True, button=[1],
-                                     interactive=True, props=estilo)
-    except TypeError:
-        # matplotlib < 3.5 llamaba rectprops a lo que ahora es props
-        selector = RectangleSelector(ax, al_soltar, useblit=True, button=[1],
-                                     interactive=True, rectprops=estilo)
-    # el selector tiene que sobrevivir a esta funcion mientras la figura este
-    # abierta: sin una referencia viva, el recolector se lo lleva y el raton
-    # deja de hacer nada
-    ax._selector_roi = selector
-
-    plt.show()
-
-    if "xy" not in caja or any(v is None for v in caja["xy"]):
-        raise SystemExit(
-            "RECORTAR = True pero no arrastraste ninguna ventana.\n"
-            "Vuelve a lanzarlo y arrastra sobre el holograma, o pon "
-            "RECORTAR = False para retropropagar el plano entero.")
-
-    xa, ya, xb, yb = caja["xy"]
-    x0 = int(np.clip(np.floor(min(xa, xb)), 0, N - 1))
-    y0 = int(np.clip(np.floor(min(ya, yb)), 0, M - 1))
-    x1 = int(np.clip(np.ceil(max(xa, xb)), x0 + 1, N))
-    y1 = int(np.clip(np.ceil(max(ya, yb)), y0 + 1, M))
-
-    if (x1 - x0) < 2 or (y1 - y0) < 2:
-        raise SystemExit(
-            f"La ventana que arrastraste es de {x1 - x0}x{y1 - y0} pixeles y no "
-            f"da para propagar nada. Arrastra un rectangulo de verdad.")
-
-    return x0, y0, x1 - x0, y1 - y0
-
-
-# ════════════════════════════════════════════════════════════════════════════
 #  FIGURA
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -489,9 +411,8 @@ def marca_roi(ax, roi):
     Un Rectangle pertenece a unos ejes y no se puede compartir, asi que cada
     panel necesita el suyo.
     """
-    x0, y0, ancho, alto = roi
-    ax.add_patch(Rectangle((x0 - 0.5, y0 - 0.5), ancho, alto, fill=False,
-                           edgecolor="red", linewidth=1.2))
+    ax.add_patch(Rectangle((roi.x0 - 0.5, roi.y0 - 0.5), roi.ancho, roi.alto,
+                           fill=False, edgecolor="red", linewidth=1.2))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -537,23 +458,18 @@ def main():
           f"(sin theta = lambda/(2 delta) = {LAMB / (2 * DELTA):.4f})")
 
     roi, U_in = None, U_h
-    if RECORTAR:
+    if ROI is not None:
+        roi = Roi(*ROI)
+    elif RECORTAR:
         I_h = np.abs(U_h) ** 2
         pico = I_h.max()
-        roi = elegir_roi(I_h / pico if pico > 0 else I_h, f"{ruta.name}")
-        x0, y0, ancho, alto = roi
-        U_in = U_h[y0:y0 + alto, x0:x0 + ancho]
-        print(f"\nrecorte:  X0 = {x0}  Y0 = {y0}  ANCHO = {ancho}  "
-              f"ALTO = {alto}")
-        print(f"  {ancho * alto / (M * N):.1%} del holograma "
-              f"({ancho}x{alto} de {N}x{M})")
-        if min(ancho, alto) / 2 < radio:
-            print(f"  AVISO: la ventana tiene semilado "
-                  f"{min(ancho, alto) / 2:.0f} px y el cono de un punto del "
-                  f"objeto mide {radio:.0f} px de radio.\n  Estas tirando parte "
-                  f"del cono de cada punto: la reconstruccion sale con menos "
-                  f"resolucion\n  y con anillos en los bordes. Se recorta "
-                  f"igual, pero leelo con eso en la cabeza.")
+        roi = elegir(I_h / pico if pico > 0 else I_h, f"{ruta.name}")
+        print(f"\nROI elegida con el raton. Para repetirla, pon arriba:\n"
+              f"    ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})\n"
+              f"o en la CLI:  {roi.como_argumento()}")
+    if roi is not None:
+        print(informe(roi, U_h.shape, Z, LAMB, DELTA))
+        U_in = roi.recortar(U_h)
     Mi, Ni = U_in.shape
 
 
@@ -649,8 +565,7 @@ def main():
     cb2.ax.set_yticklabels(etiq)
     cb2.set_label("fase = tono | amplitud = brillo", fontsize=9)
 
-    recorte = (f" -- recorte {roi[2]}x{roi[3]} en ({roi[0]}, {roi[1]})"
-               if roi is not None else "")
+    recorte = f" -- recorte {roi}" if roi is not None else ""
     fig.suptitle(f"Retropropagacion del holograma -- Z = {Z:g} mm, "
                  f"delta = {DELTA * 1e3:.2f} um, "
                  f"lambda = {LAMB * 1e6:.0f} nm{recorte}", fontsize=12)
