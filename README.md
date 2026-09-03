@@ -11,6 +11,10 @@ y qué parte del cambio de precisión.
       campos.py         Construye el campo de entrada: una imagen, o el target
                         sintético de barras con su geometría (ancho de barra,
                         periodo, pares de línea por mm).
+      roi.py            Recorta una ventana de la imagen para propagar sólo
+                        eso. Es un recorte PREVIO al propagador, así que sirve
+                        igual en los dos sentidos; radio_del_cono() dice lo
+                        que cuesta, y no lo impide.
       propagadores.py   Lo propaga. MPASM, FFT-ASM y BL-ASM bajo una firma
                         común, más kf_auto y la función de transferencia.
       referencias.py    Contra qué se contrasta: el gaussiano analítico
@@ -20,6 +24,10 @@ y qué parte del cambio de precisión.
                         mejor) y rms_amplitud (más bajo mejor).
       pipeline.py       Orquesta lo anterior: diagnostico() dice si hace falta
                         MPASM, propagar() lo ejecuta, guardar() lo escribe.
+      propagacion.py    El camino de ida desde la línea de órdenes: lee tu
+                        imagen, la recorta si le das una ROI y la propaga a
+                        cada distancia. No confundir con propagadores.py, que
+                        son los algoritmos.
       retropropagacion.py
                         El camino de vuelta: de un holograma medido al objeto.
                         Toma la imagen que le des y la retropropaga con los
@@ -84,6 +92,9 @@ y qué parte del cambio de precisión.
                         mpasm/z0020_s2.png es MPASM a z = 20 mm con s = 2.
       retropropagacion/ Las reconstrucciones, una subcarpeta por holograma y
                         dentro una por propagador.
+      propagacion/      Los campos de ida de tu propia imagen, con la misma
+                        forma: una subcarpeta por imagen y dentro una por
+                        propagador.
       exactitud/        sam_vs_z.csv y sam_vs_z.png: la reproducción de la
                         Figura 4, con la Ec. (16) corregida.
 
