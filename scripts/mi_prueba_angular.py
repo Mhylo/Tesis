@@ -90,6 +90,30 @@ ENTRADA = "intensidad"
 
 #: Barrido de distancias holograma <-> objeto [mm], POSITIVAS: el menos lo pone
 #: el barrido. Para una sola distancia, pon los dos extremos iguales y PASOS = 1.
+#:
+#: EL PASO IMPORTA MAS DE LO QUE PARECE, porque el foco es AGUDO. Medido sobre
+#: el holograma que trae RUTA por defecto, desde su .npy:
+#:
+#:      z [mm]    9.80    9.90   10.00   10.10   10.20
+#:      corr     0.8188  0.9648  1.0000  0.9648  0.8188
+#:
+#: o sea que equivocarse 0.2 mm cuesta 18 puntos de correlacion.
+#:
+#: Con (5.0, 20.0) y 30 pasos el paso es 0.517 mm, y esa rejilla NI SIQUIERA
+#: muestrea 10.000: cae en 9.655 y en 10.172. Por eso el barrido reporta 0.9418
+#: y no 1.0000 aunque el archivo lleve la fase intacta. No es que no enfoque:
+#: es que pasa de largo por encima del foco.
+#:
+#: ASI QUE VA EN DOS PASADAS:
+#:
+#:   1. esta, ancha, para localizar la zona.
+#:   2. una estrecha alrededor del pico que salga. Para este holograma,
+#:      Z = (9.5, 10.5) con PASOS = 21 da un paso de 0.05 mm y SI contiene
+#:      10.000 exacto.
+#:
+#: Subir PASOS en la ancha no es la salida: cada paso son ~1.6 s sobre esta
+#: malla de 3000x4000, asi que la pasada ancha con 300 pasos serian 8 minutos
+#: para lo que la estrecha resuelve en 35 segundos.
 Z = (5.0, 20.0)
 PASOS = 30
 
