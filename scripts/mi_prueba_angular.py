@@ -128,29 +128,36 @@ ENTRADA = "intensidad"
 Z = (5.0, 20.0)
 PASOS = 30
 
-#: True abre la REFERENCIA -el objeto, que se ve perfectamente- y arrastras ahi
-#: el rectangulo. El MISMO rectangulo se aplica luego al holograma: si se
-#: recortara solo uno, las formas dejarian de casar y main() abortaria.
+#: EL RECORTE. Una sola constante con TRES estados:
 #:
-#: Se elige sobre la referencia y no sobre el holograma porque a 10 mm el
+#:     None                    sin recorte: se propaga el marco entero.
+#:     True                    la eliges con el raton sobre la REFERENCIA.
+#:     (X0, Y0, ANCHO, ALTO)   ventana fija, para repetir un recorte.
+#:
+#: Una sola constante y no un par RECORTAR + ROI -que es lo que usa
+#: retro_holograma.py- porque el nombre ROI se lee como "la funcion", asi que
+#: activarla escribiendo True es lo primero que uno intenta. Con el par, eso
+#: reventaba con un TypeError de Python crudo.
+#:
+#: Se elige sobre la REFERENCIA y no sobre el holograma porque a 10 mm el
 #: holograma es un patron de franjas: la luz de cada punto ya se repartio sobre
-#: 267 px y no se ve donde esta cada cosa. retro_holograma.py ensena el
-#: holograma porque alli no hay objeto conocido; aqui si lo hay.
-RECORTAR = False
-
-#: Ventana fija (X0, Y0, ANCHO, ALTO) para repetir un recorte sin raton. None
-#: la desactiva. Si esta puesta, MANDA sobre RECORTAR.
+#: 267 px y no se ve donde esta cada cosa. El MISMO rectangulo se aplica luego a
+#: las dos imagenes; recortar solo una las descuadraria.
 #:
-#: QUE GANAS: 1024x1024 frente a 3000x4000 son 11 veces menos trabajo, y el
-#: barrido fino baja de ~35 s a ~3 s. Eso es lo que hace practica la segunda
+#: QUE GANAS: 1000x750 frente a 3000x4000 es el 6% de los pixeles, y el barrido
+#: fino de 21 pasos baja de 74 s a 4.4 s. Eso es lo que hace practica la segunda
 #: pasada que describe el comentario de Z.
 #:
-#: QUE PIERDES: el recorte es SECO, sin margen de guarda. Tira la luz que
-#: venia de fuera de la ventana, asi que la correlacion baja. informe() imprime
-#: el radio del cono a cada extremo del barrido y avisa cuando la ventana se
-#: queda corta -con Z = (5, 20) el cono va de 134 a 534 px-, pero recorta
-#: igual: es tu decision, no una guarda.
-ROI = None
+#: QUE PIERDES: el recorte es SECO, sin margen de guarda. Medido con esa misma
+#: ventana, la correlacion en el foco cae de 1.0000 a 0.9585. informe() imprime
+#: el radio del cono en los dos extremos del barrido y avisa cuando la ventana
+#: se queda corta -con Z = (5, 20) va de 134 a 534 px-, pero recorta igual: es
+#: tu decision, no una guarda.
+#:
+#: OJO A LA PROPORCION: tiene que ser EXACTAMENTE la del marco o el foco no se
+#: degrada, DESAPARECE. Ver _exigir_proporcion(). Con el raton no hace falta que
+#: aciertes: ahi la ventana se agranda sola hasta la razon valida.
+ROI = True
 
 
 
@@ -279,6 +286,25 @@ def _proporcion_reducida(M, N):
     return M // g, N // g
 
 
+def _roi_fija(valor):
+    """La constante ROI cuando trae coordenadas -> Roi, o un error que ENSENA.
+
+    Sin esto, ROI = True daba un "TypeError: argument after * must be an
+    iterable, not bool" de Python crudo. El nombre ROI se lee como "la
+    funcion", asi que activarla escribiendo True es lo primero que uno intenta,
+    y el mensaje tiene que decir QUE ESCRIBIR, no solo que algo fallo.
+    """
+    try:
+        x0, y0, ancho, alto = valor
+    except (TypeError, ValueError):
+        raise SystemExit(
+            f"ROI = {valor!r} no es ninguna de las tres formas validas:\n\n"
+            f"    ROI = None                     sin recorte\n"
+            f"    ROI = True                     la eliges con el raton\n"
+            f"    ROI = (X0, Y0, ANCHO, ALTO)    ventana fija\n")
+    return Roi(x0, y0, ancho, alto)
+
+
 def _exigir_proporcion(roi, M, N):
     """La ROI tiene que tener EXACTAMENTE la proporcion del marco, o aborta.
 
@@ -374,14 +400,14 @@ def main():
     # un fallo de recorte. Y va ANTES del barrido, porque recortar es lo que lo
     # abarata.
     roi = None
-    if ROI is not None:
-        roi = Roi(*ROI)
-        _exigir_proporcion(roi, *campo.shape)
-    elif RECORTAR:
+    if ROI is True:
         roi = elegir(ref, "referencia: arrastra lo que quieres reconstruir")
         roi = _crecer_a_proporcion(roi, *campo.shape)
         print(f"\nROI elegida con el raton. Para repetirla, pon arriba:\n"
               f"    ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})\n")
+    elif ROI is not None and ROI is not False:
+        roi = _roi_fija(ROI)
+        _exigir_proporcion(roi, *campo.shape)
     if roi is not None:
         forma = campo.shape
         # Las tres con el MISMO rectangulo: el campo que se propaga, la
