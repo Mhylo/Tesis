@@ -45,8 +45,13 @@ Fuera, a propósito:
   de referencia y su valor entero es que nadie la ha tocado. Los ejes cruzados
   que lleva dentro son parte de lo que exhibe, no un fallo que arreglar aquí
   (ver D5).
-- **No se importa `CamposT`.** Sigue siendo un script suelto, sin dependencias
-  del paquete.
+- **No se importa el PROPAGADOR de `CamposT`.** El script lleva
+  `angularSpectrum` copiada tal cual de la implementación de referencia, y si
+  usara la del paquete, coincidir con el paquete no probaría nada. Esa
+  independencia es sobre **propagadores**, no sobre cualquier import: `roi.py`
+  no propaga, recorta, así que sí se importa (ver D8). La primera versión de
+  este spec decía «no se importa CamposT» a secas, que era más ancho de lo que
+  la razón justifica.
 - **No vuelven `PAD`, `METODOS` ni `DISPOSITIVO`.** Se borraron porque no hacían
   nada, y este cambio no les da nada que hacer.
 - **No hay GPU.** El script es de una sola pasada en NumPy y así se queda.
@@ -143,6 +148,44 @@ el pico marcado.
 Sustituye a los tres `plt.show()` sueltos de hoy. Tres ventanas que hay que
 cerrar una a una no dejan comparar nada, que es justo lo que un barrido con
 referencia pide hacer.
+
+### D8 — La ROI debe conservar EXACTAMENTE la proporción del marco
+
+La ROI se importa de `CamposT.roi` y se recorta sobre las dos imágenes —el
+holograma y la referencia— con el mismo rectángulo, elegido sobre la
+**referencia**, que es la legible: un holograma a 10 mm es un patrón de franjas.
+
+Y hay una condición que no se puede negociar. `angularSpectrum` lleva
+`dfx = 1/(dx*M)` y `dfy = 1/(dy*N)` **cruzados**, así que el cruce escala las
+frecuencias por `M/N` y deshacerlo exige la misma razón en la vuelta. Medido
+sobre el holograma por defecto, recortes de 1000 px de ancho:
+
+    alto   desvío de la razón   corr en z = 10.0   ¿hay pico?
+     750          0.0 %              0.9585           sí
+     758          1.1 %              0.7935           NO
+    1000         25.0 %              0.5388           NO
+
+**Un 1.1 % ya borra el pico.** No es que degrade: la curva se vuelve monótona y
+no hay foco que encontrar, mientras la correlación sigue dando un 0.54
+perfectamente creíble. Eso es un error mudo, y por eso **aborta** en vez de
+avisar — a diferencia del recorte seco (D2 del spec del ROI), que degrada de
+forma graduada y sí avisa.
+
+Sin tolerancia: se compara `roi.alto * N == roi.ancho * M`, entero y exacto.
+Con marco 3000×4000 la razón reducida es 3:4, así que las ventanas válidas son
+`3k × 4k`.
+
+**Excepción para el ratón.** Arrastrando no se puede acertar una proporción
+exacta, así que `elegir()` se sigue de un ajuste que **agranda** la ventana
+hasta la razón válida y dice cuánto la cambió. Es lo mismo que `elegir()` ya
+documenta —«la ventana devuelta CONTIENE lo que arrastraste»—. La constante
+`ROI` no pasa por ahí: esos números los escribió el usuario, y cambiárselos en
+silencio sería devolverle una ventana que no pidió.
+
+**Lo que gana:** medido, el barrido fino de 21 pasos baja de **73.8 s a 3.6 s**
+con una ROI de 1000×750, y el foco sigue cayendo en 10.000 mm con correlación
+0.9585 en vez de 1.0000. Esa caída de 0.04 es el precio del recorte seco, ahora
+medido.
 
 ## Interfaz
 
