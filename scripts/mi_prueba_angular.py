@@ -20,7 +20,16 @@ y viene con un .txt al lado que dice de que objeto salio y a que distancia. Ese
 .txt es la verdad de terreno: el pico del barrido TIENE que caer donde el diga.
 Si no cae ahi, no se ajusta el barrido, se mira por que.
 
-ENTRADA decide como se lee la imagen, y no es cosmetico:
+QUE LE ENTREGAS. La extension de RUTA decide, y son dos experimentos
+distintos: un .npy trae el CAMPO COMPLEJO -con fase, la vuelta es exacta- y
+cualquier imagen es INTENSIDAD medida -sin fase, sale con la imagen gemela
+encima-. Los tres retro_*.py escriben los dos al lado, del mismo instante.
+
+Medido sobre el holograma por defecto: 1.0000 desde el .npy y 0.8618 desde el
+PNG. Si algo "no enfoca" desde un PNG, no es el propagador: es que el archivo
+ya no lleva la fase, y ninguno la devuelve.
+
+ENTRADA decide como se lee la IMAGEN, y no es cosmetico (con .npy se ignora):
 
     "intensidad"  campo = sqrt(I). Lo correcto para un holograma: un sensor
                   registra |U|^2, asi que el campo es su raiz.
@@ -134,21 +143,52 @@ def angularSpectrum(field, z, wavelength, dx, dy, scale_factor=1):
 # ════════════════════════════════════════════════════════════════════════════
 
 def campo_de_entrada(ruta, entrada):
-    """Imagen -> (campo complejo, imagen cruda, etiqueta de que es).
+    """Archivo -> (campo complejo, mapa para pintar, etiqueta de que es).
 
-    Un sensor registra |U|^2 y tira la fase, asi que de un holograma el campo de
-    partida es sqrt(I). Tomarlo como amplitud -lo que hacia este script- eleva
-    el campo al cuadrado: no es solo contraste, MUEVE la z a la que enfoca.
+    LA EXTENSION DECIDE, y no es comodidad: son dos experimentos distintos.
 
-    La imagen cruda se devuelve aparte porque es lo que hay que pintar en el
-    panel de entrada: con "amplitud", |campo|^2 seria I^2 y no la imagen.
+      .npy   el CAMPO COMPLEJO tal cual, CON SU FASE. La vuelta deshace la ida
+             y devuelve el objeto exacto. Medido sobre el holograma que trae
+             RUTA por defecto: correlacion 1.0000 contra el objeto. NO es lo
+             que entrega un sensor.
 
-    La etiqueta se devuelve para imprimirla: de que rama viene depende como se
-    lee el barrido entero.
+      resto  una IMAGEN, o sea INTENSIDAD medida. La fase se perdio al medir,
+             asi que la reconstruccion sale con la IMAGEN GEMELA desenfocada
+             encima. Medido: 0.8618. Y los 8 bits del PNG cuestan encima de eso
+             solo 0.0003, asi que toda la perdida es la fase, no el formato.
+
+    Esos dos numeros son la razon de que esta funcion mire la extension. Si la
+    reconstruccion "no enfoca" desde un PNG, no es el propagador: es que el
+    archivo ya no lleva la fase. Ningun propagador la devuelve.
+
+    ENTRADA solo aplica a la rama de imagen. Con .npy se ignora y se avisa: un
+    campo complejo ya es un campo, no hay nada que interpretar.
+
+    El mapa para pintar se devuelve aparte porque no siempre es |campo|^2: con
+    ENTRADA = "amplitud" eso seria I^2 y no la imagen que abriste.
     """
+    ruta = pathlib.Path(ruta)
+    if ruta.suffix.lower() == ".npy":
+        U = np.load(ruta)
+        if not np.iscomplexobj(U):
+            raise SystemExit(
+                f"{ruta.name} es un .npy REAL, no un campo complejo. Si es una "
+                f"intensidad guardada en .npy, guardala como imagen o toma tu "
+                f"la raiz antes: aqui un .npy se interpreta siempre como el "
+                f"campo, y tratarlo como intensidad seria una conversion muda.")
+        if U.ndim != 2:
+            raise SystemExit(f"{ruta.name} tiene forma {U.shape} y hace falta "
+                             f"un array 2D (M, N).")
+        if entrada != "intensidad":
+            print(f'  AVISO: ENTRADA = "{entrada}" se ignora con un .npy. Un '
+                  f'campo complejo ya es un campo.')
+        U = np.asarray(U)
+        return U, np.abs(U) ** 2, "campo complejo con fase (vuelta exacta, sin gemela)"
+
     img = np.asarray(Image.open(ruta).convert("L"), dtype=np.float64) / 255.0
     if entrada == "intensidad":
-        return np.sqrt(img).astype(complex), img, "intensidad medida, campo = sqrt(I)"
+        return (np.sqrt(img).astype(complex), img,
+                "intensidad medida, campo = sqrt(I) (con gemela)")
     if entrada == "amplitud":
         return img.astype(complex), img, "la imagen ES la amplitud, campo = I"
     raise SystemExit(f'ENTRADA = "{entrada}" no existe. '
