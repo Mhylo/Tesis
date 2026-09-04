@@ -59,13 +59,24 @@ except Exception:                      # sin CuPy, sin CUDA, o CuPy roto
 
 import matplotlib.pyplot as plt
 
+# POR QUE ESTE IMPORT SI, Y EL DEL PROPAGADOR NO. Este script no importa el
+# propagador de CamposT a proposito: lleva angularSpectrum copiada tal cual de
+# la implementacion de referencia, y si usara la del paquete, coincidir con el
+# paquete no probaria nada. Esa independencia es sobre PROPAGADORES.
+#
+# roi.py no propaga: recorta un rectangulo. No valida ninguna cuenta de este
+# archivo, asi que importarlo no compromete nada, y ya viene con 34 pruebas
+# detras. Duplicar Roi + elegir + informe serian ~90 lineas en un script de
+# 250: la copia dominaria el archivo que pretende ilustrar un propagador.
+from CamposT.roi import Roi, elegir, informe
+
 # ════════════════════════════════════════════════════════════════════════════
 #  1. PARAMETROS  --  es lo unico que hay que editar
 # ════════════════════════════════════════════════════════════════════════════
 
 #: El HOLOGRAMA (imagen de intensidad), no un objeto. Usa barras normales o
 #: antepon r a las comillas para que \U no se lea como escape.
-RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\fft\z0010.000.png"
+RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\fft\z0010.000.npy"
 
 #: Longitud de onda [mm]. 633 nm se escribe 633e-6.
 LAMB = 633e-6
@@ -116,6 +127,30 @@ ENTRADA = "intensidad"
 #: para lo que la estrecha resuelve en 35 segundos.
 Z = (5.0, 20.0)
 PASOS = 30
+
+#: True abre la REFERENCIA -el objeto, que se ve perfectamente- y arrastras ahi
+#: el rectangulo. El MISMO rectangulo se aplica luego al holograma: si se
+#: recortara solo uno, las formas dejarian de casar y main() abortaria.
+#:
+#: Se elige sobre la referencia y no sobre el holograma porque a 10 mm el
+#: holograma es un patron de franjas: la luz de cada punto ya se repartio sobre
+#: 267 px y no se ve donde esta cada cosa. retro_holograma.py ensena el
+#: holograma porque alli no hay objeto conocido; aqui si lo hay.
+RECORTAR = False
+
+#: Ventana fija (X0, Y0, ANCHO, ALTO) para repetir un recorte sin raton. None
+#: la desactiva. Si esta puesta, MANDA sobre RECORTAR.
+#:
+#: QUE GANAS: 1024x1024 frente a 3000x4000 son 11 veces menos trabajo, y el
+#: barrido fino baja de ~35 s a ~3 s. Eso es lo que hace practica la segunda
+#: pasada que describe el comentario de Z.
+#:
+#: QUE PIERDES: el recorte es SECO, sin margen de guarda. Tira la luz que
+#: venia de fuera de la ventana, asi que la correlacion baja. informe() imprime
+#: el radio del cono a cada extremo del barrido y avisa cuando la ventana se
+#: queda corta -con Z = (5, 20) el cono va de 134 a 534 px-, pero recorta
+#: igual: es tu decision, no una guarda.
+ROI = None
 
 
 
@@ -237,6 +272,82 @@ def correlacion(a, b):
     return float(a @ b / den) if den > 0 else 0.0
 
 
+def _proporcion_reducida(M, N):
+    """(a, b) tal que a/b = M/N en enteros minimos. Con 3000x4000 da (3, 4)."""
+    from math import gcd
+    g = gcd(M, N)
+    return M // g, N // g
+
+
+def _exigir_proporcion(roi, M, N):
+    """La ROI tiene que tener EXACTAMENTE la proporcion del marco, o aborta.
+
+    POR QUE, y no es un capricho: angularSpectrum lleva dfx = 1/(dx*M) y
+    dfy = 1/(dy*N) CRUZADOS -cada eje con la longitud del otro-. El cruce
+    escala las frecuencias por M/N, asi que deshacerlo en la vuelta exige la
+    MISMA razon M/N. Un recorte cuadrado hace M = N, el cruce se cancela, y la
+    astigmatismo que la ida aplico deja de deshacerse.
+
+    Y NO ADMITE TOLERANCIA. Medido sobre el holograma por defecto, recortes de
+    1000 px de ancho contra la referencia:
+
+        alto   desvio de la razon   corr en z = 10.0   hay pico?
+         750          0.0 %              0.9585           si
+         758          1.1 %              0.7935           NO
+        1000         25.0 %              0.5388           NO
+
+    Un 1.1 % ya borra el pico. Por eso se compara por multiplicacion cruzada,
+    en enteros y exacto, en vez de con un umbral que habria que inventarse.
+
+    Esto NO es el recorte seco que se acepta en el resto del repo. Aquel
+    degrada -menos resolucion, anillos- y avisa. Esto no degrada: borra el
+    foco y devuelve un 0.54 perfectamente creible. Es un error mudo, y de esos
+    aqui se muere fuerte.
+    """
+    if roi.alto * N == roi.ancho * M:
+        return
+    a, b = _proporcion_reducida(M, N)
+    raise SystemExit(
+        f"La ROI mide {roi.ancho}x{roi.alto} y el marco {N}x{M}: las "
+        f"proporciones no casan.\n"
+        f"    ROI:   alto/ancho = {roi.alto / roi.ancho:.4f}\n"
+        f"    marco: alto/ancho = {M / N:.4f}\n\n"
+        f"angularSpectrum lleva los ejes CRUZADOS, asi que la vuelta necesita "
+        f"la misma razon\nque la ida. Con otra proporcion el foco no se "
+        f"degrada: DESAPARECE, y la\ncorrelacion sigue dando un numero "
+        f"creible.\n\n"
+        f"Las ventanas validas son {a}k x {b}k. Para tu ancho {roi.ancho}, el "
+        f"alto seria\n{roi.ancho * a // b} si {roi.ancho} es multiplo de "
+        f"{b}; si no, usa un ancho que lo sea.")
+
+
+def _crecer_a_proporcion(roi, M, N):
+    """Agranda la ROI del raton hasta la proporcion exacta del marco.
+
+    Con el raton no se puede acertar una proporcion exacta, asi que aqui se
+    ajusta en vez de abortar. Se AGRANDA y nunca se encoge, que es lo mismo
+    que ya hace elegir(): la ventana devuelta CONTIENE lo que arrastraste.
+
+    La constante ROI no pasa por aqui: esos numeros los escribiste tu, y
+    cambiartelos en silencio seria devolverte una ventana que no pediste.
+    """
+    a, b = _proporcion_reducida(M, N)
+    k = max(-(-roi.alto // a), -(-roi.ancho // b))     # techo entero
+    alto, ancho = a * k, b * k
+    if alto > M or ancho > N:
+        raise SystemExit(
+            f"Para tener la proporcion del marco, esa ventana tendria que "
+            f"crecer a {ancho}x{alto},\nque no cabe en {N}x{M}. Arrastra una "
+            f"mas chica.")
+    # se recoloca para que siga cabiendo, conservando la esquina si se puede
+    x0 = min(roi.x0, N - ancho)
+    y0 = min(roi.y0, M - alto)
+    if (alto, ancho) != (roi.alto, roi.ancho):
+        print(f"  ROI ajustada de {roi.ancho}x{roi.alto} a {ancho}x{alto} "
+              f"para casar la proporcion {b}:{a} del marco.")
+    return Roi(x0, y0, ancho, alto)
+
+
 def main():
     ref = np.asarray(Image.open(REFERENCIA).convert("L"), dtype=np.float64) / 255.0
     campo, img, etiqueta = campo_de_entrada(RUTA, ENTRADA)
@@ -257,6 +368,28 @@ def main():
         raise SystemExit(f"Z = {Z} y son distancias holograma-objeto, "
                          f"POSITIVAS: el menos lo pone el barrido.")
     zs = np.linspace(float(Z[0]), float(Z[1]), PASOS)
+
+    # El recorte va DESPUES de comprobar que las formas completas casan: si no
+    # casan, el mensaje util es "estas dos imagenes no son del mismo objeto", no
+    # un fallo de recorte. Y va ANTES del barrido, porque recortar es lo que lo
+    # abarata.
+    roi = None
+    if ROI is not None:
+        roi = Roi(*ROI)
+        _exigir_proporcion(roi, *campo.shape)
+    elif RECORTAR:
+        roi = elegir(ref, "referencia: arrastra lo que quieres reconstruir")
+        roi = _crecer_a_proporcion(roi, *campo.shape)
+        print(f"\nROI elegida con el raton. Para repetirla, pon arriba:\n"
+              f"    ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})\n")
+    if roi is not None:
+        forma = campo.shape
+        # Las tres con el MISMO rectangulo: el campo que se propaga, la
+        # referencia contra la que se puntua, y el mapa que se pinta.
+        campo = roi.recortar(campo)
+        ref = roi.recortar(ref)
+        img = roi.recortar(img)
+        print(informe(roi, forma, zs, LAMB, DELTA))
 
     M, N = campo.shape
     print(f"holograma  {RUTA}")
