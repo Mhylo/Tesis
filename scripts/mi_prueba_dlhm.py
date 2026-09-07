@@ -72,9 +72,26 @@ main_dlhm.py. Se descartaron tres causas y ninguna era:
   3. La escala de la referencia. Se barrio M de 0.8 a 6.0 y el mejor ajuste da
      -0.029: no hay escala que case.
 
+VALIDADO CONTRA reconstruction_dlhm.py, y pasa. Corriendo las dos cadenas
+sobre el mismo holograma reducido a 512x512, con sus parametros (L = 11 mm,
+z = 4.95 mm):
+
+    razon mio/Carlos    1.000000e-06   (desviacion relativa 6.6e-06)
+    corr(|Rec|)         1.000000
+    corr(angle(Rec))    0.999997
+
+O sea que reconstruir() es fiel. Eso DESCARTA la reconstruccion como causa: el
+fallo esta en la puntuacion.
+
+OJO A ESE 1e-6, que es (1e-3)^2 y no un error: point_src devuelve exp(ikr)/r, y
+el 1/r NO es invariante de escala. Trabajar en milimetros en vez de metros lo
+cambia por 1000, y como Rec = U*conj(U0) el factor entra al cuadrado. Es un
+factor real global: no afecta a ninguna correlacion, pero desconcierta si
+alguien compara salidas numero a numero.
+
 Queda por descartar: el envolvimiento de la fase -angle() envuelve, y el
-portador residual de la onda esferica anade vueltas-, y comparar contra la
-salida de reconstruction_dlhm.py en vez de contra el objeto.
+portador residual de la onda esferica anade vueltas que el objeto no tiene; su
+profundidad de fase es solo 2.1 rad-.
 
 MIENTRAS TANTO, este script sirve para MIRAR la reconstruccion, no para
 puntuarla. El numero que imprime no significa nada todavia.
