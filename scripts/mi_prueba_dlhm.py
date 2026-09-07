@@ -89,9 +89,30 @@ cambia por 1000, y como Rec = U*conj(U0) el factor entra al cuadrado. Es un
 factor real global: no afecta a ninguna correlacion, pero desconcierta si
 alguien compara salidas numero a numero.
 
-Queda por descartar: el envolvimiento de la fase -angle() envuelve, y el
-portador residual de la onda esferica anade vueltas que el objeto no tiene; su
-profundidad de fase es solo 2.1 rad-.
+EL PORTADOR DE FASE TAMBIEN QUEDA DESCARTADO. Se estimo con un paso bajo del
+propio Rec y se dividio en el plano complejo -que es como se quita un portador
+sobre fase ENVUELTA; ajustar un polinomio a angle() no vale-. Con sigma de 10,
+30, 80 y 200 la correlacion se queda en ~0.03 y la desviacion de la fase ni se
+mueve: 1.317 a 1.335. Si el objeto estuviera debajo de una rampa suave, esto lo
+habria sacado.
+
+Y mirando de cerca: en el cuadrante donde la referencia a M = 4 tiene una
+estrella radial, la fase reconstruida tiene bandas y bloques rectangulares. No
+se parecen. Lo que parecia "estructura del objeto" a tamano completo es textura
+de difraccion.
+
+CINCO HIPOTESIS DESCARTADAS, Y LA CONCLUSION ES QUE EL ENFOQUE ES EL EQUIVOCADO.
+Puntuar contra la referencia exige saber a la vez la escala, el centrado y la
+geometria (L, z), y de las tres solo se conoce una relacion: M = L/z ~ 4. Los
+dos scripts de Carlos ni siquiera concuerdan entre si -main_dlhm usa L=8, z=2;
+reconstruction_dlhm usa L=11, z=4.95-, asi que (L, z) es justo lo que habria que
+buscar... con el barrido que no funciona porque no sabe puntuar. Es circular.
+
+LA SALIDA es puntuar SIN referencia: una metrica de NITIDEZ sobre la
+reconstruccion, como la nitidez() de scripts/retro_holograma.py. Una
+reconstruccion enfocada tiene mas contraste que una desenfocada, sea cual sea el
+objeto, y eso no necesita ni escala, ni centrado, ni que la fase este
+desenvuelta. Rompe la circularidad.
 
 MIENTRAS TANTO, este script sirve para MIRAR la reconstruccion, no para
 puntuarla. El numero que imprime no significa nada todavia.
