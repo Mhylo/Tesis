@@ -117,6 +117,42 @@ desenvuelta. Rompe la circularidad.
 MIENTRAS TANTO, este script sirve para MIRAR la reconstruccion, no para
 puntuarla. El numero que imprime no significa nada todavia.
 
+EL MODELO DE REFERENCIA SOLO GENERA EN UNA CONFIGURACION, Y ESO EXPLICA MUCHO.
+
+dlhm() decide entre RECORTAR el objeto al campo que el sensor abarca, o
+estirarlo entero a la malla del sensor:
+
+    if W_provided > W_s:  <recorta>
+    else:                 <estira>
+
+Con los parametros de main_dlhm.py los dos valen 1.3875e-3 EXACTOS, asi que la
+comparacion sale False por un empate de flotantes y corre el else: el objeto
+entero, bajado x4 y estirado a 3000x3000, con las columnas aplastadas x0.75.
+
+Y la otra rama ESTA ROTA. Recorta con los N, M ORIGINALES en vez de los del
+sample ya remuestreado:
+
+    sample = resize(sample, int(M/res_d), int(N/res_d))   # ahora es 750x1000
+    N_s, M_s = sample.shape                                # 750, 1000 <- se calcula
+    ...
+    start_x = int(N/2 - Q/2 + x0)                          # ...pero usa N = 3000
+    sample = sample[1000:2000, 1500:2500]                  # sobre 750x1000: VACIO
+
+De ahi sale un ZeroDivisionError en cuanto se pide cualquier otro sensor. O sea
+que dlhm() solo produce hologramas en la configuracion exacta de main_dlhm.py.
+
+Y no se arregla cambiando N, M por N_s, M_s: con eso los indices salen
+NEGATIVOS -int(375-500) = -125- y el recorte pide Q x P = 1000x1000 pixeles
+cuando el campo que el sensor abarca son W_s/dx_in = 250. El remuestreo previo
+va ademas en sentido contrario al que la magnificacion pide: deja el paso del
+sample en dx_in*Mag = 7.4 um cuando deberia ser dx_out/Mag = 0.4625 um.
+
+CONSECUENCIA PARA data/Simulated_hologram.png: se comporta como un recorte
+central magnificado x4 -medido barriendo escalas contra el objeto- y eso es
+justo lo que la rama rota haria si funcionase. Asi que ese archivo NO salio del
+codigo tal como esta hoy. Reconstruirlo a ciegas es perseguir una geometria que
+nadie puede reproducir.
+
 UNIDADES: milimetros para todo.  532 nm -> 532e-6    1.85 um -> 1.85e-3
 """
 
