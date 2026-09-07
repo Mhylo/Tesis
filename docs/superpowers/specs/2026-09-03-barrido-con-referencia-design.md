@@ -179,6 +179,74 @@ Sustituye a los tres `plt.show()` sueltos de hoy. Tres ventanas que hay que
 cerrar una a una no dejan comparar nada, que es justo lo que un barrido con
 referencia pide hacer.
 
+### D8 — Una ventana por imagen, con la proporción exigida sólo a la del holograma
+
+Dos constantes simétricas, `ROI_HOLOGRAMA` y `ROI_REFERENCIA`, cada una con
+cuatro valores: `None`, `True` (ratón sobre **esa** imagen), una tupla
+`(x0, y0, ancho, alto)`, o `"misma"` (copia el rectángulo que resolvió la otra).
+Sólo una de las dos puede llevar `"misma"`.
+
+Ventanas independientes permiten **misma forma, distinta posición**, que es lo
+que sirve cuando los dos planos están descentrados entre sí. El tamaño final
+tiene que coincidir o aborta: no se reescala ninguna.
+
+**La proporción se le exige sólo a la ventana que toca el holograma.**
+`angularSpectrum` lleva `dfx = 1/(dx*M)` y `dfy = 1/(dy*N)` **cruzados**, así que
+el cruce escala las frecuencias por `M/N` y deshacerlo exige la misma razón en la
+vuelta. Medido, con recortes de 1000 px de ancho:
+
+    alto   desvío de la razón   corr en z = 10.0   ¿hay pico?
+     750          0.0 %              0.9585           sí
+     758          1.1 %              0.7935           NO
+    1000         25.0 %              0.5388           NO
+
+**Un 1.1 % ya borra el pico**: la curva se vuelve monótona y no hay foco que
+encontrar, mientras la correlación sigue dando un 0.54 creíble. Por eso aborta
+en vez de avisar, y sin tolerancia — `roi.alto * N == roi.ancho * M`, entero y
+exacto. Sobre la **referencia** no se exige nada: es sólo el blanco contra el que
+se puntúa.
+
+Se exige distinto según de dónde venga la ventana: de una tupla, **exacta**
+—esos números los escribió el usuario—; del ratón, se **agranda** hasta la razón
+válida, porque arrastrando no se puede acertar. Es lo que `elegir()` ya
+documenta: la ventana devuelta contiene lo que arrastraste.
+
+**Lo que gana:** el barrido fino de 21 pasos baja de **73.8 s a 3.6 s** con una
+ventana de 1000×750, y el foco sigue cayendo en 10.000 mm con correlación 0.9585
+en vez de 1.0000. Esa caída de 0.04 es el precio del recorte seco, medido.
+
+**Lo sensible que es la posición:** con las dos ventanas en el mismo sitio sale
+0.9585; **desplazando la referencia 40 px, 0.3223**. Si se usan ventanas
+independientes para corregir un descentrado, hay que acertar a pocos píxeles.
+
+### D9 — El `.txt` del holograma manda sobre las constantes
+
+Si junto a `RUTA` hay un `.txt` —los escribe `scripts/retro_fft_angular.py`— el
+script lee su `lambda [mm]` y su `delta [mm]` y **aborta si no cuadran** con
+`LAMB` y `DELTA`.
+
+Sin esta guarda, reconstruir un holograma de 633 nm con `LAMB = 532e-6` devuelve
+una `z` perfectamente creíble y equivocada, porque λ entra en la fase del
+propagador. Cuando el archivo dice con qué se hizo, no hay razón para adivinarlo.
+
+No puede ser la única guarda: los hologramas de terceros no traen `.txt`, y ése
+es justo el caso donde más falta hacía. De ahí el aviso de D6.
+
+Al leer el nombre del `.txt` se corta la extensión **a mano**, no con
+`Path.with_suffix()`: para pathlib `z0010.000.npy` deja `z0010.000`, cuyo sufijo
+aparente es `.000`, y `with_suffix` se comería los tres decimales. Es el mismo
+fallo que ya mordió al escribir estos archivos.
+
+### D7 — Una figura, no tres ventanas
+
+Cuatro paneles en una fila: la referencia, el holograma de entrada, la
+reconstrucción en la `z` ganadora, y la curva de correlación contra distancia con
+el pico marcado.
+
+Sustituye a los tres `plt.show()` sueltos de hoy. Tres ventanas que hay que
+cerrar una a una no dejan comparar nada, que es justo lo que un barrido con
+referencia pide hacer.
+
 ### D8 — La ROI debe conservar EXACTAMENTE la proporción del marco
 
 La ROI se importa de `CamposT.roi` y se recorta sobre las dos imágenes —el

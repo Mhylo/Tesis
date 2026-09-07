@@ -143,38 +143,48 @@ PASOS = 30
 #: otro delta, una fuente divergente contra onda plana, un objeto de fase
 #: contra uno de amplitud- la correlacion seguira sin significar nada aunque
 #: las formas casen. El script lo avisa cada vez que recorta.
-AJUSTAR_FORMA = False
+AJUSTAR_FORMA = True
 
-#: EL RECORTE. Una sola constante con TRES estados:
+#: EL RECORTE, una ventana por imagen. Las dos aceptan los mismos valores:
 #:
-#:     None                    sin recorte: se propaga el marco entero.
-#:     True                    la eliges con el raton sobre la REFERENCIA.
-#:     (X0, Y0, ANCHO, ALTO)   ventana fija, para repetir un recorte.
+#:     None                    sin recorte en ESA imagen.
+#:     True                    la arrastras con el raton SOBRE ESA imagen.
+#:     (X0, Y0, ANCHO, ALTO)   ventana fija.
+#:     "misma"                 copia el rectangulo que resolvio LA OTRA.
 #:
-#: Una sola constante y no un par RECORTAR + ROI -que es lo que usa
-#: retro_holograma.py- porque el nombre ROI se lee como "la funcion", asi que
-#: activarla escribiendo True es lo primero que uno intenta. Con el par, eso
-#: reventaba con un TypeError de Python crudo.
+#: "misma" evita teclear el mismo rectangulo dos veces, o arrastrarlo dos
+#: veces. Solo una de las dos puede llevarlo: si las dos dicen "misma", no hay
+#: de donde copiar y aborta.
 #:
-#: Se elige sobre la REFERENCIA y no sobre el holograma porque a 10 mm el
-#: holograma es un patron de franjas: la luz de cada punto ya se repartio sobre
-#: 267 px y no se ve donde esta cada cosa. El MISMO rectangulo se aplica luego a
-#: las dos imagenes; recortar solo una las descuadraria.
+#: LOS TRES CASOS UTILES:
+#:
+#:   ROI_HOLOGRAMA = "misma";  ROI_REFERENCIA = True
+#:       arrastras sobre la REFERENCIA -que es la legible: un holograma a 10 mm
+#:       es un patron de franjas- y el mismo rectangulo va a las dos.
+#:
+#:   ROI_HOLOGRAMA = True;     ROI_REFERENCIA = "misma"
+#:       al reves, arrastras sobre el holograma.
+#:
+#:   ROI_HOLOGRAMA  = (100, 200, 1000, 750)
+#:   ROI_REFERENCIA = (340, 180, 1000, 750)
+#:       independientes: MISMO TAMANO, distinta posicion. Es lo que sirve
+#:       cuando los dos planos estan descentrados entre si.
+#:
+#: EL TAMANO FINAL TIENE QUE COINCIDIR o aborta: no se reescala ninguna, por lo
+#: mismo que no se reescala en AJUSTAR_FORMA.
+#:
+#: LA PROPORCION solo se le exige a la ventana que toca el HOLOGRAMA, porque
+#: ahi el recorte cambia la fisica (ver _exigir_proporcion). Sobre la
+#: referencia vale cualquier forma. Y como los dos tamanos deben coincidir, la
+#: restriccion del holograma acaba fijando tambien el de la referencia.
 #:
 #: QUE GANAS: 1000x750 frente a 3000x4000 es el 6% de los pixeles, y el barrido
-#: fino de 21 pasos baja de 74 s a 4.4 s. Eso es lo que hace practica la segunda
-#: pasada que describe el comentario de Z.
+#: fino de 21 pasos baja de 74 s a 4.4 s.
 #:
 #: QUE PIERDES: el recorte es SECO, sin margen de guarda. Medido con esa misma
-#: ventana, la correlacion en el foco cae de 1.0000 a 0.9585. informe() imprime
-#: el radio del cono en los dos extremos del barrido y avisa cuando la ventana
-#: se queda corta -con Z = (5, 20) va de 134 a 534 px-, pero recorta igual: es
-#: tu decision, no una guarda.
-#:
-#: OJO A LA PROPORCION: tiene que ser EXACTAMENTE la del marco o el foco no se
-#: degrada, DESAPARECE. Ver _exigir_proporcion(). Con el raton no hace falta que
-#: aciertes: ahi la ventana se agranda sola hasta la razon valida.
-ROI = True
+#: ventana, la correlacion en el foco cae de 1.0000 a 0.9585.
+ROI_HOLOGRAMA = "misma"
+ROI_REFERENCIA = True
 
 
 
@@ -408,7 +418,7 @@ def _ajustar_forma(campo, img, ref, ajustar):
     return campo, img, ref
 
 
-def _roi_fija(valor):
+def _roi_fija(valor, nombre):
     """La constante ROI cuando trae coordenadas -> Roi, o un error que ENSENA.
 
     Sin esto, ROI = True daba un "TypeError: argument after * must be an
@@ -420,11 +430,60 @@ def _roi_fija(valor):
         x0, y0, ancho, alto = valor
     except (TypeError, ValueError):
         raise SystemExit(
-            f"ROI = {valor!r} no es ninguna de las tres formas validas:\n\n"
-            f"    ROI = None                     sin recorte\n"
-            f"    ROI = True                     la eliges con el raton\n"
-            f"    ROI = (X0, Y0, ANCHO, ALTO)    ventana fija\n")
+            f"{nombre} = {valor!r} no es ninguno de los cuatro valores "
+            f"validos:\n\n"
+            f"    None                    sin recorte\n"
+            f"    True                    la arrastras con el raton\n"
+            f"    (X0, Y0, ANCHO, ALTO)   ventana fija\n"
+            f'    "misma"                 el rectangulo de la otra\n')
     return Roi(x0, y0, ancho, alto)
+
+
+def _resolver_ventanas(forma, campo_pinta, ref):
+    """Las dos constantes -> (roi del holograma, roi de la referencia).
+
+    "misma" copia el rectangulo que resolvio LA OTRA, para no teclear ni
+    arrastrar dos veces lo mismo. Solo una puede llevarlo.
+
+    LA PROPORCION SE LE EXIGE SOLO A LA VENTANA QUE TOCA EL HOLOGRAMA. Ahi el
+    recorte cambia la fisica, porque angularSpectrum lleva los ejes cruzados
+    (ver _exigir_proporcion). La referencia es solo el blanco contra el que se
+    puntua: cualquier forma vale.
+
+    Y se exige distinto segun de donde venga la ventana. De una tupla, EXACTA:
+    esos numeros los escribiste tu y cambiartelos seria devolverte otra ventana.
+    Del raton, se AGRANDA hasta la razon valida, porque arrastrando no se puede
+    acertar una proporcion exacta.
+    """
+    h, r = ROI_HOLOGRAMA, ROI_REFERENCIA
+    if h == "misma" and r == "misma":
+        raise SystemExit(
+            'ROI_HOLOGRAMA y ROI_REFERENCIA valen las dos "misma", y entonces '
+            'no hay de donde copiar.\nPon una de las dos a None, a True, o a '
+            'un (X0, Y0, ANCHO, ALTO).')
+
+    T_H = "holograma: arrastra la ventana"
+    T_R = "referencia: arrastra lo que quieres reconstruir"
+
+    def resolver(valor, imagen, titulo, nombre, toca_holograma):
+        if valor is None or valor is False:
+            return None
+        if valor is True:
+            roi = elegir(imagen, titulo)
+            return _crecer_a_proporcion(roi, *forma) if toca_holograma else roi
+        roi = _roi_fija(valor, nombre)
+        if toca_holograma:
+            _exigir_proporcion(roi, *forma)
+        return roi
+
+    if h == "misma":
+        roi = resolver(r, ref, T_R, "ROI_REFERENCIA", toca_holograma=True)
+        return roi, roi
+    if r == "misma":
+        roi = resolver(h, campo_pinta, T_H, "ROI_HOLOGRAMA", toca_holograma=True)
+        return roi, roi
+    return (resolver(h, campo_pinta, T_H, "ROI_HOLOGRAMA", True),
+            resolver(r, ref, T_R, "ROI_REFERENCIA", False))
 
 
 def _exigir_proporcion(roi, M, N):
@@ -515,23 +574,30 @@ def main():
     # casan, el mensaje util es "estas dos imagenes no son del mismo objeto", no
     # un fallo de recorte. Y va ANTES del barrido, porque recortar es lo que lo
     # abarata.
-    roi = None
-    if ROI is True:
-        roi = elegir(ref, "referencia: arrastra lo que quieres reconstruir")
-        roi = _crecer_a_proporcion(roi, *campo.shape)
-        print(f"\nROI elegida con el raton. Para repetirla, pon arriba:\n"
-              f"    ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})\n")
-    elif ROI is not None and ROI is not False:
-        roi = _roi_fija(ROI)
-        _exigir_proporcion(roi, *campo.shape)
-    if roi is not None:
+    roi_h, roi_r = _resolver_ventanas(campo.shape, img, ref)
+    if roi_h is not None or roi_r is not None:
         forma = campo.shape
-        # Las tres con el MISMO rectangulo: el campo que se propaga, la
-        # referencia contra la que se puntua, y el mapa que se pinta.
-        campo = roi.recortar(campo)
-        ref = roi.recortar(ref)
-        img = roi.recortar(img)
-        print(informe(roi, forma, zs, LAMB, DELTA))
+        if roi_h is not None:
+            campo = roi_h.recortar(campo)
+            img = roi_h.recortar(img)
+        if roi_r is not None:
+            ref = roi_r.recortar(ref)
+        # Las dos ventanas pueden estar en posiciones distintas -esa es la
+        # gracia, sirve cuando los planos estan descentrados- pero el TAMANO
+        # tiene que coincidir o no hay nada que correlacionar.
+        if campo.shape != ref.shape:
+            raise SystemExit(
+                f"Las dos ventanas no dan el mismo tamano:\n"
+                f"    holograma  {campo.shape}\n"
+                f"    referencia {ref.shape}\n\n"
+                f"No se reescala ninguna. Dales el mismo ANCHO y ALTO, o pon "
+                f'una de las dos a "misma".')
+        if roi_h is not None and roi_r is not None and roi_h != roi_r:
+            print(f"  ventanas independientes: holograma en "
+                  f"({roi_h.x0}, {roi_h.y0}), referencia en "
+                  f"({roi_r.x0}, {roi_r.y0}), las dos {roi_h.ancho}x{roi_h.alto}.")
+        if roi_h is not None:
+            print(informe(roi_h, forma, zs, LAMB, DELTA))
 
     M, N = campo.shape
     print(f"holograma  {RUTA}")
