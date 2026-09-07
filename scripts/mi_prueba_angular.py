@@ -76,7 +76,7 @@ from CamposT.roi import Roi, elegir, informe
 
 #: El HOLOGRAMA (imagen de intensidad), no un objeto. Usa barras normales o
 #: antepon r a las comillas para que \U no se lea como escape.
-RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\fft\z0010.000.npy"
+RUTA = r"C:\Users\User\Desktop\Tesis\referencia\carlos\DLHM-model-main\DLHM-model-main\data\Simulated_hologram.png"
 
 #: Longitud de onda [mm]. 633 nm se escribe 633e-6.
 LAMB = 633e-6
@@ -127,6 +127,23 @@ ENTRADA = "intensidad"
 #: para lo que la estrecha resuelve en 35 segundos.
 Z = (5.0, 20.0)
 PASOS = 30
+
+#: QUE HACER SI LA REFERENCIA Y EL HOLOGRAMA NO TIENEN LA MISMA FORMA.
+#:
+#:   False   aborta diciendo las dos formas. Es lo seguro y el defecto.
+#:   True    RECORTA la mayor, centrada, hasta la forma comun.
+#:
+#: Se recorta y NO se reescala: un resize pasa cada pixel por un filtro de
+#: interpolacion, y un recorte no toca ninguno de los que sobreviven. Tampoco
+#: se rellena con ceros: meterian negro en la correlacion y falsearian el
+#: numero que la metrica existe para dar.
+#:
+#: LO QUE ESTO NO ARREGLA, y es lo importante: reconcilia el CAMPO DE VISION y
+#: nada mas. Si las dos imagenes vienen de geometrias distintas -otra lambda,
+#: otro delta, una fuente divergente contra onda plana, un objeto de fase
+#: contra uno de amplitud- la correlacion seguira sin significar nada aunque
+#: las formas casen. El script lo avisa cada vez que recorta.
+AJUSTAR_FORMA = False
 
 #: EL RECORTE. Una sola constante con TRES estados:
 #:
@@ -286,6 +303,111 @@ def _proporcion_reducida(M, N):
     return M // g, N // g
 
 
+def _sidecar(ruta):
+    """El .txt que acompana al holograma, si existe. -> dict, o None.
+
+    OJO AL NOMBRE. Para pathlib, "z0010.000.npy" tiene sufijo ".npy", y al
+    quitarlo queda "z0010.000", cuyo sufijo APARENTE es ".000". Por eso la
+    extension se corta a mano en vez de con with_suffix(), que se comeria los
+    tres decimales. Es el mismo fallo que ya mordio al escribir estos archivos.
+    """
+    ruta = pathlib.Path(ruta)
+    if not ruta.suffix:
+        return None
+    lado = pathlib.Path(str(ruta)[:-len(ruta.suffix)] + ".txt")
+    if not lado.is_file():
+        return None
+    datos = {}
+    for linea in lado.read_text(encoding="utf-8").splitlines():
+        if " = " in linea:
+            clave, valor = linea.split(" = ", 1)
+            datos[clave.strip()] = valor.strip()
+    return datos
+
+
+def _comprobar_con_el_sidecar(ruta, lamb, delta):
+    """Si el holograma trae .txt, su lambda y su delta tienen que ser los tuyos.
+
+    Hoy nada impide reconstruir un holograma de 633 nm con LAMB = 532e-6: el
+    barrido devolveria una z perfectamente creible y equivocada, porque lambda
+    entra en la fase del propagador. Cuando el archivo DICE con que se hizo, no
+    hay ninguna razon para adivinarlo.
+
+    Los hologramas que escribe scripts/retro_fft_angular.py traen ese .txt. Los
+    de terceros no, y por eso esta guarda no puede ser la unica: ver el aviso
+    de _ajustar_forma().
+    """
+    datos = _sidecar(ruta)
+    if datos is None:
+        return
+    malos = []
+    for clave, mio in (("lambda [mm]", lamb), ("delta [mm]", delta)):
+        suyo = datos.get(clave)
+        if suyo is not None and not np.isclose(float(suyo), mio, rtol=1e-9):
+            malos.append(f"    {clave}: el archivo dice {suyo}, tu pusiste {mio}")
+    if malos:
+        raise SystemExit(
+            "El .txt del holograma no cuadra con tus constantes:\n"
+            + "\n".join(malos)
+            + "\n\nCon otra lambda o otro delta el barrido devuelve una z "
+              "creible y equivocada,\nporque las dos entran en la fase del "
+              "propagador. Corrige las constantes.")
+
+
+def _recorte_centrado(a, M, N):
+    """Los M x N centrales de a. Sin interpolar: cada pixel que queda es el
+    mismo pixel que habia."""
+    y0, x0 = (a.shape[0] - M) // 2, (a.shape[1] - N) // 2
+    return a[y0:y0 + M, x0:x0 + N]
+
+
+def _ajustar_forma(campo, img, ref, ajustar):
+    """Deja holograma y referencia con la misma forma, o aborta.
+
+    -> (campo, img, ref) ya recortados.
+
+    RECORTA la mayor, centrada. No reescala, porque lo que se pidio fue ponerlas
+    a la misma escala SIN que la imagen sufra, y un resize pasa cada pixel por
+    un filtro de interpolacion. Un recorte no toca ninguno de los que quedan.
+
+    Si el recortado acaba siendo el HOLOGRAMA, se le exige la proporcion del
+    marco: ahi el recorte cambia la fisica, porque angularSpectrum lleva los
+    ejes cruzados. Sobre la referencia no se exige nada: es solo el blanco
+    contra el que se puntua.
+
+    LO QUE NO ARREGLA: solo el campo de vision. Dos imagenes de geometrias
+    distintas seguiran dando una correlacion sin sentido con las formas ya
+    casadas, y eso no se puede ver en los pixeles. Por eso avisa siempre.
+    """
+    if campo.shape == ref.shape:
+        return campo, img, ref
+    if not ajustar:
+        raise SystemExit(
+            f"La referencia y el holograma no tienen la misma forma:\n"
+            f"    holograma  {campo.shape}\n"
+            f"    referencia {ref.shape}\n\n"
+            f"Pon AJUSTAR_FORMA = True para recortar la mayor, centrada, hasta "
+            f"la forma comun.\nEso reconcilia el campo de vision y NADA MAS: "
+            f"si vienen de geometrias\ndistintas, la correlacion seguira sin "
+            f"significar nada.")
+
+    M = min(campo.shape[0], ref.shape[0])
+    N = min(campo.shape[1], ref.shape[1])
+    if (M, N) != campo.shape:
+        _exigir_proporcion(Roi(0, 0, N, M), *campo.shape)
+        campo = _recorte_centrado(campo, M, N)
+        img = _recorte_centrado(img, M, N)
+        print(f"  holograma recortado, centrado, a {N}x{M}.")
+    if (M, N) != ref.shape:
+        ref = _recorte_centrado(ref, M, N)
+        print(f"  referencia recortada, centrada, a {N}x{M}.")
+    print("  AVISO: eso reconcilia el CAMPO DE VISION y nada mas. Si las dos "
+          "vienen de geometrias\n  distintas -otra lambda, otro delta, fuente "
+          "divergente contra onda plana, objeto\n  de fase contra objeto de "
+          "amplitud- la correlacion seguira sin significar nada.")
+    return campo, img, ref
+
+
 def _roi_fija(valor):
     """La constante ROI cuando trae coordenadas -> Roi, o un error que ENSENA.
 
@@ -375,20 +497,14 @@ def _crecer_a_proporcion(roi, M, N):
 
 
 def main():
+    # Antes de nada: si el holograma trae .txt, que sus parametros sean los
+    # tuyos. Reconstruir con otra lambda da una z creible y equivocada.
+    _comprobar_con_el_sidecar(RUTA, LAMB, DELTA)
+
     ref = np.asarray(Image.open(REFERENCIA).convert("L"), dtype=np.float64) / 255.0
     campo, img, etiqueta = campo_de_entrada(RUTA, ENTRADA)
 
-    # Reventar antes que reescalar. Dos muestreos distintos del mismo objeto dan
-    # una correlacion perfectamente calculable y sin sentido, y el pico caeria
-    # donde le diera la gana sin que nada avisara.
-    if campo.shape != ref.shape:
-        raise SystemExit(
-            f"La referencia y el holograma no tienen la misma forma:\n"
-            f"    holograma  {campo.shape}  {RUTA}\n"
-            f"    referencia {ref.shape}  {REFERENCIA}\n"
-            f"No se reescala ninguna de las dos a proposito: comparar dos "
-            f"muestreos distintos del mismo objeto da un numero que parece "
-            f"bueno y no lo es.")
+    campo, img, ref = _ajustar_forma(campo, img, ref, AJUSTAR_FORMA)
 
     if min(Z) <= 0:
         raise SystemExit(f"Z = {Z} y son distancias holograma-objeto, "

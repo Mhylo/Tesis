@@ -125,19 +125,49 @@ sobre una malla rectangular de 3000×4000. Este script usa **la misma**
 `angularSpectrum` con los mismos ejes cruzados, así que la vuelta deshace la ida
 exactamente. Con un holograma hecho con los ejes en su sitio dejaría de cuadrar.
 
-### D6 — Si la referencia no casa con el holograma, revienta
+### D6 — Si la referencia no casa con el holograma: aborta, o recorta sin interpolar
 
-Si `REFERENCIA` y `RUTA` no tienen la misma forma, el script **aborta con un
-mensaje que dice las dos formas**. No se reescala ninguna de las dos, y no se
-recorta a la intersección.
+Por defecto (`AJUSTAR_FORMA = False`) **aborta** diciendo las dos formas, y
+sugiere la constante. Con `AJUSTAR_FORMA = True` **recorta la mayor, centrada**,
+hasta la forma común.
 
-Reescalar en silencio daría una correlación perfectamente calculable y sin
-sentido: la métrica compararía dos muestreos distintos del mismo objeto y el
-pico caería donde le diera la gana. Es el mismo criterio que `Roi.recortar()` y
-que `SinMedir`: fallar fuerte antes que devolver un número que parece bueno.
+**Recortar y no reescalar** es lo que cumple «que queden a la misma escala sin
+que la imagen sufra»: un `resize` pasa cada píxel por un filtro de
+interpolación; un recorte no toca ninguno de los que sobreviven. Tampoco se
+rellena con ceros: meterían negro en la correlación y falsearían el número que
+la métrica existe para dar.
 
-Hoy casan las dos (3000×4000), pero eso es una coincidencia del holograma que
-hay en `RUTA`, no una garantía.
+Si el recortado acaba siendo el **holograma**, se le exige la proporción de D8
+—ahí el recorte cambia la física—. Sobre la referencia no se exige nada: es sólo
+el blanco contra el que se puntúa.
+
+**Lo que esto NO arregla, y por eso avisa siempre.** Reconcilia el campo de
+visión y nada más. Dos imágenes de geometrías distintas seguirán dando una
+correlación sin sentido con las formas ya casadas. Medido sobre el par que lo
+motivó —`Simulated_hologram.png` de `referencia/carlos/` contra
+`BenchmarkTarget.png`—: las formas casan tras el recorte y la correlación sale
+**−0.0349, plana en toda la z**. No hay foco porque no puede haberlo: ese
+holograma es DLHM de fuente puntual (λ = 532 nm, δ = 1.85 µm, M = L/z = 4) sobre
+un objeto de **fase pura**, y el script propaga onda plana a 633 nm y 3.45 µm
+correlacionando `|U|²`.
+
+### D9 — El `.txt` del holograma manda sobre las constantes
+
+Si junto a `RUTA` hay un `.txt` —los escribe `scripts/retro_fft_angular.py`— el
+script lee su `lambda [mm]` y su `delta [mm]` y **aborta si no cuadran** con
+`LAMB` y `DELTA`.
+
+Sin esta guarda, reconstruir un holograma de 633 nm con `LAMB = 532e-6` devuelve
+una `z` perfectamente creíble y equivocada, porque λ entra en la fase del
+propagador. Cuando el archivo dice con qué se hizo, no hay razón para adivinarlo.
+
+No puede ser la única guarda: los hologramas de terceros no traen `.txt`, y ése
+es justo el caso donde más falta hacía. De ahí el aviso de D6.
+
+Al leer el nombre del `.txt` se corta la extensión **a mano**, no con
+`Path.with_suffix()`: para pathlib `z0010.000.npy` deja `z0010.000`, cuyo sufijo
+aparente es `.000`, y `with_suffix` se comería los tres decimales. Es el mismo
+fallo que ya mordió al escribir estos archivos.
 
 ### D7 — Una figura, no tres ventanas
 
