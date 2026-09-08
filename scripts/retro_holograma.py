@@ -107,17 +107,17 @@ from CamposT.roi import Roi, elegir, informe, radio_del_cono
 
 #: EL HOLOGRAMA, ya grabado. Imagen -> intensidad medida (campo = sqrt(I), con
 #: imagen gemela). .npy -> campo complejo (la vuelta es exacta, sin gemela).
-RUTA = r"C:\Users\User\Desktop\Tesis\resultados\campos\fft\z0020.png"
+RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\fft\z0010.000.png"
 
 #: Longitud de onda [mm].
-LAMB = 633e-6
+LAMB = 532e-6
 
 #: Paso de pixel del sensor [mm].
 DELTA = 3.45e-3
 
 #: Distancia sensor <-> objeto [mm], POSITIVA. El menos lo pone la
 #: retropropagacion: internamente se propaga a -Z.
-Z = 20.0
+Z = 10.0
 
 #: QUE PROPAGADORES CORREN. Varios en True se comparan en la misma figura.
 #:
