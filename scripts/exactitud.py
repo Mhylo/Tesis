@@ -34,6 +34,7 @@ import numpy as np
 from CamposT.backend import (cronometrar, gpu_disponible, info_gpu,
                              liberar_memoria)
 from CamposT.metricas import sam
+from CamposT.montaje import TABLA1, Z_TABLA
 from CamposT.propagadores import blas, fft_asm, mpasm
 from CamposT.referencias import gauss_analytic, gauss_beam
 
@@ -41,13 +42,11 @@ from CamposT.referencias import gauss_analytic, gauss_beam
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
 #: Parámetros de la Tabla 1 del paper (sin la lente). Unidades: mm.
-L0, N, W0, LAMB = 5.0, 512, 1.0, 632.8e-6
-DELTA = L0 / (N - 1)
+#: Vienen de CamposT.montaje.TABLA1, que es la unica fuente.
+L0, N, W0, LAMB = TABLA1.L0, TABLA1.N, TABLA1.W0, TABLA1.lamb
+DELTA = TABLA1.delta
 
-#: Las siete distancias de la tabla del paper, que son las que se imprimen.
-#: La curva añade una rejilla logarítmica entre ellas: siete puntos sobre siete
-#: órdenes de magnitud no dibujan una curva, dibujan una poligonal.
-Z_TABLA = (500, 2000, 6000, 12000, 30000, 80000, 200000)
+#: Las siete distancias de la tabla del paper (ver CamposT.montaje).
 PUNTOS = 25
 
 #: Un trazo por método, fijo: el color no cambia si algún día se añade o se
