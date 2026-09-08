@@ -121,7 +121,7 @@ FILAS_POR_BLOQUE = 512
 #:
 #: En la duda, mira las dos. La opacidad es una decision de dibujo, no un
 #: filtro sobre los datos: el array es el mismo.
-PESAR_FASE = False
+PESAR_FASE = True
 
 #: Distancias del barrido de foco, como fraccion de Z. None lo desactiva.
 #: A cada z se retropropaga y se miden las dos metricas: nitidez (donde

@@ -77,13 +77,13 @@ LAMB = 633e-6
 DELTA = 3.45e-3
 
 #: Distancia objeto <-> sensor [mm], POSITIVA: la ida usa +Z y la vuelta -Z.
-Z = 360.0
+Z = 50.0
 
 #: Sobremuestreo del espectro. La matriz espectral es (S*M, S*N) POR DISTANCIA:
 #: en un barrido, subirlo multiplica la memoria de cada paso. OJO, va al reves
 #: de lo que parece: s entra bajo raiz en el DENOMINADOR de Kf, asi que subirlo
 #: ALEJA el umbral de compresion.
-S = 12
+S = 1
 
 #: Puntos del plano de salida (R) y razon entre el paso de salida y el de
 #: entrada (MAG). Con MAG > 1 la ventana de observacion se agranda sin tocar el
