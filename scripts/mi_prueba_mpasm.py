@@ -48,6 +48,7 @@ Las distancias de Z van POSITIVAS: el menos lo pone el barrido.
 UNIDADES: milimetros para todo.  633 nm -> 633e-6    3.45 um -> 3.45e-3
 """
 import pathlib
+import time
 
 import numpy as np
 from PIL import Image
@@ -76,7 +77,7 @@ from CamposT.roi import Roi, elegir, informe
 
 #: El HOLOGRAMA (imagen de intensidad), no un objeto. Usa barras normales o
 #: antepon r a las comillas para que \U no se lea como escape.
-RUTA = r"C:\Users\User\Desktop\Tesis\referencia\carlos\DLHM-model-main\DLHM-model-main\data\Simulated_hologram.png"
+RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\fft\z0010.000.npy"
 
 #: Longitud de onda [mm]. 633 nm se escribe 633e-6.
 LAMB = 633e-6
@@ -202,6 +203,27 @@ FILAS_POR_BLOQUE = 512
 ROI_HOLOGRAMA = "misma"
 ROI_REFERENCIA = True
 
+#: DISPOSITIVO de calculo: "auto" (la GPU si la hay), "cpu" o "gpu".
+#:
+#: MPASM es el de la familia que MAS gana con la tarjeta y el que antes se
+#: queda sin memoria, y por la misma razon: su nucleo son dos productos de
+#: matrices densas -My @ U @ Mx- en vez de una FFT. El producto es justo lo que
+#: una GPU hace bien, y la matriz espectral (S*M, S*N) es justo lo que no cabe.
+#: Sube S solo despues de mirar lo que dice comprobar_memoria().
+#:
+#: Con "gpu" y sin CUDA ABORTA en vez de caer a CPU en silencio: un tiempo
+#: medido en el dispositivo equivocado no dice nada.
+DISPOSITIVO = "auto"
+
+#: dtype de trabajo. None = complex64 en GPU, complex128 en CPU.
+#:
+#: Es la politica de CamposT.backend, y en MPASM es la que decide si el barrido
+#: cabe: la matriz espectral ocupa la mitad en complex64. Las FASES siguen
+#: evaluandose en float64 dentro de fasores() y del kernel, asi que lo que baja
+#: a simple es el fasor ya acotado a modulo 1, nunca el argumento -que aqui
+#: llega a 2e5 rad y en float32 seria ruido-.
+DTYPE = None
+
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -322,6 +344,123 @@ def mpasm_bloques(field, z, lamb, delta, s=1, Kf=None, r=1, mag=1.0,
     return out, Kf
 
 # ------------------------------------------------------------------ backend
+#
+# elegir_dispositivo, a_cpu y liberar son copias literales de las de
+# scripts/retro_mpasm.py. sincronizar() no: esa es CamposT.backend.sincronizar()
+# sin el argumento opcional. comprobar_memoria tampoco, y ahi divergir es lo
+# correcto: aqui cuenta la matriz espectral de MPASM, que es lo que manda en
+# este propagador. tests/test_gpu_mi_prueba.py fija que las tres primeras sigan
+# a retro_fft_angular y que sincronizar sea la misma en toda la familia.
+
+def elegir_dispositivo(preferencia="auto"):
+    """(modulo de arrays, nombre). Cae a NumPy sin ruido si no hay CUDA."""
+    hay_gpu = False
+    if cp is not None:
+        try:
+            hay_gpu = cp.cuda.runtime.getDeviceCount() > 0
+        except Exception:
+            hay_gpu = False
+    if preferencia == "gpu":
+        if not hay_gpu:
+            raise SystemExit("DISPOSITIVO = 'gpu' pero no hay CUDA disponible.")
+        return cp, "gpu"
+    if preferencia == "cpu" or not hay_gpu:
+        return np, "cpu"
+    return cp, "gpu"
+
+
+def a_cpu(a):
+    return a.get() if cp is not None and isinstance(a, cp.ndarray) else np.asarray(a)
+
+
+def liberar(xp):
+    if xp is cp:
+        cp.get_default_memory_pool().free_all_blocks()
+
+
+def sincronizar(xp):
+    """Espera a que la tarjeta termine.
+
+    CuPy encola los kernels y devuelve el control de inmediato: sin esto, un
+    perf_counter() alrededor del barrido mide el tiempo de LANZAMIENTO y no el
+    de computo, y la GPU sale ridiculamente rapida. Es obligatoria en toda
+    medida de tiempo.
+    """
+    if xp is cp:
+        cp.cuda.Stream.null.synchronize()
+
+
+def memoria_mpasm(M, N, s, r, dtype):
+    """Bytes de pico que pide mpasm_bloques() sobre una malla (M, N).
+
+    NO es el tamano de la malla, y esa es toda la diferencia con los otros
+    scripts de la familia. Lo que manda es la matriz espectral F, que es
+    (s*M, s*N): CUADRATICA en s. Con s = 4 sobre 1024x1024 son 4096x4096, o
+    sea 16 veces la entrada.
+
+    Se cuentan, en el momento de mas ocupacion -el primer producto-:
+
+        U   M*N          el campo de entrada
+        Mx  N*(s*N)      fasor de columnas
+        My  (s*M)*M      fasor de filas
+        F   (s*M)*(s*N)  la matriz espectral
+
+    Los fasores de vuelta (Mx1, My1) se construyen despues de que `del Mx, My`
+    haya soltado los de ida, asi que no se suman: entran en su sitio. La
+    salida (r*M, r*N) si, porque convive con F.
+    """
+    elementos = M * N + N * (s * N) + (s * M) * M + (s * M) * (s * N) \
+        + (r * M) * (r * N)
+    return elementos * np.dtype(dtype).itemsize
+
+
+def comprobar_memoria(xp, M, N, s, r, dtype):
+    """Aborta con un mensaje util en vez de con un OOM de CUDA.
+
+    Con S alto el mensaje importa mas que en los otros scripts: la palanca no
+    es solo recortar, es BAJAR S, y no es obvio cual toca.
+    """
+    if xp is not cp:
+        return
+    libre, _ = cp.cuda.runtime.memGetInfo()
+    hacen_falta = memoria_mpasm(M, N, s, r, dtype)
+    if hacen_falta > 0.85 * libre:
+        cabe = ""
+        for s_ok in range(s - 1, 0, -1):
+            if memoria_mpasm(M, N, s_ok, r, dtype) <= 0.85 * libre:
+                cabe = f" Con S = {s_ok} si cabria."
+                break
+        raise SystemExit(
+            f"No cabe en la GPU: la malla {M}x{N} con S = {s} pide una matriz "
+            f"espectral de {s * M}x{s * N},\n~{hacen_falta / 2**30:.2f} GB en "
+            f"{np.dtype(dtype).name}, y hay {libre / 2**30:.2f} GB libres."
+            f"{cabe}\nBaja S, recorta con ROI_HOLOGRAMA, o usa "
+            f"DISPOSITIVO = 'cpu'.")
+
+
+def comprobar_equivalencia(xp, dtype):
+    """mpasm_bloques() en el dispositivo contra ella misma en CPU doble.
+
+    Es la prueba de que acelerar no cambio el resultado, y se corre en cada
+    invocacion porque cuesta milisegundos.
+
+    POR QUE CONTRA SI MISMA. La referencia de este propagador -el MatrixDftCPU
+    de Zhao- vive en scripts/retro_mpasm.py, que la lleva copiada tal cual y la
+    contrasta alli. Este script no la duplica: lo que aqui hace falta fijar es
+    que el dispositivo y el dtype no muevan el resultado.
+
+    Devuelve (error relativo del campo, diferencia de Kf). La segunda tiene que
+    salir 0.0 exacto: kf_paper() es aritmetica de escalares en float64 y no
+    toca el dispositivo.
+    """
+    rng = np.random.default_rng(0)
+    U = rng.random((128, 128)) + 1j * rng.random((128, 128))
+    ref, kf_ref = mpasm_bloques(U, -7.0, LAMB, DELTA, s=2,
+                                xp=np, dtype=np.complex128)
+    rap, kf_rap = mpasm_bloques(U, -7.0, LAMB, DELTA, s=2,
+                                xp=xp, dtype=dtype)
+    err = float(np.max(np.abs(a_cpu(rap) - ref)) / np.max(np.abs(ref)))
+    return err, abs(kf_rap - kf_ref)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -393,10 +532,17 @@ def correlacion(a, b):
     Un mapa constante no tiene con que correlacionar: se devuelve 0 en vez de
     dividir por cero y sacar un NaN que viajaria hasta el pico del barrido.
     """
-    a = a.ravel() - a.mean()
-    b = b.ravel() - b.mean()
-    den = np.sqrt((a @ a) * (b @ b))
-    return float(a @ b / den) if den > 0 else 0.0
+    # La REDUCCION va en float64 aunque el campo venga en complex64. Sobre
+    # una malla de 3000x4000 son 1.2e7 sumandos: en float32 el error relativo
+    # acumulado es ~1e-4, del orden de lo que separa dos pasos vecinos del
+    # barrido, y el argmax se iria a un z equivocado. 96 MB de copia es barato
+    # comparado con eso. En CPU no cambia nada: ya venia en doble.
+    a = a.ravel().astype(np.float64)
+    b = b.ravel().astype(np.float64)
+    a = a - a.mean()
+    b = b - b.mean()
+    den = float(a @ a) * float(b @ b)
+    return float(a @ b) / den ** 0.5 if den > 0 else 0.0
 
 
 def _sidecar(ruta):
@@ -567,6 +713,9 @@ def main():
     # tuyos. Reconstruir con otra lambda da una z creible y equivocada.
     _comprobar_con_el_sidecar(RUTA, LAMB, DELTA)
 
+    xp, dev = elegir_dispositivo(DISPOSITIVO)
+    dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
+
     ref = np.asarray(Image.open(REFERENCIA).convert("L"), dtype=np.float64) / 255.0
     campo, img, etiqueta = campo_de_entrada(RUTA, ENTRADA)
 
@@ -614,9 +763,24 @@ def main():
           f"delta {DELTA * 1e3:.3f} um")
     print(f"  {len(zs)} distancias de {zs[0]:.3f} a {zs[-1]:.3f} mm")
     if M != N:
-        print("  malla RECTANGULAR: angularSpectrum lleva los ejes CRUZADOS, "
-              "asi que esto solo cuadra\n  con hologramas hechos con esa "
-              "misma funcion. Ver el docstring.")
+        print("  malla RECTANGULAR, y aqui eso VALE: mpasm_bloques lleva "
+              "cada eje con SU\n  longitud y calcula Kf POR EJE, quedandose "
+              "con el menor de los dos. La guarda\n  de proporcion que exige "
+              "mi_prueba_angular.py no hace falta en este script.")
+    print(f"  dispositivo {dev.upper()} | dtype {np.dtype(dtype).name} | "
+          f"fase en float64")
+    print(f"  S = {S}: matriz espectral {S * M}x{S * N}, "
+          f"~{memoria_mpasm(M, N, S, R, dtype) / 2**30:.2f} GB de pico")
+    if dev == "gpu":
+        libre, total = cp.cuda.runtime.memGetInfo()
+        print(f"  {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}, "
+              f"{libre / 2**30:.2f} de {total / 2**30:.2f} GB libres")
+
+    comprobar_memoria(xp, M, N, S, R, dtype)
+
+    eq, dkf = comprobar_equivalencia(xp, dtype)
+    print(f"  mpasm_bloques en {dev.upper()} vs CPU/complex128: "
+          f"campo {eq:.2e}, Kf {dkf:.1e}")
     print()
 
     curva = np.empty(len(zs))
@@ -626,20 +790,45 @@ def main():
     # ser eso y no un desenfoque.
     kfs = np.empty(len(zs))
     mejor_U, mejor = None, -1
+
+    # La referencia sube UNA vez, no una por paso: son 96 MB y el barrido la
+    # usa igual en los PASOS pasos. Bajar el campo a la CPU en cada paso solo
+    # para correlacionar seria el cuello de botella del barrido en la tarjeta.
+    ref_d = xp.asarray(ref)
+
+    sincronizar(xp)
+    t0 = time.perf_counter()
     for i, z in enumerate(zs):
         U, kf = mpasm_bloques(campo, -z, LAMB, DELTA, s=S, Kf=KF, r=R,
-                              mag=MAG, filas=FILAS_POR_BLOQUE)
+                              mag=MAG, xp=xp, dtype=dtype,
+                              filas=FILAS_POR_BLOQUE)
         kfs[i] = kf if np.isscalar(kf) else max(kf)
-        curva[i] = correlacion(np.abs(U) ** 2, ref)
+        curva[i] = correlacion(xp.abs(U) ** 2, ref_d)
         # No se acumulan los campos: 30 mallas de 3000x4000 en complex128 son
         # 5.7 GB. Se guarda solo el mejor hasta ahora, que son 192 MB.
         if mejor < 0 or curva[i] > curva[mejor]:
             mejor_U, mejor = U, i
+        # Se suelta la referencia al campo del paso salvo que sea el mejor.
+        # NO se llama a liberar() aqui: el pool de CuPy reutiliza el bloque
+        # del paso anterior, que es justo lo que hace baratos los pasos
+        # siguientes. Vaciarlo cada vuelta obligaria a un cudaMalloc nuevo por
+        # paso y el barrido saldria mas lento que en CPU.
+        if mejor != i:
+            del U
         print(f"  z = {z:8.3f} mm   corr = {curva[i]:+.4f}   "
               f"Kf = {kfs[i]:6.4f}"
               + ("   <- comprimiendo" if kfs[i] > 1.0 else ""))
+    sincronizar(xp)
+    t = time.perf_counter() - t0
 
-    print(f"\nenfoca en z = {zs[mejor]:.3f} mm   corr = {curva[mejor]:+.4f}   "
+    # El mejor campo baja UNA vez, al final: lo que queda es dibujarlo.
+    mejor_U = a_cpu(mejor_U)
+    del ref_d
+    liberar(xp)
+
+    print(f"\n{len(zs)} pasos en {t:.2f} s "
+          f"({t / len(zs) * 1e3:.0f} ms/paso) en {dev.upper()}")
+    print(f"enfoca en z = {zs[mejor]:.3f} mm   corr = {curva[mejor]:+.4f}   "
           f"Kf = {kfs[mejor]:.4f}")
     if mejor in (0, len(zs) - 1):
         print("  AVISO: el maximo cae en un EXTREMO del barrido, que por tanto "

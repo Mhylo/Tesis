@@ -37,6 +37,7 @@ Las distancias de Z van POSITIVAS: el menos lo pone el barrido.
 UNIDADES: milimetros para todo.  633 nm -> 633e-6    3.45 um -> 3.45e-3
 """
 import pathlib
+import time
 
 import numpy as np
 from PIL import Image
@@ -65,7 +66,7 @@ from CamposT.roi import Roi, elegir, informe
 
 #: El HOLOGRAMA (imagen de intensidad), no un objeto. Usa barras normales o
 #: antepon r a las comillas para que \U no se lea como escape.
-RUTA = r"C:\Users\User\Desktop\Tesis\referencia\carlos\DLHM-model-main\DLHM-model-main\data\Simulated_hologram.png"
+RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\blas\z0200.000.npy"
 
 #: Longitud de onda [mm]. 633 nm se escribe 633e-6.
 LAMB = 633e-6
@@ -114,7 +115,7 @@ ENTRADA = "intensidad"
 #: Subir PASOS en la ancha no es la salida: cada paso son ~1.6 s sobre esta
 #: malla de 3000x4000, asi que la pasada ancha con 300 pasos serian 8 minutos
 #: para lo que la estrecha resuelve en 35 segundos.
-Z = (5.0, 20.0)
+Z = (0.1, 20.0)
 PASOS = 30
 
 #: QUE HACER SI LA REFERENCIA Y EL HOLOGRAMA NO TIENEN LA MISMA FORMA.
@@ -175,6 +176,27 @@ FILAS_POR_BLOQUE = 512
 #: ventana, la correlacion en el foco cae de 1.0000 a 0.9585.
 ROI_HOLOGRAMA = "misma"
 ROI_REFERENCIA = True
+
+#: DISPOSITIVO de calculo: "auto" (la GPU si la hay), "cpu" o "gpu".
+#:
+#: El barrido son PASOS retropropagaciones de la misma malla, o sea PASOS
+#: pares de FFT sobre el mismo array: es justo la forma de trabajo que la
+#: tarjeta acelera. Con "gpu" y sin CUDA ABORTA en vez de caer a CPU en
+#: silencio, porque un tiempo medido en el dispositivo equivocado no dice
+#: nada, y es el tipo de error que solo se descubre al comparar tablas.
+DISPOSITIVO = "auto"
+
+#: dtype de trabajo. None = complex64 en GPU, complex128 en CPU.
+#:
+#: Es la politica de CamposT.backend. Las FASES se evaluan igualmente en
+#: float64 dentro de espectro_angular_bl(), asi que lo que baja a simple es el
+#: fasor ya acotado a modulo 1, nunca el argumento.
+#:
+#: OJO CON LO QUE complex64 SIGNIFICA AQUI. La mascara de banda decide con
+#: searchsorted sobre fx y fy, que se construyen en float64 pasen lo que pase:
+#: la FRACCION de banda que sobrevive no depende del dtype, y por eso se puede
+#: comparar entre dispositivos. Lo unico que cambia es la mantisa del campo.
+DTYPE = None
 
 
 
@@ -289,6 +311,96 @@ def espectro_angular_bl(field, z, wavelength, dx, dy, xp=np,
     return xp.fft.ifft2(xp.fft.ifftshift(F)), fraccion
 
 # ------------------------------------------------------------------ backend
+#
+# elegir_dispositivo, a_cpu y liberar son copias literales de las de
+# scripts/retro_blas.py, que es el hermano de este archivo. sincronizar() no:
+# esa es CamposT.backend.sincronizar() sin el argumento opcional, porque aqui
+# el xp siempre se sabe. tests/test_gpu_mi_prueba.py comprueba que ninguna de
+# las cuatro diverja del resto de la familia.
+
+def elegir_dispositivo(preferencia="auto"):
+    """(modulo de arrays, nombre). Cae a NumPy sin ruido si no hay CUDA."""
+    hay_gpu = False
+    if cp is not None:
+        try:
+            hay_gpu = cp.cuda.runtime.getDeviceCount() > 0
+        except Exception:
+            hay_gpu = False
+    if preferencia == "gpu":
+        if not hay_gpu:
+            raise SystemExit("DISPOSITIVO = 'gpu' pero no hay CUDA disponible.")
+        return cp, "gpu"
+    if preferencia == "cpu" or not hay_gpu:
+        return np, "cpu"
+    return cp, "gpu"
+
+
+def a_cpu(a):
+    return a.get() if cp is not None and isinstance(a, cp.ndarray) else np.asarray(a)
+
+
+def liberar(xp):
+    if xp is cp:
+        cp.get_default_memory_pool().free_all_blocks()
+
+
+def sincronizar(xp):
+    """Espera a que la tarjeta termine.
+
+    CuPy encola los kernels y devuelve el control de inmediato: sin esto, un
+    perf_counter() alrededor del barrido mide el tiempo de LANZAMIENTO y no el
+    de computo, y la GPU sale ridiculamente rapida. Es obligatoria en toda
+    medida de tiempo.
+    """
+    if xp is cp:
+        cp.cuda.Stream.null.synchronize()
+
+
+def comprobar_memoria(xp, M, N, dtype):
+    """Aborta con un mensaje util en vez de con un OOM de CUDA.
+
+    Se cuentan cuatro arrays del tamano de la malla: el campo, el espectro
+    desplazado, la salida de fft2 y el espacio de trabajo de cuFFT. El fasor
+    no cuenta, que para eso va por bloques de filas.
+    """
+    if xp is not cp:
+        return
+    libre, _ = cp.cuda.runtime.memGetInfo()
+    hacen_falta = 4 * M * N * np.dtype(dtype).itemsize
+    if hacen_falta > 0.85 * libre:
+        raise SystemExit(
+            f"No cabe en la GPU: la malla {M}x{N} en "
+            f"{np.dtype(dtype).name} pide ~{hacen_falta / 2**30:.2f} GB y hay "
+            f"{libre / 2**30:.2f} GB libres.\nRecorta con ROI_HOLOGRAMA "
+            f"(ver ahi lo que cuesta), o usa DISPOSITIVO = 'cpu'.")
+
+
+def comprobar_equivalencia(xp, dtype):
+    """espectro_angular_bl() en el dispositivo contra ella misma en CPU doble.
+
+    Es la prueba de que acelerar no cambio el resultado, y se corre en cada
+    invocacion porque cuesta milisegundos.
+
+    POR QUE CONTRA SI MISMA Y NO CONTRA UNA REFERENCIA. Los hermanos de este
+    script contrastan su version rapida contra la implementacion publicada de
+    la que salen -angularSpectrum de pyDHM, MatrixDftCPU de Zhao-. Aqui no hay
+    contra que: en referencia/ no hay ningun BL-ASM, y por eso este script
+    mide la banda descartada en vez de correlacionar contra un tercero. Lo que
+    si se puede fijar es que el dispositivo y el dtype no muevan el resultado,
+    que es exactamente lo que esta funcion comprueba.
+
+    Devuelve (error relativo del campo, diferencia de la fraccion de banda).
+    La segunda tiene que salir 0.0 exacto: la mascara decide en float64 en los
+    dos casos.
+    """
+    rng = np.random.default_rng(0)
+    U = rng.random((256, 256)) + 1j * rng.random((256, 256))
+    ref, frac_ref = espectro_angular_bl(U, -7.0, LAMB, DELTA, DELTA,
+                                        xp=np, dtype=np.complex128)
+    rap, frac_rap = espectro_angular_bl(U, -7.0, LAMB, DELTA, DELTA,
+                                        xp=xp, dtype=dtype)
+    err = float(np.max(np.abs(a_cpu(rap) - ref)) / np.max(np.abs(ref)))
+    return err, abs(frac_rap - frac_ref)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -360,10 +472,17 @@ def correlacion(a, b):
     Un mapa constante no tiene con que correlacionar: se devuelve 0 en vez de
     dividir por cero y sacar un NaN que viajaria hasta el pico del barrido.
     """
-    a = a.ravel() - a.mean()
-    b = b.ravel() - b.mean()
-    den = np.sqrt((a @ a) * (b @ b))
-    return float(a @ b / den) if den > 0 else 0.0
+    # La REDUCCION va en float64 aunque el campo venga en complex64. Sobre
+    # una malla de 3000x4000 son 1.2e7 sumandos: en float32 el error relativo
+    # acumulado es ~1e-4, del orden de lo que separa dos pasos vecinos del
+    # barrido, y el argmax se iria a un z equivocado. 96 MB de copia es barato
+    # comparado con eso. En CPU no cambia nada: ya venia en doble.
+    a = a.ravel().astype(np.float64)
+    b = b.ravel().astype(np.float64)
+    a = a - a.mean()
+    b = b - b.mean()
+    den = float(a @ a) * float(b @ b)
+    return float(a @ b) / den ** 0.5 if den > 0 else 0.0
 
 
 def _sidecar(ruta):
@@ -535,6 +654,9 @@ def main():
     # tuyos. Reconstruir con otra lambda da una z creible y equivocada.
     _comprobar_con_el_sidecar(RUTA, LAMB, DELTA)
 
+    xp, dev = elegir_dispositivo(DISPOSITIVO)
+    dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
+
     ref = np.asarray(Image.open(REFERENCIA).convert("L"), dtype=np.float64) / 255.0
     campo, img, etiqueta = campo_de_entrada(RUTA, ENTRADA)
 
@@ -582,9 +704,23 @@ def main():
           f"delta {DELTA * 1e3:.3f} um")
     print(f"  {len(zs)} distancias de {zs[0]:.3f} a {zs[-1]:.3f} mm")
     if M != N:
-        print("  malla RECTANGULAR: angularSpectrum lleva los ejes CRUZADOS, "
-              "asi que esto solo cuadra\n  con hologramas hechos con esa "
-              "misma funcion. Ver el docstring.")
+        print("  malla RECTANGULAR, y aqui eso VALE: espectro_angular_bl "
+              "lleva cada eje con SU\n  longitud -dfx del numero de columnas, "
+              "dfy del de filas- y el limite de banda\n  de Matsushima sale "
+              "por eje. La guarda de proporcion que exige\n  "
+              "mi_prueba_angular.py no hace falta en este script.")
+    print(f"  dispositivo {dev.upper()} | dtype {np.dtype(dtype).name} | "
+          f"fase en float64")
+    if dev == "gpu":
+        libre, total = cp.cuda.runtime.memGetInfo()
+        print(f"  {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}, "
+              f"{libre / 2**30:.2f} de {total / 2**30:.2f} GB libres")
+
+    comprobar_memoria(xp, M, N, dtype)
+
+    eq, dfrac = comprobar_equivalencia(xp, dtype)
+    print(f"  espectro_angular_bl en {dev.upper()} vs CPU/complex128: "
+          f"campo {eq:.2e}, banda {dfrac:.1e}")
     print()
 
     curva = np.empty(len(zs))
@@ -593,19 +729,37 @@ def main():
     # aliar, y por eso la vuelta no es la identidad sino el objeto FILTRADO.
     fracs = np.empty(len(zs))
     mejor_U, mejor = None, -1
+
+    # La referencia sube UNA vez, no una por paso: son 96 MB y el barrido la
+    # usa igual en los PASOS pasos. Bajar el campo a la CPU en cada paso solo
+    # para correlacionar seria el cuello de botella del barrido en la tarjeta.
+    ref_d = xp.asarray(ref)
+
+    sincronizar(xp)
+    t0 = time.perf_counter()
     for i, z in enumerate(zs):
         U, frac = espectro_angular_bl(campo, -z, LAMB, DELTA, DELTA,
+                                      xp=xp, dtype=dtype,
                                       filas=FILAS_POR_BLOQUE)
         fracs[i] = frac
-        curva[i] = correlacion(np.abs(U) ** 2, ref)
+        curva[i] = correlacion(xp.abs(U) ** 2, ref_d)
         # No se acumulan los campos: 30 mallas de 3000x4000 en complex128 son
         # 5.7 GB. Se guarda solo el mejor hasta ahora, que son 192 MB.
         if mejor < 0 or curva[i] > curva[mejor]:
             mejor_U, mejor = U, i
         print(f"  z = {z:8.3f} mm   corr = {curva[i]:+.4f}   "
               f"banda que pasa = {100 * fracs[i]:5.1f}%")
+    sincronizar(xp)
+    t = time.perf_counter() - t0
 
-    print(f"\nenfoca en z = {zs[mejor]:.3f} mm   corr = {curva[mejor]:+.4f}   "
+    # El mejor campo baja UNA vez, al final: lo que queda es dibujarlo.
+    mejor_U = a_cpu(mejor_U)
+    del ref_d
+    liberar(xp)
+
+    print(f"\n{len(zs)} pasos en {t:.2f} s "
+          f"({t / len(zs) * 1e3:.0f} ms/paso) en {dev.upper()}")
+    print(f"enfoca en z = {zs[mejor]:.3f} mm   corr = {curva[mejor]:+.4f}   "
           f"banda {100 * fracs[mejor]:.1f}%")
     if mejor in (0, len(zs) - 1):
         print("  AVISO: el maximo cae en un EXTREMO del barrido, que por tanto "

@@ -48,6 +48,7 @@ de cuadrar, y el pico se iria de sitio sin que nada avisara.
 Las distancias de Z van POSITIVAS: el menos lo pone el barrido.
 """
 import pathlib
+import time
 
 import numpy as np
 from PIL import Image
@@ -76,7 +77,7 @@ from CamposT.roi import Roi, elegir, informe
 
 #: El HOLOGRAMA (imagen de intensidad), no un objeto. Usa barras normales o
 #: antepon r a las comillas para que \U no se lea como escape.
-RUTA = r"C:\Users\User\Desktop\Tesis\referencia\carlos\DLHM-model-main\DLHM-model-main\data\Simulated_hologram.png"
+RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\fft\z0010.000.npy"
 
 #: Longitud de onda [mm]. 633 nm se escribe 633e-6.
 LAMB = 633e-6
@@ -186,6 +187,31 @@ AJUSTAR_FORMA = True
 ROI_HOLOGRAMA = "misma"
 ROI_REFERENCIA = True
 
+#: DISPOSITIVO de calculo: "auto" (la GPU si la hay), "cpu" o "gpu".
+#:
+#: El barrido son PASOS retropropagaciones de la misma malla, o sea PASOS
+#: pares de FFT sobre el mismo array: es justo la forma de trabajo que la
+#: tarjeta acelera. Con "gpu" y sin CUDA ABORTA en vez de caer a CPU en
+#: silencio, porque un tiempo medido en el dispositivo equivocado no dice
+#: nada, y es el tipo de error que solo se descubre al comparar tablas.
+DISPOSITIVO = "auto"
+
+#: dtype de trabajo. None = complex64 en GPU, complex128 en CPU.
+#:
+#: Es la politica de CamposT.backend, y aqui pesa el doble: en la tarjeta de
+#: 4 GB de esta maquina complex64 es lo que hace que la malla quepa. Las
+#: FASES se evaluan igualmente en float64 -ver espectro_angular()-, asi que
+#: lo que baja a simple es el fasor ya acotado a modulo 1, nunca el
+#: argumento.
+DTYPE = None
+
+#: True reproduce los ejes CRUZADOS de angularSpectrum(). Hace falta en True
+#: para que comprobar_equivalencia() cierre en malla rectangular.
+EJES_CRUZADOS = True
+
+#: Filas por bloque al evaluar el kernel. Baja si la GPU se queda sin memoria.
+FILAS_POR_BLOQUE = 512
+
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -230,6 +256,177 @@ def angularSpectrum(field, z, wavelength, dx, dy, scale_factor=1):
     out = np.fft.ifftshift(out)
 
     return out
+
+
+# ------------------------------------------------------ propagador de trabajo
+#
+# indices_centrados() y espectro_angular() son COPIAS LITERALES de las de
+# scripts/retro_fft_angular.py, igual que las metricas viajan copiadas entre
+# los retro_*. La unica diferencia esta en el mensaje de comprobar_memoria(),
+# que aqui habla de ROI_HOLOGRAMA y alli de PAD. tests/test_gpu_mi_prueba.py
+# comprueba que no diverjan.
+
+def indices_centrados(n):
+    """Indices que le corresponden a fftshift(fft(...)):  ..., -1, 0, 1, ...
+
+    Es arange(n) - n/2 cuando n es PAR, y NO lo es cuando n es impar. fftshift
+    deja la componente continua en el indice n//2 en los dos casos, y
+    arange(n) - n/2 vale 0 ahi solo si n es par: con n impar la rejilla queda
+    medio paso corrida, el kernel se evalua fuera de sitio y el campo sale
+    desplazado
+
+        lamb * z * (0.5 / (delta * n)) / delta   pixeles
+
+    El fallo es MUDO: el medio paso se aplica en la ida y en la vuelta y se
+    cancela, asi que la ida y vuelta sigue saliendo a 1e-16 y ninguna prueba
+    de reversibilidad puede verlo.
+    """
+    return np.fft.fftshift(np.fft.fftfreq(n)) * n
+
+
+def espectro_angular(field, z, wavelength, dx, dy, scale_factor=1,
+                     xp=np, dtype=np.complex128, cruzados=True,
+                     filas=FILAS_POR_BLOQUE):
+    """Lo mismo que angularSpectrum(), pero cabe en la tarjeta.
+
+    Misma matematica, mismo orden de shifts, mismo tratamiento de las
+    evanescentes (se dejan decaer, no se anulan). Tres diferencias, todas de
+    ejecucion y ninguna de algoritmo:
+
+    1. El kernel NO se materializa entero. angularSpectrum() construye X e Y
+       con meshgrid y luego kernel y phase completos: sobre la malla 3000x4000
+       de este script eso son tres arrays de 192 MB solo para llegar al fasor.
+       Aqui se evalua por bloques de filas y se multiplica in situ sobre el
+       espectro, asi que el pico extra es un bloque.
+
+    2. La fase se calcula en float64 y solo el fasor -acotado a modulo 1- baja
+       a dtype. En complex64 puro, 2e5 rad de fase perderian 0.02 rad en la
+       mantisa.
+
+    3. xp es NumPy o CuPy. El cuerpo es el mismo, de modo que comparar tiempos
+       compara DISPOSITIVOS y no dos implementaciones.
+
+    cruzados=True reproduce el dfx = 1/(dx*M), dfy = 1/(dy*N) del original.
+    Con False cada eje lleva su longitud. Solo difieren en malla rectangular,
+    que es justo la de este script: mira el aviso de main().
+
+    Y una CUARTA diferencia, esta si de algoritmo: la rejilla se centra con
+    indices_centrados() y no con arange(n) - n/2, que angularSpectrum() usa y
+    que solo es correcta con n PAR. En malla par las dos coinciden bit a bit
+    -y por eso comprobar_equivalencia(), que corre en 256x256, sigue cerrando-;
+    con lado impar angularSpectrum() sale desplazado medio paso de frecuencia y
+    esta no.
+    """
+    U = xp.asarray(field, dtype=dtype)
+    M, N = U.shape
+
+    if cruzados:
+        dfx, dfy = 1 / (dx * M), 1 / (dy * N)
+    else:
+        dfx, dfy = 1 / (dx * N), 1 / (dy * M)
+
+    # (1, N) y (M, 1): la aritmetica difunde igual que con meshgrid y no
+    # materializa dos mallas completas
+    fx = (indices_centrados(N) * dfx).astype(np.float64)
+    fy = (indices_centrados(M) * dfy).astype(np.float64)
+    fx = xp.asarray(fx)[None, :]
+    fy = xp.asarray(fy)[:, None]
+
+    F = xp.fft.fftshift(U)
+    F = xp.fft.fft2(F)
+    F = xp.fft.fftshift(F)
+
+    inv_l2 = (1.0 / wavelength) ** 2
+    for i0 in range(0, M, filas):
+        i1 = min(i0 + filas, M)
+        kernel = inv_l2 - (fx**2 + fy[i0:i1]**2) + 0j
+        F[i0:i1] *= xp.exp(1j * z * scale_factor * 2 * np.pi
+                           * xp.sqrt(kernel)).astype(dtype)
+        del kernel
+
+    out = xp.fft.ifftshift(F)
+    out = xp.fft.ifft2(out)
+    return xp.fft.ifftshift(out)
+
+
+# ------------------------------------------------------------------ backend
+#
+# elegir_dispositivo, a_cpu y liberar son copias literales de las de
+# scripts/retro_fft_angular.py. sincronizar() no: esa es
+# CamposT.backend.sincronizar() sin el argumento opcional, porque aqui el xp
+# siempre se sabe. tests/test_gpu_mi_prueba.py comprueba que no diverjan.
+
+def elegir_dispositivo(preferencia="auto"):
+    """(modulo de arrays, nombre). Cae a NumPy sin ruido si no hay CUDA."""
+    hay_gpu = False
+    if cp is not None:
+        try:
+            hay_gpu = cp.cuda.runtime.getDeviceCount() > 0
+        except Exception:
+            hay_gpu = False
+    if preferencia == "gpu":
+        if not hay_gpu:
+            raise SystemExit("DISPOSITIVO = 'gpu' pero no hay CUDA disponible.")
+        return cp, "gpu"
+    if preferencia == "cpu" or not hay_gpu:
+        return np, "cpu"
+    return cp, "gpu"
+
+
+def a_cpu(a):
+    return a.get() if cp is not None and isinstance(a, cp.ndarray) else np.asarray(a)
+
+
+def liberar(xp):
+    if xp is cp:
+        cp.get_default_memory_pool().free_all_blocks()
+
+
+def sincronizar(xp):
+    """Espera a que la tarjeta termine.
+
+    CuPy encola los kernels y devuelve el control de inmediato: sin esto, un
+    perf_counter() alrededor del barrido mide el tiempo de LANZAMIENTO y no el
+    de computo, y la GPU sale ridiculamente rapida. Es obligatoria en toda
+    medida de tiempo.
+    """
+    if xp is cp:
+        cp.cuda.Stream.null.synchronize()
+
+
+def comprobar_memoria(xp, M, N, dtype):
+    """Aborta con un mensaje util en vez de con un OOM de CUDA.
+
+    Se cuentan cuatro arrays del tamano de la malla: el campo, el fftshift, la
+    salida de fft2 y el espacio de trabajo de cuFFT. El kernel no cuenta, que
+    para eso va por bloques.
+    """
+    if xp is not cp:
+        return
+    libre, _ = cp.cuda.runtime.memGetInfo()
+    hacen_falta = 4 * M * N * np.dtype(dtype).itemsize
+    if hacen_falta > 0.85 * libre:
+        raise SystemExit(
+            f"No cabe en la GPU: la malla {M}x{N} en "
+            f"{np.dtype(dtype).name} pide ~{hacen_falta / 2**30:.2f} GB y hay "
+            f"{libre / 2**30:.2f} GB libres.\nRecorta con ROI_HOLOGRAMA "
+            f"(ver ahi lo que cuesta), o usa DISPOSITIVO = 'cpu'.")
+
+
+def comprobar_equivalencia(xp, dtype, cruzados):
+    """espectro_angular() contra angularSpectrum() en una malla pequena.
+
+    Es la prueba de que acelerar no cambio el resultado. Se corre en cada
+    invocacion porque cuesta milisegundos y porque una version rapida que
+    nadie contrasta contra la lenta no vale nada.
+    """
+    rng = np.random.default_rng(0)
+    U = (rng.random((256, 256)) + 1j * rng.random((256, 256)))
+    ref = angularSpectrum(U, 7.0, LAMB, DELTA, DELTA)
+    rap = a_cpu(espectro_angular(U, 7.0, LAMB, DELTA, DELTA, xp=xp,
+                                 dtype=dtype, cruzados=cruzados))
+    return float(np.max(np.abs(rap - ref)) / np.max(np.abs(ref)))
+
 
 # ════════════════════════════════════════════════════════════════════════════
 #  3. BARRIDO CON REFERENCIA
@@ -300,10 +497,17 @@ def correlacion(a, b):
     Un mapa constante no tiene con que correlacionar: se devuelve 0 en vez de
     dividir por cero y sacar un NaN que viajaria hasta el pico del barrido.
     """
-    a = a.ravel() - a.mean()
-    b = b.ravel() - b.mean()
-    den = np.sqrt((a @ a) * (b @ b))
-    return float(a @ b / den) if den > 0 else 0.0
+    # La REDUCCION va en float64 aunque el campo venga en complex64. Sobre
+    # una malla de 3000x4000 son 1.2e7 sumandos: en float32 el error relativo
+    # acumulado es ~1e-4, del orden de lo que separa dos pasos vecinos del
+    # barrido, y el argmax se iria a un z equivocado. 96 MB de copia es barato
+    # comparado con eso. En CPU no cambia nada: ya venia en doble.
+    a = a.ravel().astype(np.float64)
+    b = b.ravel().astype(np.float64)
+    a = a - a.mean()
+    b = b - b.mean()
+    den = float(a @ a) * float(b @ b)
+    return float(a @ b) / den ** 0.5 if den > 0 else 0.0
 
 
 def _proporcion_reducida(M, N):
@@ -560,6 +764,9 @@ def main():
     # tuyos. Reconstruir con otra lambda da una z creible y equivocada.
     _comprobar_con_el_sidecar(RUTA, LAMB, DELTA)
 
+    xp, dev = elegir_dispositivo(DISPOSITIVO)
+    dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
+
     ref = np.asarray(Image.open(REFERENCIA).convert("L"), dtype=np.float64) / 255.0
     campo, img, etiqueta = campo_de_entrada(RUTA, ENTRADA)
 
@@ -610,20 +817,53 @@ def main():
         print("  malla RECTANGULAR: angularSpectrum lleva los ejes CRUZADOS, "
               "asi que esto solo cuadra\n  con hologramas hechos con esa "
               "misma funcion. Ver el docstring.")
+    print(f"  dispositivo {dev.upper()} | dtype {np.dtype(dtype).name} | "
+          f"fase en float64")
+    if dev == "gpu":
+        libre, total = cp.cuda.runtime.memGetInfo()
+        print(f"  {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}, "
+              f"{libre / 2**30:.2f} de {total / 2**30:.2f} GB libres")
+
+    comprobar_memoria(xp, M, N, dtype)
+
+    # angularSpectrum() es la REFERENCIA y no acepta CuPy: su primera linea es
+    # np.array(field). Corre siempre en CPU y complex128, y sirve para
+    # comprobar que espectro_angular -que si va en la tarjeta- calcula lo
+    # mismo. Sin esto, el barrido rapido no estaria contrastado contra nada.
+    eq = comprobar_equivalencia(xp, dtype, EJES_CRUZADOS)
+    print(f"  espectro_angular vs angularSpectrum (referencia): {eq:.2e}")
     print()
 
     curva = np.empty(len(zs))
     mejor_U, mejor = None, -1
+
+    # La referencia sube UNA vez, no una por paso: son 96 MB y el barrido la
+    # usa igual en los PASOS pasos. Bajar el campo a la CPU en cada paso solo
+    # para correlacionar seria el cuello de botella del barrido en la tarjeta.
+    ref_d = xp.asarray(ref)
+    kw = dict(xp=xp, dtype=dtype, cruzados=EJES_CRUZADOS)
+
+    sincronizar(xp)
+    t0 = time.perf_counter()
     for i, z in enumerate(zs):
-        U = angularSpectrum(campo, -z, LAMB, DELTA, DELTA)
-        curva[i] = correlacion(np.abs(U) ** 2, ref)
+        U = espectro_angular(campo, -z, LAMB, DELTA, DELTA, **kw)
+        curva[i] = correlacion(xp.abs(U) ** 2, ref_d)
         # No se acumulan los campos: 30 mallas de 3000x4000 en complex128 son
         # 5.7 GB. Se guarda solo el mejor hasta ahora, que son 192 MB.
         if mejor < 0 or curva[i] > curva[mejor]:
             mejor_U, mejor = U, i
         print(f"  z = {z:8.3f} mm   corr = {curva[i]:+.4f}")
+    sincronizar(xp)
+    t = time.perf_counter() - t0
 
-    print(f"\nenfoca en z = {zs[mejor]:.3f} mm   corr = {curva[mejor]:+.4f}")
+    # El mejor campo baja UNA vez, al final: lo que queda es dibujarlo.
+    mejor_U = a_cpu(mejor_U)
+    del ref_d
+    liberar(xp)
+
+    print(f"\n{len(zs)} pasos en {t:.2f} s "
+          f"({t / len(zs) * 1e3:.0f} ms/paso) en {dev.upper()}")
+    print(f"enfoca en z = {zs[mejor]:.3f} mm   corr = {curva[mejor]:+.4f}")
     if mejor in (0, len(zs) - 1):
         print("  AVISO: el maximo cae en un EXTREMO del barrido, que por tanto "
               "NO acota el foco.\n  Ensancha Z.")
