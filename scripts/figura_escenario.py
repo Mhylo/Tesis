@@ -51,16 +51,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from CamposT.backend import a_numpy, gpu_disponible, liberar_memoria
+from CamposT.montaje import TABLA1
 from CamposT.propagadores import mpasm
 
 #: raíz del repo, para que la salida no dependa del directorio de invocación
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
 # --- Tabla 1 del paper -------------------------------------------------------
-L0 = 5.0            # mm, ventana de entrada
-W0 = 1.0            # mm, radio de cintura
-LAMB = 632.8e-6     # mm, HeNe
-R = 300.0           # mm, radio del frente esférico (la lente de f = -300 mm)
+# Los valores viven en CamposT.montaje.TABLA1, que es la unica fuente: aqui se
+# desempaquetan con los nombres cortos que usa el resto del script.
+L0 = TABLA1.L0      # mm, ventana de entrada
+W0 = TABLA1.W0      # mm, radio de cintura
+LAMB = TABLA1.lamb  # mm, HeNe
+R = TABLA1.R        # mm, radio del frente esférico (la lente de f = -300 mm)
 
 TINTA, SUAVE, AZUL, TEJA = "#1a1a1a", "#8a8a8a", "#1f4e79", "#c1543a"
 
