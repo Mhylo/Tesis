@@ -157,10 +157,16 @@ UNIDADES: milimetros para todo.  532 nm -> 532e-6    1.85 um -> 1.85e-3
 """
 
 import pathlib
+import time
 
 import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
+
+try:
+    import cupy as cp
+except Exception:                      # sin CuPy, sin CUDA, o CuPy roto
+    cp = None
 
 from CamposT.roi import Roi, elegir, informe
 
@@ -171,7 +177,7 @@ from CamposT.roi import Roi, elegir, informe
 #: EL HOLOGRAMA. Se usa su INTENSIDAD tal cual, sin tomar la raiz: la cadena
 #: DLHM multiplica la intensidad registrada por la onda de referencia, no su
 #: amplitud. Es lo que hace reconstruction_dlhm.py.
-RUTA = r"C:\Users\User\Desktop\Tesis\referencia\carlos\DLHM-model-main\DLHM-model-main\data\Simulated_hologram.png"
+RUTA = r"C:\Users\User\Desktop\Tesis\resultados\dlhm_propio\holo.png"
 
 #: EL OBJETO, contra el que se puntua cada z del barrido.
 REFERENCIA = r"C:\Users\User\Desktop\Tesis\referencia\carlos\DLHM-model-main\DLHM-model-main\data\BenchmarkTarget.png"
@@ -195,7 +201,7 @@ PASOS = 25
 #:   "fase"        np.angle(Rec). Lo correcto para el objeto de este modelo,
 #:                 que es de FASE PURA: su |U|^2 es uniforme y no dice nada.
 #:   "intensidad"  np.abs(Rec)**2, por si el objeto absorbe.
-COMPARAR = "fase"
+COMPARAR = "intensidad"
 
 #: EL RECORTE, una ventana por imagen. Mismos cuatro valores que en
 #: mi_prueba_angular: None, True (raton sobre ESA imagen), (X0, Y0, ANCHO,
@@ -203,8 +209,8 @@ COMPARAR = "fase"
 #:
 #: AQUI CASI NUNCA QUIERES None EN EL HOLOGRAMA: sin recortar, el remuestreo
 #: pide 15 GB por paso. Lee "EL ROI NO ES UNA COMODIDAD" arriba.
-ROI_HOLOGRAMA = None
-ROI_REFERENCIA = None
+ROI_HOLOGRAMA = "misma"
+ROI_REFERENCIA = True
 
 #: Presupuesto de memoria [GB] para la malla remuestreada. Si el barrido pide
 #: mas, aborta ANTES de empezar con la tabla de recortes, en vez de morir en el
@@ -223,7 +229,41 @@ MEMORIA_MAX_GB = 4.0
 #: rejilla 3x3. El precio de None es que no cabe salvo recortando, y recortando
 #: la difraccion del borde de la ventana tapa el objeto. Ese es el callejon en
 #: el que esta este script; lee ESTADO en la cabecera.
-SOBREMUESTREO = 1
+SOBREMUESTREO = None
+
+#: Centinela para "usa la constante de arriba". No vale None, porque None YA
+#: significa algo distinto -el sobremuestreo que exige la geometria- y no vale
+#: 1 porque entonces no habria forma de pedir el otro. Existe para que
+#: reconstruir() siga leyendo la constante cuando la llama main(), y a la vez
+#: pueda fijarse desde fuera: comprobar_equivalencia() tiene que dar el mismo
+#: numero se edite lo que se edite aqui arriba.
+DE_LA_CONSTANTE = object()
+
+#: DISPOSITIVO de calculo: "auto" (la GPU si la hay), "cpu" o "gpu".
+#:
+#: LO QUE LA TARJETA ARREGLA Y LO QUE NO, que aqui no es obvio. El barrido son
+#: PASOS reconstrucciones, y cada una son dos pares de FFT sobre la malla
+#: entera: eso la GPU lo hace mucho mas rapido. Lo que NO arregla es el
+#: callejon de la cabecera: con SOBREMUESTREO = None la malla que exige la
+#: geometria es de 13312x13312, o sea 1.42 GB POR ARRAY en complex64, y la
+#: cadena necesita varios a la vez. En una tarjeta de 4 GB sigue sin caber.
+#: Lo que complex64 compra es aproximadamente el DOBLE de recorte que en CPU
+#: con complex128, no el sensor entero.
+#:
+#: Con "gpu" y sin CUDA ABORTA en vez de caer a CPU en silencio.
+DISPOSITIVO = "auto"
+
+#: dtype de trabajo. None = complex64 en GPU, complex128 en CPU.
+#:
+#: Es la politica de CamposT.backend. Las FASES se evaluan en float64 pase lo
+#: que pase: el argumento de la onda esferica es k*r, que con lambda = 532 nm
+#: y r ~ 8 mm vale ~9.4e4 rad, y en float32 eso pierde 0.006 rad de mantisa.
+#: Lo que baja a simple es el fasor ya acotado a modulo 1.
+DTYPE = None
+
+#: Filas por bloque al construir la onda esferica y el kernel. NO cambia el
+#: resultado, solo la memoria de pico.
+FILAS_POR_BLOQUE = 512
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -287,7 +327,205 @@ def angular_spectrum(A, Wx, Wy, k, z):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+#  2b. COPIA DE TRABAJO  --  la misma fisica, en la tarjeta
+# ════════════════════════════════════════════════════════════════════════════
+#
+# La seccion 2 se queda intacta porque es la REFERENCIA. Estas son las mismas
+# cuentas escritas contra xp -NumPy o CuPy- y por bloques de filas, que es lo
+# que el resto del repo hace en CamposT.backend y en los retro_*.
+#
+# comprobar_equivalencia() corre las dos cadenas sobre la misma entrada en
+# cada invocacion: si alguna vez dejan de coincidir, se ve en la consola antes
+# de mirar ningun resultado.
+
+def _fts(A, xp):
+    return xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(A)))
+
+
+def _ifts(A, xp):
+    return xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(A)))
+
+
+def fuente_puntual(N, M, z, x0, y0, lamb, dx, xp=np, dtype=np.complex128,
+                   filas=FILAS_POR_BLOQUE):
+    """Lo mismo que point_src(), pero cabe en la tarjeta. -> (N, M).
+
+    Dos diferencias, las dos de ejecucion:
+
+    1. No se materializan las dos mallas de meshgrid. Los ejes van sueltos y
+       la aritmetica difunde igual, asi que el pico extra es un bloque de
+       filas en vez de dos arrays completos.
+
+    2. La fase k*r se evalua en float64 y solo el resultado baja a dtype. Con
+       lambda = 532 nm y r ~ 8 mm, k*r vale ~9.4e4 rad.
+
+    La rejilla es la misma hasta el ultimo bit: arange(n) - n/2 es exactamente
+    arange(-n/2, n/2), tambien con n impar.
+
+    OJO AL 1/r, que no es invariante de escala: en milimetros la salida vale
+    1000 veces la de metros, y como Rec = U*conj(U0) el factor entra al
+    cuadrado. Es global y real, no afecta a ninguna correlacion. Esta anotado
+    en la cabecera del modulo.
+    """
+    dy = dx
+    k = 2 * np.pi / lamb
+    m = (xp.arange(M, dtype=np.float64) - M / 2) * dx - x0     # a lo ancho
+    n = (xp.arange(N, dtype=np.float64) - N / 2) * dy - y0     # a lo alto
+    out = xp.empty((N, M), dtype=dtype)
+    for i0 in range(0, N, filas):
+        i1 = min(i0 + filas, N)
+        r = xp.sqrt(z ** 2 + m[None, :] ** 2 + n[i0:i1, None] ** 2)
+        out[i0:i1] = (xp.exp(1j * k * r) / r).astype(dtype)
+        del r
+    return out
+
+
+def espectro_angular(A, Wx, Wy, k, z, xp=np, dtype=np.complex128,
+                     filas=FILAS_POR_BLOQUE):
+    """Lo mismo que angular_spectrum(), pero cabe en la tarjeta.
+
+    Mismo signo en el exponente -negativo, que es el de esta cadena-, mismos
+    ejes EN SU SITIO (dfx = 1/Wx), mismo orden de shifts. Dos diferencias, las
+    dos de ejecucion:
+
+    1. E no se materializa entera: se evalua por bloques de filas y se
+       multiplica in situ sobre el espectro.
+
+    2. La fase va en float64 y solo el fasor baja a dtype.
+
+    LAS EVANESCENTES NO SE TOCAN, igual que en el original: si el argumento de
+    la raiz se hiciera negativo saldria nan y lo veria todo el mundo. En esta
+    geometria no pasa -k = 11809 rad/mm y la frecuencia mas alta que la malla
+    describe son 2*pi*1200 = 7540- pero es una propiedad de estos parametros,
+    no de la funcion. Se deja como esta porque el trato de la copia de trabajo
+    es no cambiar el algoritmo.
+    """
+    U = xp.asarray(A, dtype=dtype)
+    Q, P = U.shape
+    dfx, dfy = 1 / Wx, 1 / Wy
+
+    # linspace y no arange: es la rejilla del original bit a bit
+    fx = np.linspace(-P / 2 * dfx, (P / 2 - 1) * dfx, P)
+    fy = np.linspace(-Q / 2 * dfy, (Q / 2 - 1) * dfy, Q)
+    fx = xp.asarray(fx, dtype=np.float64)[None, :]
+    fy = xp.asarray(fy, dtype=np.float64)[:, None]
+
+    F = _fts(U, xp)
+    dospi = 2 * np.pi
+    for i0 in range(0, Q, filas):
+        i1 = min(i0 + filas, Q)
+        raiz = xp.sqrt(k ** 2 - (dospi * fx) ** 2 - (dospi * fy[i0:i1]) ** 2)
+        F[i0:i1] *= xp.exp(-1j * z * raiz).astype(dtype)
+        del raiz
+    return _ifts(F, xp)
+
+
+# ------------------------------------------------------------------ backend
+#
+# elegir_dispositivo, a_cpu y liberar son copias literales de las de
+# scripts/retro_fft_angular.py. sincronizar() no: esa es
+# CamposT.backend.sincronizar() sin el argumento opcional, porque aqui el xp
+# siempre se sabe. tests/test_gpu_mi_prueba.py comprueba que no diverjan.
+
+def elegir_dispositivo(preferencia="auto"):
+    """(modulo de arrays, nombre). Cae a NumPy sin ruido si no hay CUDA."""
+    hay_gpu = False
+    if cp is not None:
+        try:
+            hay_gpu = cp.cuda.runtime.getDeviceCount() > 0
+        except Exception:
+            hay_gpu = False
+    if preferencia == "gpu":
+        if not hay_gpu:
+            raise SystemExit("DISPOSITIVO = 'gpu' pero no hay CUDA disponible.")
+        return cp, "gpu"
+    if preferencia == "cpu" or not hay_gpu:
+        return np, "cpu"
+    return cp, "gpu"
+
+
+def a_cpu(a):
+    return a.get() if cp is not None and isinstance(a, cp.ndarray) else np.asarray(a)
+
+
+def liberar(xp):
+    if xp is cp:
+        cp.get_default_memory_pool().free_all_blocks()
+
+
+def sincronizar(xp):
+    """Espera a que la tarjeta termine.
+
+    CuPy encola los kernels y devuelve el control de inmediato: sin esto, un
+    perf_counter() alrededor del barrido mide el tiempo de LANZAMIENTO y no el
+    de computo, y la GPU sale ridiculamente rapida. Es obligatoria en toda
+    medida de tiempo.
+    """
+    if xp is cp:
+        cp.cuda.Stream.null.synchronize()
+
+
+def _reconstruir_referencia(holo, z, lamb, delta, L_fuente, sobremuestreo=1):
+    """La cadena con las funciones INTACTAS de la seccion 2. Solo CPU.
+
+    point_src, angular_spectrum y resize tal como vienen de dlhm.py, sin una
+    linea cambiada -incluido el `referencia * np.ones((N, M))` que la copia de
+    trabajo se ahorra-. Existe para que comprobar_equivalencia() tenga contra
+    que medir.
+
+    Lleva las DOS ramas de sobremuestreo, no solo la de 1: si solo tuviera una,
+    la comparacion valdria en una configuracion y en la otra compararia mallas
+    de distinto tamano. Que es exactamente el fallo que motivo este argumento.
+    """
+    Q, P = holo.shape
+    Wcx, Wcy = P * delta, Q * delta
+    k = 2 * np.pi / lamb
+    if sobremuestreo is None:
+        N, M = malla_remuestreada(P, Q, z, lamb, delta)
+        h = resize(holo.astype(complex), M, N)
+    else:
+        N, M = Q, P
+        h = holo.astype(complex)
+    referencia = point_src(N, M, L_fuente, 0, 0, lamb, (delta * P) / N)
+    U = angular_spectrum(referencia * h, Wcx, Wcy, k, L_fuente - z)
+    U0 = angular_spectrum(referencia * np.ones((N, M)), Wcx, Wcy, k,
+                          L_fuente - z)
+    return U * np.conj(U0)
+
+
+def comprobar_equivalencia(xp, dtype, sobremuestreo=1):
+    """reconstruir() contra la cadena intacta de la seccion 2.
+
+    Es la prueba de que acelerar no cambio el resultado. Se corre en cada
+    invocacion porque cuesta milisegundos y porque una version rapida que
+    nadie contrasta contra la lenta no vale nada.
+
+    Se mide sobre |Rec| y no sobre Rec entero por lo que dice la cabecera del
+    modulo: el 1/r de point_src arrastra un factor global -(1e-3)^2 al pasar
+    de metros a milimetros, y al cuadrado por Rec = U*conj(U0)- que es real y
+    no afecta a nada, pero que un error relativo sobre el complejo si acusaria
+    si algun dia alguien cambia de unidades. El error relativo sobre el modulo
+    es la cantidad que de verdad importa aqui.
+
+    Y el sobremuestreo se FIJA en 1 por defecto, en vez de leer la constante:
+    lo que esta funcion tiene que responder es "el dispositivo cambia el
+    resultado?", y esa respuesta no puede depender de que estes probando la
+    malla remuestreada o no. La otra rama se comprueba igual pasando None, y
+    tests/test_gpu_mi_prueba.py pasa por las dos.
+    """
+    rng = np.random.default_rng(0)
+    holo = rng.random((256, 256))
+    ref = _reconstruir_referencia(holo, 1.875, LAMB, DELTA, L,
+                                  sobremuestreo=sobremuestreo)
+    rap = a_cpu(reconstruir(holo, 1.875, LAMB, DELTA, L, xp=xp, dtype=dtype,
+                            sobremuestreo=sobremuestreo))
+    return float(np.max(np.abs(np.abs(rap) - np.abs(ref)))
+                 / np.max(np.abs(ref)))
+
+
+# ════════════════════════════════════════════════════════════════════════════
 #  3. RECONSTRUCCION Y BARRIDO
+# ════════════════════════════════════════════════════════════════════════════
 # ════════════════════════════════════════════════════════════════════════════
 
 def malla_remuestreada(lado_x, lado_y, z, lamb, delta):
@@ -309,22 +547,43 @@ def malla_remuestreada(lado_x, lado_y, z, lamb, delta):
     return int(lado_y * of), int(lado_x * of)
 
 
-def comprobar_memoria(holo, zs, lamb, delta, tope_gb):
+def comprobar_memoria(holo, zs, lamb, delta, tope_gb, xp=np,
+                      dtype=np.complex128):
     """Aborta ANTES del barrido si la malla remuestreada no cabe.
 
     Sin esto, el primer paso pide la memoria que pida y muere con un
     MemoryError que no dice que hacer. La tabla dice exactamente cuanto hay que
     recortar, que es la unica palanca que mueve este numero.
+
+    EL TOPE NO ES EL MISMO EN LOS DOS DISPOSITIVOS. En CPU manda
+    MEMORIA_MAX_GB, que es una cifra que pones tu. En GPU manda la VRAM libre
+    de verdad, que es un hecho: se toma la menor de las dos, porque de nada
+    sirve autorizar 4 GB en una tarjeta que tiene 3.2 libres.
+
+    Y el tamano depende del dtype: en complex64 la misma malla ocupa la mitad,
+    que es lo que hace que en la tarjeta quepa aproximadamente el doble de
+    recorte que en CPU.
     """
     Q, P = holo.shape
+    itemsize = np.dtype(dtype).itemsize
+    if xp is cp:
+        libre, _ = cp.cuda.runtime.memGetInfo()
+        tope_gb = min(tope_gb, 0.85 * libre / 2 ** 30)
     # el peor caso es la z mas chica: s crece con z, y la malla es Wx/s
     if SOBREMUESTREO is not None:
+        gb = 6 * Q * P * itemsize / 2 ** 30
         print(f"  SOBREMUESTREO = {SOBREMUESTREO}: la malla se queda en "
-              f"{Q}x{P} ({Q * P / 1e6:.1f} Mpx). Alia, ver ESTADO.")
+              f"{Q}x{P} ({Q * P / 1e6:.1f} Mpx, ~{gb:.2f} GB de pico). "
+              f"Alia, ver ESTADO.")
+        if gb > tope_gb:
+            raise SystemExit(
+                f"Ni siquiera sin remuestrear cabe: {gb:.2f} GB de pico "
+                f"contra un tope de {tope_gb:.2f} GB.\nRecorta con "
+                f"ROI_HOLOGRAMA, o usa DISPOSITIVO = 'cpu'.")
         return
     N, M = malla_remuestreada(P, Q, min(zs), lamb, delta)
     # seis mallas complejas de pico: h, ref, dos productos y dos espectros
-    gb = 6 * N * M * 16 / 2 ** 30
+    gb = 6 * N * M * itemsize / 2 ** 30
     if gb <= tope_gb:
         print(f"  malla remuestreada: hasta {N}x{M} ({N * M / 1e6:.1f} Mpx, "
               f"~{gb:.2f} GB de pico)")
@@ -334,17 +593,20 @@ def comprobar_memoria(holo, zs, lamb, delta, tope_gb):
         if lado > min(P, Q):
             continue
         n, m = malla_remuestreada(lado, lado, min(zs), lamb, delta)
-        lineas.append(f"  {lado:6d}   {n:5d}x{m:<5d}   {6 * n * m * 16 / 2**30:5.2f} GB")
+        lineas.append(f"  {lado:6d}   {n:5d}x{m:<5d}   "
+                      f"{6 * n * m * itemsize / 2**30:5.2f} GB")
     raise SystemExit(
         f"El remuestreo por geometria pide una malla de {N}x{M} "
         f"({gb:.1f} GB de pico) y el tope es {tope_gb} GB.\n\n"
         f"Eso depende del ANCHO FISICO del sensor, no del paso de pixel: "
         f"submuestrear no ayuda,\nhay que RECORTAR. Con ROI_HOLOGRAMA:\n\n"
         + "\n".join(lineas)
-        + f"\n\nO sube MEMORIA_MAX_GB si sabes que tu maquina lo aguanta.")
+        + f"\n\nO sube MEMORIA_MAX_GB si sabes que tu maquina lo aguanta "
+          f"(en GPU manda la VRAM libre,\nque MEMORIA_MAX_GB no puede subir).")
 
 
-def reconstruir(holo, z, lamb, delta, L_fuente):
+def reconstruir(holo, z, lamb, delta, L_fuente, xp=np,
+                dtype=np.complex128, sobremuestreo=DE_LA_CONSTANTE):
     """Un holograma DLHM -> el campo reconstruido en el plano de la muestra.
 
     Es la cadena de reconstruction_dlhm.py: remuestrear por geometria,
@@ -353,23 +615,49 @@ def reconstruir(holo, z, lamb, delta, L_fuente):
     Rec = U * conj(U0) es lo que quita la onda esferica del resultado. Sin ese
     paso, la fase del objeto queda montada sobre la del frente divergente y no
     se parece a nada.
+
+    Corre en NumPy o en CuPy segun xp. Dos avisos sobre eso:
+
+    EL REMUESTREO SE QUEDA EN CPU. resize() es cv.resize, que no acepta arrays
+    de CuPy, asi que con SOBREMUESTREO = None la interpolacion se hace en la
+    CPU y solo despues sube la malla ya remuestreada. Es una sola vez por
+    paso, y es la parte barata: lo caro son las cuatro FFT que vienen detras.
+
+    NO SE MULTIPLICA POR ones((N, M)). El original escribe
+    `referencia * np.ones((N, M))` para el campo de referencia, que es la
+    referencia sin mas: multiplicar por unos no cambia un numero y si
+    materializa una malla entera de mas. Es la unica linea que esta copia no
+    reproduce literalmente, y comprobar_equivalencia() fija que el resultado
+    no se mueve.
+
+    sobremuestreo vale por defecto la constante SOBREMUESTREO, que es lo que
+    quiere main(). Se puede fijar por argumento, y comprobar_equivalencia() lo
+    hace: si leyera la constante, su resultado cambiaria cada vez que alguien
+    la edita, y una comprobacion que depende de lo que estas probando no
+    comprueba nada.
     """
+    if sobremuestreo is DE_LA_CONSTANTE:
+        sobremuestreo = SOBREMUESTREO
     Q, P = holo.shape
     Wcx, Wcy = P * delta, Q * delta
     k = 2 * np.pi / lamb
 
-    if SOBREMUESTREO is None:
+    if sobremuestreo is None:
         N, M = malla_remuestreada(P, Q, z, lamb, delta)
-        h = resize(holo.astype(complex), M, N)
+        h = resize(holo.astype(complex), M, N)      # cv.resize: siempre CPU
     else:
         N, M = Q, P
-        h = holo.astype(complex)
+        h = holo
 
-    referencia = point_src(N, M, L_fuente, 0, 0, lamb, (delta * P) / N)
-    U = angular_spectrum(referencia * h, Wcx, Wcy, k, L_fuente - z)
-    U0 = angular_spectrum(referencia * np.ones((N, M)), Wcx, Wcy, k,
-                          L_fuente - z)
-    return U * np.conj(U0)
+    kw = dict(xp=xp, dtype=dtype)
+    h = xp.asarray(h, dtype=dtype)
+    referencia = fuente_puntual(N, M, L_fuente, 0, 0, lamb, (delta * P) / N,
+                                **kw)
+    U = espectro_angular(referencia * h, Wcx, Wcy, k, L_fuente - z, **kw)
+    del h
+    U0 = espectro_angular(referencia, Wcx, Wcy, k, L_fuente - z, **kw)
+    del referencia
+    return U * xp.conj(U0)
 
 
 def referencia_a_escala(ref, mag, forma):
@@ -399,10 +687,17 @@ def correlacion(a, b):
     el brillo absoluto ni el cero de la fase significan nada. Un mapa constante
     devuelve 0 en vez de un NaN que viajaria hasta el pico del barrido.
     """
-    a = a.ravel() - a.mean()
-    b = b.ravel() - b.mean()
-    den = np.sqrt((a @ a) * (b @ b))
-    return float(a @ b / den) if den > 0 else 0.0
+    # La REDUCCION va en float64 aunque el campo venga en complex64. Sobre
+    # una malla de 3000x4000 son 1.2e7 sumandos: en float32 el error relativo
+    # acumulado es ~1e-4, del orden de lo que separa dos pasos vecinos del
+    # barrido, y el argmax se iria a un z equivocado. 96 MB de copia es barato
+    # comparado con eso. En CPU no cambia nada: ya venia en doble.
+    a = a.ravel().astype(np.float64)
+    b = b.ravel().astype(np.float64)
+    a = a - a.mean()
+    b = b - b.mean()
+    den = float(a @ a) * float(b @ b)
+    return float(a @ b) / den ** 0.5 if den > 0 else 0.0
 
 
 def observable(Rec, comparar):
@@ -452,6 +747,9 @@ def main():
     holo = holo.astype(np.float64) / 255.0
     ref = obj.astype(np.float64) / 255.0
 
+    xp, dev = elegir_dispositivo(DISPOSITIVO)
+    dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
+
     z0, z1 = float(Z[0]), float(Z[1])
     if min(z0, z1) <= 0:
         raise SystemExit(f"Z = {Z}: la distancia fuente-muestra es POSITIVA.")
@@ -493,27 +791,55 @@ def main():
           f"(M = L/z de {L / zs[-1]:.2f} a {L / zs[0]:.2f})")
     if roi_h is not None:
         print(informe(roi_h, forma_original, zs, LAMB, DELTA))
-    comprobar_memoria(holo, zs, LAMB, DELTA, MEMORIA_MAX_GB)
+    print(f"  dispositivo {dev.upper()} | dtype {np.dtype(dtype).name} | "
+          f"fase en float64")
+    if dev == "gpu":
+        libre, total = cp.cuda.runtime.memGetInfo()
+        print(f"  {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}, "
+              f"{libre / 2**30:.2f} de {total / 2**30:.2f} GB libres")
+    comprobar_memoria(holo, zs, LAMB, DELTA, MEMORIA_MAX_GB, xp, dtype)
+
+    eq = comprobar_equivalencia(xp, dtype)
+    print(f"  reconstruir() vs la cadena intacta de dlhm.py: {eq:.2e}")
     print()
 
     # --- barrido ----------------------------------------------------------
     curva = np.empty(len(zs))
     mejor_Rec, mejor_ref, mejor = None, None, -1
+
+    sincronizar(xp)
+    t0 = time.perf_counter()
     for i, z in enumerate(zs):
-        Rec = reconstruir(holo, z, LAMB, DELTA, L)
+        Rec = reconstruir(holo, z, LAMB, DELTA, L, xp=xp, dtype=dtype)
         obs = observable(Rec, COMPARAR)
+        del Rec
         # La referencia se reescala EN CADA PASO: mover z mueve M = L/z, o sea
         # el foco y la escala a la vez. Asi la correlacion solo sube cuando
         # coinciden las dos.
+        #
+        # El reescalado es cv.resize, o sea CPU, y la escala cambia en cada
+        # paso: no hay nada que subir una sola vez. Lo que sube es el
+        # resultado, que es del tamano de la reconstruccion.
         r_esc = referencia_a_escala(ref, L / z, obs.shape)
-        curva[i] = correlacion(obs, r_esc)
+        curva[i] = correlacion(obs, xp.asarray(r_esc))
         # No se acumulan las reconstrucciones: son mallas de varios miles de
         # lado. Se guarda solo la mejor hasta ahora.
         if mejor < 0 or abs(curva[i]) > abs(curva[mejor]):
             mejor_Rec, mejor_ref, mejor = obs, r_esc, i
+        elif obs is not mejor_Rec:
+            del obs
         print(f"  z = {z:6.3f} mm   M = {L / z:5.2f}   corr = {curva[i]:+.4f}")
+    sincronizar(xp)
+    t = time.perf_counter() - t0
 
-    print(f"\nenfoca en z = {zs[mejor]:.3f} mm   M = {L / zs[mejor]:.2f}   "
+    # La mejor reconstruccion baja UNA vez, al final: lo que queda es
+    # dibujarla. mejor_ref nunca subio, es de cv.resize.
+    mejor_Rec = a_cpu(mejor_Rec)
+    liberar(xp)
+
+    print(f"\n{len(zs)} pasos en {t:.2f} s "
+          f"({t / len(zs) * 1e3:.0f} ms/paso) en {dev.upper()}")
+    print(f"enfoca en z = {zs[mejor]:.3f} mm   M = {L / zs[mejor]:.2f}   "
           f"corr = {curva[mejor]:+.4f}")
     if curva[mejor] < 0:
         print("  (la correlacion es NEGATIVA y eso es lo esperado: el objeto "
