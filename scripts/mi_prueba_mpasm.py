@@ -77,7 +77,7 @@ from CamposT.roi import Roi, elegir, informe
 
 #: El HOLOGRAMA (imagen de intensidad), no un objeto. Usa barras normales o
 #: antepon r a las comillas para que \U no se lea como escape.
-RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\fft\z0010.000.npy"
+RUTA = r"C:\Users\User\Desktop\Tesis\resultados\hologramas\BenchmarkTarget\blas\z0200.000.npy"
 
 #: Longitud de onda [mm]. 633 nm se escribe 633e-6.
 LAMB = 633e-6
@@ -103,31 +103,39 @@ ENTRADA = "intensidad"
 #: Barrido de distancias holograma <-> objeto [mm], POSITIVAS: el menos lo pone
 #: el barrido. Para una sola distancia, pon los dos extremos iguales y PASOS = 1.
 #:
-#: EL PASO IMPORTA MAS DE LO QUE PARECE, porque el foco es AGUDO. Medido sobre
-#: el holograma que trae RUTA por defecto, desde su .npy:
+#: LO AGUDO QUE ES EL FOCO DEPENDE DE z, y mucho. Medido el 08/09 con MPASM
+#: sobre blas/z0200.000.npy, que es un holograma que este script SI puede
+#: deshacer porque lleva los ejes en su sitio (ver EJES_CRUZADOS):
 #:
-#:      z [mm]    9.80    9.90   10.00   10.10   10.20
-#:      corr     0.8188  0.9648  1.0000  0.9648  0.8188
+#:      z [mm]  199.80  199.90  200.00  200.10  200.20
+#:      corr    0.9103  0.9125  0.9132  0.9124  0.9101
 #:
-#: o sea que equivocarse 0.2 mm cuesta 18 puntos de correlacion.
+#: El pico cae donde debe, en 200.00, pero equivocarse 0.2 mm cuesta solo
+#: 0.003: a esa distancia el foco es PLANO, y el argmax de una curva asi es
+#: ruido. Que no llegue a 1.0000 es lo que explica la cabecera -el 25 % de
+#: energia que MPASM tira fuera de su ventana de salida-, no un desenfoque.
 #:
-#: Con (5.0, 20.0) y 30 pasos el paso es 0.517 mm, y esa rejilla NI SIQUIERA
-#: muestrea 10.000: cae en 9.655 y en 10.172. Por eso el barrido reporta 0.9418
-#: y no 1.0000 aunque el archivo lleve la fase intacta. No es que no enfoque:
-#: es que pasa de largo por encima del foco.
+#: POR QUE RUTA ES EL .npy Y NO EL .png DE AL LADO. Medido el 20/09, misma
+#: tabla y mismo holograma, leyendo la IMAGEN en vez del campo:
 #:
-#: ASI QUE VA EN DOS PASADAS:
+#:      z [mm]  199.80  199.90  200.00  200.10  200.20
+#:      corr    0.6717  0.6729  0.6737  0.6742  0.6744
 #:
-#:   1. esta, ancha, para localizar la zona.
-#:   2. una estrecha alrededor del pico que salga. Para este holograma,
-#:      Z = (9.5, 10.5) con PASOS = 21 da un paso de 0.05 mm y SI contiene
-#:      10.000 exacto.
+#: ahi NO hay pico: la curva sigue subiendo en 200.20. Sin la fase la gemela
+#: pesa tanto como la imagen real y el foco deja de ser un maximo. Un barrido
+#: grueso de 0.5 mm sobre ese .png devuelve 200.000 de todos modos, pero por
+#: la rejilla, no porque haya medido el foco.
 #:
-#: Subir PASOS en la ancha no es la salida: cada paso son ~1.6 s sobre esta
-#: malla de 3000x4000, asi que la pasada ancha con 300 pasos serian 8 minutos
-#: para lo que la estrecha resuelve en 35 segundos.
-Z = (5.0, 20.0)
-PASOS = 30
+#: OJO CON LA TABLA QUE HABIA AQUI. Hasta el 08/09 esto llevaba una copiada de
+#: mi_prueba_angular.py que prometia 1.0000 en z = 10.00 sobre
+#: fft/z0010.000.npy. Ese 1.0000 es de ANGULAR: MPASM sobre ese mismo holograma
+#: da 0.8018, porque lo escribio un propagador de ejes CRUZADOS y en malla
+#: rectangular esa es otra transformada. Si cambias de holograma, vuelve a
+#: medir la tabla: no la copies.
+#:
+#: Cada paso son ~1.7 s en GPU sobre esta malla de 3000x4000.
+Z = (195.0, 205.0)
+PASOS = 21
 
 #: QUE HACER SI LA REFERENCIA Y EL HOLOGRAMA NO TIENEN LA MISMA FORMA.
 #:
@@ -165,6 +173,18 @@ KF = None
 #: Filas por bloque al evaluar los fasores. NO cambia el resultado, solo la
 #: memoria de pico.
 FILAS_POR_BLOQUE = 512
+
+#: La convencion de ejes de ESTE script, para que el sidecar pueda compararla.
+#:
+#: mpasm_bloques construye la rejilla de frecuencias con cada eje a SU longitud.
+#: angularSpectrum de pyDHM los CRUZA -dfx del numero de filas, dfy del de
+#: columnas- y por eso mi_prueba_angular.py lo declara True.
+#:
+#: En malla CUADRADA las dos son la misma rejilla y esto da igual. En
+#: RECTANGULAR son dos transformadas distintas, y reconstruir con la que no es
+#: no falla: devuelve un campo plausible con la correlacion hundida. Medido
+#: sobre 3000x4000: 1.0000 con la convencion correcta, 0.8018 con la otra.
+EJES_CRUZADOS = False
 
 #: EL RECORTE, una ventana por imagen. Las dos aceptan los mismos valores:
 #:
@@ -287,8 +307,11 @@ def mpasm_bloques(field, z, lamb, delta, s=1, Kf=None, r=1, mag=1.0,
                   xp=np, dtype=np.complex128, filas=FILAS_POR_BLOQUE):
     """Lo mismo que propagacion_original(), pero cabe en la tarjeta.
 
-    Devuelve (campo, Kf_usado). Tres diferencias, todas de ejecucion y ninguna
-    de algoritmo:
+    Devuelve (campo, Kf_usado). Kf va POR EJE, igual que en
+    CamposT.propagadores.mpasm(): escalar si los dos coinciden -malla
+    cuadrada- y pareja (Kfy, Kfx) si no. El parametro Kf acepta las dos formas.
+
+    Tres diferencias, todas de ejecucion y ninguna de algoritmo:
 
     1. Los fasores se construyen por bloques de filas y la transferencia se
        aplica in situ sobre el espectro, sin materializar H entera ni el
@@ -306,20 +329,28 @@ def mpasm_bloques(field, z, lamb, delta, s=1, Kf=None, r=1, mag=1.0,
     U = xp.asarray(field, dtype=dtype)
     M, N = U.shape
     Ms, Ns = s * M, s * N
+    # Kf POR EJE. Va como ~1/sqrt(N), asi que el eje corto pide mas compresion
+    # que el largo. Antes se usaba min() de los dos -el del eje LARGO- en ambos,
+    # y el eje corto se aliasaba sin avisar (tests/test_propagadores.py,
+    # test_kf_por_eje_evita_el_aliasing_del_eje_corto: RMS 1.3e-2 frente a
+    # 4.8e-4).
     if Kf is None:
-        Kf = min(kf_paper(M, delta, lamb, z, s), kf_paper(N, delta, lamb, z, s))
-    Kf = float(Kf)
-    comprobar_ventana(r, mag, s, Kf)
+        Kfy, Kfx = kf_paper(M, delta, lamb, z, s), kf_paper(N, delta, lamb, z, s)
+    elif isinstance(Kf, (tuple, list)):
+        Kfy, Kfx = (float(v) for v in Kf)
+    else:
+        Kfy = Kfx = float(Kf)
+    comprobar_ventana(r, mag, s, min(Kfy, Kfx))
 
     # coordenadas en float64: son la malla, no datos de campo
     x = (np.arange(N) - N / 2) * delta
     y = (np.arange(M) - M / 2) * delta
-    fx = (np.arange(Ns) - Ns / 2) / (s * delta * N) / Kf
-    fy = (np.arange(Ms) - Ms / 2) / (s * delta * M) / Kf
+    fx = (np.arange(Ns) - Ns / 2) / (s * delta * N) / Kfx
+    fy = (np.arange(Ms) - Ms / 2) / (s * delta * M) / Kfy
 
     Mx = fasores(x, fx, -1, xp, dtype, filas)                 # (N, Ns)
     My = fasores(fy, y, -1, xp, dtype, filas)                 # (Ms, M)
-    F = ((My @ U @ Mx) / float(s**2 * M * N * Kf**2)).astype(dtype, copy=False)
+    F = ((My @ U @ Mx) / float(s**2 * M * N * Kfx * Kfy)).astype(dtype, copy=False)
     del Mx, My
 
     # H por bloques de filas, in situ. Las evanescentes se anulan: dejarlas
@@ -341,7 +372,7 @@ def mpasm_bloques(field, z, lamb, delta, s=1, Kf=None, r=1, mag=1.0,
     My1 = fasores(y1, fy, +1, xp, dtype, filas)               # (rM, Ms)
     out = My1 @ F @ Mx1
     del Mx1, My1, F
-    return out, Kf
+    return out, (Kfy if Kfy == Kfx else (Kfy, Kfx))
 
 # ------------------------------------------------------------------ backend
 #
@@ -567,17 +598,32 @@ def _sidecar(ruta):
     return datos
 
 
-def _comprobar_con_el_sidecar(ruta, lamb, delta):
-    """Si el holograma trae .txt, su lambda y su delta tienen que ser los tuyos.
+def _comprobar_con_el_sidecar(ruta, lamb, delta, cruzados=EJES_CRUZADOS):
+    """Si el holograma trae .txt, sus parametros tienen que ser los tuyos.
 
     Hoy nada impide reconstruir un holograma de 633 nm con LAMB = 532e-6: el
     barrido devolveria una z perfectamente creible y equivocada, porque lambda
     entra en la fase del propagador. Cuando el archivo DICE con que se hizo, no
     hay ninguna razon para adivinarlo.
 
-    Los hologramas que escribe scripts/retro_fft_angular.py traen ese .txt. Los
-    de terceros no, y por eso esta guarda no puede ser la unica: ver el aviso
-    de _ajustar_forma().
+    Y LA CONVENCION DE EJES, que es la que muerde mas callada. angularSpectrum
+    de pyDHM construye la rejilla con dfx del numero de FILAS y dfy del de
+    COLUMNAS -los ejes CRUZADOS-; espectro_angular_bl y mpasm_bloques los
+    llevan cada uno a su longitud. En malla CUADRADA las dos son la misma
+    rejilla y da igual; en RECTANGULAR son dos transformadas distintas y la
+    vuelta NO deshace la ida. Medido sobre el holograma 3000x4000 de
+    resultados/hologramas/BenchmarkTarget/fft/: la correlacion en el foco cae
+    de 1.0000, con la convencion que lo escribio, a 0.8018 con la otra. No
+    lanza, no avisa: devuelve un campo plausible y un barrido que no enfoca.
+
+    Si el .txt no trae EJES_CRUZADOS se asume False, que es lo que escriben
+    retro_blas y retro_mpasm; solo retro_fft_angular cruza los ejes y anota la
+    clave. Y si no trae `malla` se asume que NO es cuadrada, o sea que se
+    comprueba: preferimos la parada de mas a la reconstruccion muda.
+
+    Los hologramas que escriben los retro_*.py traen ese .txt. Los de terceros
+    no, y por eso esta guarda no puede ser la unica: ver el aviso de
+    _ajustar_forma().
     """
     datos = _sidecar(ruta)
     if datos is None:
@@ -594,6 +640,26 @@ def _comprobar_con_el_sidecar(ruta, lamb, delta):
             + "\n\nCon otra lambda o otro delta el barrido devuelve una z "
               "creible y equivocada,\nporque las dos entran en la fase del "
               "propagador. Corrige las constantes.")
+
+    suyos = str(datos.get("EJES_CRUZADOS", "False")).strip().lower() == "true"
+    lados = str(datos.get("malla", "")).lower().split("x")
+    cuadrada = len(lados) == 2 and lados[0].strip() == lados[1].strip()
+    if suyos != bool(cruzados) and not cuadrada:
+        raise SystemExit(
+            f"El .txt dice que el holograma se hizo con los ejes "
+            f"{'CRUZADOS' if suyos else 'EN SU SITIO'},\ny este script los "
+            f"lleva {'CRUZADOS' if cruzados else 'EN SU SITIO'}, sobre una "
+            f"malla {datos.get('malla', 'de forma desconocida')} que no es "
+            f"cuadrada.\n\nEn malla cuadrada las dos convenciones son la "
+            f"misma rejilla y esto no saltaria. En\nrectangular son dos "
+            f"transformadas distintas: la vuelta no deshace la ida, y el\n"
+            f"barrido no enfoca. Medido sobre 3000x4000, la correlacion en el "
+            f"foco cae de\n1.0000 a 0.8018 -y no falla, que es lo peor-.\n\n"
+            f"Lo escribio: {datos.get('propagador', 'no consta')}\n\n"
+            f"Opciones:\n"
+            f"  - reconstruyelo con el script que lleva SU misma convencion\n"
+            f"  - o dale un holograma escrito con la de este\n"
+            f"  - o pon EJES_CRUZADOS = {suyos} aqui, si sabes lo que haces")
 
 
 def _recorte_centrado(a, M, N):
@@ -763,10 +829,14 @@ def main():
           f"delta {DELTA * 1e3:.3f} um")
     print(f"  {len(zs)} distancias de {zs[0]:.3f} a {zs[-1]:.3f} mm")
     if M != N:
-        print("  malla RECTANGULAR, y aqui eso VALE: mpasm_bloques lleva "
-              "cada eje con SU\n  longitud y calcula Kf POR EJE, quedandose "
-              "con el menor de los dos. La guarda\n  de proporcion que exige "
-              "mi_prueba_angular.py no hace falta en este script.")
+        print("  malla RECTANGULAR. mpasm_bloques lleva cada eje con SU "
+              "longitud y calcula Kf\n  POR EJE, cada eje con el suyo, "
+              "asi que la guarda de proporcion\n  de "
+              "mi_prueba_angular.py no hace falta.\n"
+              "  PERO POR ESO MISMO no puede deshacer un holograma hecho con "
+              "los ejes CRUZADOS:\n  en malla rectangular son dos "
+              "transformadas distintas. Su .txt lo dice, y\n  "
+              "_comprobar_con_el_sidecar() lo comprueba.")
     print(f"  dispositivo {dev.upper()} | dtype {np.dtype(dtype).name} | "
           f"fase en float64")
     print(f"  S = {S}: matriz espectral {S * M}x{S * N}, "

@@ -92,29 +92,25 @@ ENTRADA = "intensidad"
 #: Barrido de distancias holograma <-> objeto [mm], POSITIVAS: el menos lo pone
 #: el barrido. Para una sola distancia, pon los dos extremos iguales y PASOS = 1.
 #:
-#: EL PASO IMPORTA MAS DE LO QUE PARECE, porque el foco es AGUDO. Medido sobre
-#: el holograma que trae RUTA por defecto, desde su .npy:
+#: LO AGUDO QUE ES EL FOCO DEPENDE DE z, y mucho. Medido el 08/09 sobre el
+#: holograma que trae RUTA por defecto -blas/z0200.000.npy, que esta a 200 mm-:
 #:
-#:      z [mm]    9.80    9.90   10.00   10.10   10.20
-#:      corr     0.8188  0.9648  1.0000  0.9648  0.8188
+#:      z [mm]  199.80  199.90  200.00  200.10  200.20
+#:      corr    0.9291  0.9300  0.9297  0.9300  0.9291
 #:
-#: o sea que equivocarse 0.2 mm cuesta 18 puntos de correlacion.
+#: o sea que aqui equivocarse 0.2 mm cuesta 0.0006: el foco es PLANO. A esa
+#: distancia la profundidad de foco se ha comido la sensibilidad del barrido, y
+#: el maximo de la curva ni siquiera cae en 200.00 sino en sus vecinos, por
+#: milesimas. Con la correlacion asi de plana el argmax es ruido: mira la CURVA
+#: entera, no el numero que imprime.
 #:
-#: Con (5.0, 20.0) y 30 pasos el paso es 0.517 mm, y esa rejilla NI SIQUIERA
-#: muestrea 10.000: cae en 9.655 y en 10.172. Por eso el barrido reporta 0.9418
-#: y no 1.0000 aunque el archivo lleve la fase intacta. No es que no enfoque:
-#: es que pasa de largo por encima del foco.
+#: NO ES ASI SIEMPRE. mi_prueba_angular.py trabaja a z = 10 mm sobre
+#: fft/z0010.000.npy y alli el foco SI es agudo: 0.2 mm le cuestan 18 puntos.
+#: Hasta el 08/09 esta tabla estaba copiada de ese archivo, hablando de
+#: z = 10.00 en un script cuyo holograma esta a 200. Si cambias de holograma,
+#: vuelve a medirla: no la copies.
 #:
-#: ASI QUE VA EN DOS PASADAS:
-#:
-#:   1. esta, ancha, para localizar la zona.
-#:   2. una estrecha alrededor del pico que salga. Para este holograma,
-#:      Z = (9.5, 10.5) con PASOS = 21 da un paso de 0.05 mm y SI contiene
-#:      10.000 exacto.
-#:
-#: Subir PASOS en la ancha no es la salida: cada paso son ~1.6 s sobre esta
-#: malla de 3000x4000, asi que la pasada ancha con 300 pasos serian 8 minutos
-#: para lo que la estrecha resuelve en 35 segundos.
+#: Cada paso son ~0.4 s en GPU sobre esta malla de 3000x4000.
 Z = (0.1, 20.0)
 PASOS = 30
 
@@ -139,6 +135,18 @@ AJUSTAR_FORMA = True
 #: memoria de pico: el fasor se construye por trozos en vez de materializar la
 #: malla entera de una vez.
 FILAS_POR_BLOQUE = 512
+
+#: La convencion de ejes de ESTE script, para que el sidecar pueda compararla.
+#:
+#: espectro_angular_bl construye la rejilla de frecuencias con cada eje a SU longitud.
+#: angularSpectrum de pyDHM los CRUZA -dfx del numero de filas, dfy del de
+#: columnas- y por eso mi_prueba_angular.py lo declara True.
+#:
+#: En malla CUADRADA las dos son la misma rejilla y esto da igual. En
+#: RECTANGULAR son dos transformadas distintas, y reconstruir con la que no es
+#: no falla: devuelve un campo plausible con la correlacion hundida. Medido
+#: sobre 3000x4000: 1.0000 con la convencion correcta, 0.8018 con la otra.
+EJES_CRUZADOS = False
 
 #: EL RECORTE, una ventana por imagen. Las dos aceptan los mismos valores:
 #:
@@ -507,17 +515,32 @@ def _sidecar(ruta):
     return datos
 
 
-def _comprobar_con_el_sidecar(ruta, lamb, delta):
-    """Si el holograma trae .txt, su lambda y su delta tienen que ser los tuyos.
+def _comprobar_con_el_sidecar(ruta, lamb, delta, cruzados=EJES_CRUZADOS):
+    """Si el holograma trae .txt, sus parametros tienen que ser los tuyos.
 
     Hoy nada impide reconstruir un holograma de 633 nm con LAMB = 532e-6: el
     barrido devolveria una z perfectamente creible y equivocada, porque lambda
     entra en la fase del propagador. Cuando el archivo DICE con que se hizo, no
     hay ninguna razon para adivinarlo.
 
-    Los hologramas que escribe scripts/retro_fft_angular.py traen ese .txt. Los
-    de terceros no, y por eso esta guarda no puede ser la unica: ver el aviso
-    de _ajustar_forma().
+    Y LA CONVENCION DE EJES, que es la que muerde mas callada. angularSpectrum
+    de pyDHM construye la rejilla con dfx del numero de FILAS y dfy del de
+    COLUMNAS -los ejes CRUZADOS-; espectro_angular_bl y mpasm_bloques los
+    llevan cada uno a su longitud. En malla CUADRADA las dos son la misma
+    rejilla y da igual; en RECTANGULAR son dos transformadas distintas y la
+    vuelta NO deshace la ida. Medido sobre el holograma 3000x4000 de
+    resultados/hologramas/BenchmarkTarget/fft/: la correlacion en el foco cae
+    de 1.0000, con la convencion que lo escribio, a 0.8018 con la otra. No
+    lanza, no avisa: devuelve un campo plausible y un barrido que no enfoca.
+
+    Si el .txt no trae EJES_CRUZADOS se asume False, que es lo que escriben
+    retro_blas y retro_mpasm; solo retro_fft_angular cruza los ejes y anota la
+    clave. Y si no trae `malla` se asume que NO es cuadrada, o sea que se
+    comprueba: preferimos la parada de mas a la reconstruccion muda.
+
+    Los hologramas que escriben los retro_*.py traen ese .txt. Los de terceros
+    no, y por eso esta guarda no puede ser la unica: ver el aviso de
+    _ajustar_forma().
     """
     datos = _sidecar(ruta)
     if datos is None:
@@ -534,6 +557,26 @@ def _comprobar_con_el_sidecar(ruta, lamb, delta):
             + "\n\nCon otra lambda o otro delta el barrido devuelve una z "
               "creible y equivocada,\nporque las dos entran en la fase del "
               "propagador. Corrige las constantes.")
+
+    suyos = str(datos.get("EJES_CRUZADOS", "False")).strip().lower() == "true"
+    lados = str(datos.get("malla", "")).lower().split("x")
+    cuadrada = len(lados) == 2 and lados[0].strip() == lados[1].strip()
+    if suyos != bool(cruzados) and not cuadrada:
+        raise SystemExit(
+            f"El .txt dice que el holograma se hizo con los ejes "
+            f"{'CRUZADOS' if suyos else 'EN SU SITIO'},\ny este script los "
+            f"lleva {'CRUZADOS' if cruzados else 'EN SU SITIO'}, sobre una "
+            f"malla {datos.get('malla', 'de forma desconocida')} que no es "
+            f"cuadrada.\n\nEn malla cuadrada las dos convenciones son la "
+            f"misma rejilla y esto no saltaria. En\nrectangular son dos "
+            f"transformadas distintas: la vuelta no deshace la ida, y el\n"
+            f"barrido no enfoca. Medido sobre 3000x4000, la correlacion en el "
+            f"foco cae de\n1.0000 a 0.8018 -y no falla, que es lo peor-.\n\n"
+            f"Lo escribio: {datos.get('propagador', 'no consta')}\n\n"
+            f"Opciones:\n"
+            f"  - reconstruyelo con el script que lleva SU misma convencion\n"
+            f"  - o dale un holograma escrito con la de este\n"
+            f"  - o pon EJES_CRUZADOS = {suyos} aqui, si sabes lo que haces")
 
 
 def _recorte_centrado(a, M, N):
@@ -704,11 +747,14 @@ def main():
           f"delta {DELTA * 1e3:.3f} um")
     print(f"  {len(zs)} distancias de {zs[0]:.3f} a {zs[-1]:.3f} mm")
     if M != N:
-        print("  malla RECTANGULAR, y aqui eso VALE: espectro_angular_bl "
-              "lleva cada eje con SU\n  longitud -dfx del numero de columnas, "
-              "dfy del de filas- y el limite de banda\n  de Matsushima sale "
-              "por eje. La guarda de proporcion que exige\n  "
-              "mi_prueba_angular.py no hace falta en este script.")
+        print("  malla RECTANGULAR. espectro_angular_bl lleva cada eje con "
+              "SU longitud -dfx del\n  numero de columnas, dfy del de filas- y "
+              "el limite de banda de Matsushima sale\n  por eje, asi que la "
+              "guarda de proporcion de mi_prueba_angular.py no hace falta.\n"
+              "  PERO POR ESO MISMO no puede deshacer un holograma hecho con "
+              "los ejes CRUZADOS:\n  en malla rectangular son dos "
+              "transformadas distintas. Su .txt lo dice, y\n  "
+              "_comprobar_con_el_sidecar() lo comprueba.")
     print(f"  dispositivo {dev.upper()} | dtype {np.dtype(dtype).name} | "
           f"fase en float64")
     if dev == "gpu":
