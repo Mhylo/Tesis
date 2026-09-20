@@ -296,8 +296,11 @@ def mpasm_bloques(field, z, lamb, delta, s=1, Kf=None, r=1, mag=1.0,
                   xp=np, dtype=np.complex128, filas=FILAS_POR_BLOQUE):
     """Lo mismo que propagacion_original(), pero cabe en la tarjeta.
 
-    Devuelve (campo, Kf_usado). Tres diferencias, todas de ejecucion y ninguna
-    de algoritmo:
+    Devuelve (campo, Kf_usado). Kf va POR EJE, igual que en
+    CamposT.propagadores.mpasm(): escalar si los dos coinciden -malla
+    cuadrada- y pareja (Kfy, Kfx) si no. El parametro Kf acepta las dos formas.
+
+    Tres diferencias, todas de ejecucion y ninguna de algoritmo:
 
     1. Los fasores se construyen por bloques de filas y la transferencia se
        aplica in situ sobre el espectro, sin materializar H entera ni el
@@ -315,20 +318,28 @@ def mpasm_bloques(field, z, lamb, delta, s=1, Kf=None, r=1, mag=1.0,
     U = xp.asarray(field, dtype=dtype)
     M, N = U.shape
     Ms, Ns = s * M, s * N
+    # Kf POR EJE. Va como ~1/sqrt(N), asi que el eje corto pide mas compresion
+    # que el largo. Antes se usaba min() de los dos -el del eje LARGO- en ambos,
+    # y el eje corto se aliasaba sin avisar (tests/test_propagadores.py,
+    # test_kf_por_eje_evita_el_aliasing_del_eje_corto: RMS 1.3e-2 frente a
+    # 4.8e-4).
     if Kf is None:
-        Kf = min(kf_paper(M, delta, lamb, z, s), kf_paper(N, delta, lamb, z, s))
-    Kf = float(Kf)
-    comprobar_ventana(r, mag, s, Kf)
+        Kfy, Kfx = kf_paper(M, delta, lamb, z, s), kf_paper(N, delta, lamb, z, s)
+    elif isinstance(Kf, (tuple, list)):
+        Kfy, Kfx = (float(v) for v in Kf)
+    else:
+        Kfy = Kfx = float(Kf)
+    comprobar_ventana(r, mag, s, min(Kfy, Kfx))
 
     # coordenadas en float64: son la malla, no datos de campo
     x = (np.arange(N) - N / 2) * delta
     y = (np.arange(M) - M / 2) * delta
-    fx = (np.arange(Ns) - Ns / 2) / (s * delta * N) / Kf
-    fy = (np.arange(Ms) - Ms / 2) / (s * delta * M) / Kf
+    fx = (np.arange(Ns) - Ns / 2) / (s * delta * N) / Kfx
+    fy = (np.arange(Ms) - Ms / 2) / (s * delta * M) / Kfy
 
     Mx = fasores(x, fx, -1, xp, dtype, filas)                 # (N, Ns)
     My = fasores(fy, y, -1, xp, dtype, filas)                 # (Ms, M)
-    F = ((My @ U @ Mx) / float(s**2 * M * N * Kf**2)).astype(dtype, copy=False)
+    F = ((My @ U @ Mx) / float(s**2 * M * N * Kfx * Kfy)).astype(dtype, copy=False)
     del Mx, My
 
     # H por bloques de filas, in situ. Las evanescentes se anulan: dejarlas
@@ -350,7 +361,7 @@ def mpasm_bloques(field, z, lamb, delta, s=1, Kf=None, r=1, mag=1.0,
     My1 = fasores(y1, fy, +1, xp, dtype, filas)               # (rM, Ms)
     out = My1 @ F @ Mx1
     del Mx1, My1, F
-    return out, Kf
+    return out, (Kfy if Kfy == Kfx else (Kfy, Kfx))
 
 # ------------------------------------------------------------------ backend
 def elegir_dispositivo(preferencia="auto"):
@@ -745,13 +756,19 @@ def main():
     print(f"  S = {S} | R = {R} | MAG = {MAG} | matriz espectral "
           f"{S * M}x{S * N} por distancia "
           f"({memoria_mpasm(M, N, S, R, dtype) / 2**30:.2f} GB)")
-    print(f"  Kf: {kf_ida:.4f} en la ida, {kf_vuelta:.4f} en la vuelta"
-          + ("   <- 1.0 = sin compresion" if max(kf_ida, kf_vuelta) <= 1.0
+    # en malla rectangular Kf es la pareja (Kfy, Kfx)
+    ejes = lambda kf: np.atleast_1d(np.asarray(kf, dtype=float))
+    texto_kf = lambda kf: ("/".join(f"{v:.4f}" for v in ejes(kf))
+                           + (" (y/x)" if ejes(kf).size == 2 else ""))
+    print(f"  Kf: {texto_kf(kf_ida)} en la ida, {texto_kf(kf_vuelta)} en la vuelta"
+          + ("   <- 1.0 = sin compresion"
+             if max(ejes(kf_ida).max(), ejes(kf_vuelta).max()) <= 1.0
              else "   <- comprimiendo el espectro"))
 
-    # r*mag <= s*Kf, o la salida trae copias periodicas superpuestas y no avisa
-    comprobar_ventana(R, MAG, S, kf_ida)
-    comprobar_ventana(R, MAG, S, kf_vuelta)
+    # r*mag <= s*Kf, o la salida trae copias periodicas superpuestas y no avisa.
+    # Manda el eje con menos compresion.
+    comprobar_ventana(R, MAG, S, ejes(kf_ida).min())
+    comprobar_ventana(R, MAG, S, ejes(kf_vuelta).min())
 
     # propagacion_original() es la referencia de Zhao y no acepta CuPy: corre
     # siempre en CPU. Contrastarla con mpasm_bloques() es la prueba de que la
@@ -787,7 +804,7 @@ def main():
         "R": R,
         "MAG": MAG,
         "KF": KF,
-        "kf_ida": f"{kf_ida:.6f}",
+        "kf_ida": " ".join(f"{v:.6f}" for v in ejes(kf_ida)),
     })
 
     # ---- barrido de foco ----------------------------------------------------

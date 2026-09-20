@@ -539,17 +539,32 @@ def _sidecar(ruta):
     return datos
 
 
-def _comprobar_con_el_sidecar(ruta, lamb, delta):
-    """Si el holograma trae .txt, su lambda y su delta tienen que ser los tuyos.
+def _comprobar_con_el_sidecar(ruta, lamb, delta, cruzados=EJES_CRUZADOS):
+    """Si el holograma trae .txt, sus parametros tienen que ser los tuyos.
 
     Hoy nada impide reconstruir un holograma de 633 nm con LAMB = 532e-6: el
     barrido devolveria una z perfectamente creible y equivocada, porque lambda
     entra en la fase del propagador. Cuando el archivo DICE con que se hizo, no
     hay ninguna razon para adivinarlo.
 
-    Los hologramas que escribe scripts/retro_fft_angular.py traen ese .txt. Los
-    de terceros no, y por eso esta guarda no puede ser la unica: ver el aviso
-    de _ajustar_forma().
+    Y LA CONVENCION DE EJES, que es la que muerde mas callada. angularSpectrum
+    de pyDHM construye la rejilla con dfx del numero de FILAS y dfy del de
+    COLUMNAS -los ejes CRUZADOS-; espectro_angular_bl y mpasm_bloques los
+    llevan cada uno a su longitud. En malla CUADRADA las dos son la misma
+    rejilla y da igual; en RECTANGULAR son dos transformadas distintas y la
+    vuelta NO deshace la ida. Medido sobre el holograma 3000x4000 de
+    resultados/hologramas/BenchmarkTarget/fft/: la correlacion en el foco cae
+    de 1.0000, con la convencion que lo escribio, a 0.8018 con la otra. No
+    lanza, no avisa: devuelve un campo plausible y un barrido que no enfoca.
+
+    Si el .txt no trae EJES_CRUZADOS se asume False, que es lo que escriben
+    retro_blas y retro_mpasm; solo retro_fft_angular cruza los ejes y anota la
+    clave. Y si no trae `malla` se asume que NO es cuadrada, o sea que se
+    comprueba: preferimos la parada de mas a la reconstruccion muda.
+
+    Los hologramas que escriben los retro_*.py traen ese .txt. Los de terceros
+    no, y por eso esta guarda no puede ser la unica: ver el aviso de
+    _ajustar_forma().
     """
     datos = _sidecar(ruta)
     if datos is None:
@@ -566,6 +581,26 @@ def _comprobar_con_el_sidecar(ruta, lamb, delta):
             + "\n\nCon otra lambda o otro delta el barrido devuelve una z "
               "creible y equivocada,\nporque las dos entran en la fase del "
               "propagador. Corrige las constantes.")
+
+    suyos = str(datos.get("EJES_CRUZADOS", "False")).strip().lower() == "true"
+    lados = str(datos.get("malla", "")).lower().split("x")
+    cuadrada = len(lados) == 2 and lados[0].strip() == lados[1].strip()
+    if suyos != bool(cruzados) and not cuadrada:
+        raise SystemExit(
+            f"El .txt dice que el holograma se hizo con los ejes "
+            f"{'CRUZADOS' if suyos else 'EN SU SITIO'},\ny este script los "
+            f"lleva {'CRUZADOS' if cruzados else 'EN SU SITIO'}, sobre una "
+            f"malla {datos.get('malla', 'de forma desconocida')} que no es "
+            f"cuadrada.\n\nEn malla cuadrada las dos convenciones son la "
+            f"misma rejilla y esto no saltaria. En\nrectangular son dos "
+            f"transformadas distintas: la vuelta no deshace la ida, y el\n"
+            f"barrido no enfoca. Medido sobre 3000x4000, la correlacion en el "
+            f"foco cae de\n1.0000 a 0.8018 -y no falla, que es lo peor-.\n\n"
+            f"Lo escribio: {datos.get('propagador', 'no consta')}\n\n"
+            f"Opciones:\n"
+            f"  - reconstruyelo con el script que lleva SU misma convencion\n"
+            f"  - o dale un holograma escrito con la de este\n"
+            f"  - o pon EJES_CRUZADOS = {suyos} aqui, si sabes lo que haces")
 
 
 def _recorte_centrado(a, M, N):
