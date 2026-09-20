@@ -180,6 +180,46 @@ FORMATO_BARRIDO = "png"
 #: numeros en otra maquina.
 METRICAS = ("tamura", "pearson", "ssim")
 
+#: Cuales de METRICAS viven en la CPU. Son las que NO tocan el dispositivo:
+#: reciben A = None y solo pueden usar A_cpu. SSIM es la unica hoy, porque
+#: skimage no tiene version GPU.
+#:
+#: Meter aqui una metrica que use A la rompe, y no en silencio: peta con
+#: AttributeError sobre None a la primera z.
+EN_CPU = {"ssim"}
+
+#: True encadena el barrido: lanza la propagacion del paso i+1 y, MIENTRAS la
+#: GPU la hace, calcula en la CPU las metricas de EN_CPU del paso i.
+#:
+#: NO CAMBIA NINGUN NUMERO. Las curvas salen identicas bit a bit; lo unico que
+#: cambia es el reloj. Se escriben por INDICE y no con append justo por eso:
+#: el paso i-1 se cierra una vuelta mas tarde que el i.
+#:
+#: POR QUE NO HACEN FALTA HILOS. CuPy lanza los kernels de forma asincrona, asi
+#: que el solapamiento lo da el driver: basta con no sincronizar entre el
+#: lanzamiento y el trabajo de CPU. Un ThreadPoolExecutor aqui solo anadiria la
+#: duda del GIL.
+#:
+#: LO QUE GANA DEPENDE DE S, porque S solo encarece el lado GPU: el techo pasa
+#: de ser la SUMA de los dos lados a ser el MAXIMO. MEDIDO sobre 62
+#: retropropagaciones, BORDE_PX = 1000, Z_REAL = 60, en una RTX 3050 Laptop:
+#:
+#:     S    serie    solapado   ahorro    esa etapa en la GPU
+#:     1    42.2 s    27.9 s     34 %      391 ->  157 ms/z
+#:     2   112.8 s   102.0 s     10 %     1503 -> 1333 ms/z
+#:
+#: SSIM cuesta ~17 s en las cuatro corridas. Con S = 1 se esconden 14.3 de
+#: esos 17, el 86 %. Con S = 2 solo 10.8, el 63 %, Y ESO NO ERA LO ESPERADO:
+#: ahi la GPU tarda 1503 ms por z contra 276 de SSIM, o sea que sobraba sitio
+#: para esconderlo ENTERO. No se esconde. Lo que queda fuera crece con S, asi
+#: que apunta a lo que el encadenado no cubre -la copia a la CPU y el reparto
+#: del pool de CuPy van en el mismo stream que la propagacion-. Sin medir.
+#:
+#: Y LAS CURVAS SALEN IDENTICAS BIT A BIT en los dos S, comprobadas contra la
+#: version en serie clave por clave del .npz: esto mueve el reloj, no los
+#: numeros. Si alguna vez dejan de serlo, el encadenado esta mal.
+SOLAPAR = True
+
 #: Lado en pixeles del recuadro central que se amplia en la figura de campos.
 #: Sin el, las barras del target son subpixel en un panel de figura y las tres
 #: reconstrucciones se ven identicas aunque no lo sean.
@@ -454,29 +494,77 @@ def guardar_instante(U, z, carpeta):
         plt.imsave(carpeta / f"{nombre}.png", I / I.max(), cmap="gray", vmin=0, vmax=1)
 
 
+#: Metricas repartidas por donde corren. El orden de METRICAS se conserva en
+#: las dos listas, asi que las curvas no dependen de este reparto.
+EN_GPU_LISTA = [n for n in METRICAS if n not in EN_CPU]
+EN_CPU_LISTA = [n for n in METRICAS if n in EN_CPU]
+
+#: Encadenar solo tiene sentido si hay GPU que adelantar y CPU que esconder.
+SOLAPANDO = SOLAPAR and GPU and bool(EN_CPU_LISTA)
+
+#: Con SOLAPANDO esta etapa ya NO mide la propagacion: mide lo que la CPU no
+#: consiguio esconder, o sea cuanto sobresale la GPU por encima del SSIM.
+CLAVE_GPU = "espera GPU" if SOLAPANDO else "propagar"
+
 #: segundos acumulados por etapa; el reparto se imprime al final
-RELOJ = {"propagar": 0.0, **{n: 0.0 for n in METRICAS}}
+RELOJ = {CLAVE_GPU: 0.0, **{n: 0.0 for n in METRICAS}}
 
 
 def barrido(H, zs, carpeta):
-    """Un dict nombre -> curva, todas medidas sobre la MISMA propagacion."""
-    curvas = {n: [] for n in METRICAS}
-    for z in zs:
-        t = time.perf_counter()
-        U = mpasm(H, DELTA, LAMB, -z, s=S, gpu=GPU)
-        A = amplitud(U, BORDE)
-        if GPU:
-            cp.cuda.Stream.null.synchronize()
-        RELOJ["propagar"] += time.perf_counter() - t
-        A_cpu = a_cpu(A)
-        for n in METRICAS:
+    """Un dict nombre -> curva, todas medidas sobre la MISMA propagacion.
+
+    Con SOLAPANDO el bucle va encadenado: se LANZA la propagacion del paso i
+    -asincrona, la llamada vuelve enseguida- y, mientras la GPU la calcula, la
+    CPU cierra las metricas de EN_CPU del paso i-1. El coste por z deja de ser
+    la suma de los dos lados y pasa a ser el mayor de los dos.
+
+    Las curvas se escriben POR INDICE, no con append: el paso i-1 se cierra una
+    vuelta mas tarde que el i, y con append saldrian desordenadas.
+    """
+    curvas = {n: np.empty(len(zs)) for n in METRICAS}
+    pendiente = None                       # (indice, A_cpu) del paso anterior
+
+    def cerrar_en_cpu(i, A_cpu):
+        """Las de EN_CPU reciben A = None: no pueden tocar el dispositivo."""
+        for n in EN_CPU_LISTA:
             t = time.perf_counter()
-            curvas[n].append(FUNCION[n](A, A_cpu))
+            curvas[n][i] = FUNCION[n](None, A_cpu)
             RELOJ[n] += time.perf_counter() - t
+
+    for i, z in enumerate(zs):
+        U = mpasm(H, DELTA, LAMB, -z, s=S, gpu=GPU)   # LANZA, no bloquea
+        A = amplitud(U, BORDE)                        # LANZA, no bloquea
+
+        # La GPU esta ocupada con lo de arriba. Aprovechar para cerrar el paso
+        # anterior en la CPU, que es lo unico que no depende de este z.
+        if pendiente is not None:
+            cerrar_en_cpu(*pendiente)
+            pendiente = None
+
+        # AQUI se espera a la GPU: .get() sincroniza. Lo que quede de espera es
+        # lo que la CPU no pudo esconder.
+        t = time.perf_counter()
+        A_cpu = a_cpu(A)
+        RELOJ[CLAVE_GPU] += time.perf_counter() - t
+
+        for n in EN_GPU_LISTA:
+            t = time.perf_counter()
+            curvas[n][i] = FUNCION[n](A, A_cpu)
+            RELOJ[n] += time.perf_counter() - t
+
         if GUARDAR_BARRIDO:
             guardar_instante(U, z, carpeta)
-        del U, A, A_cpu
-    return {n: np.array(c) for n, c in curvas.items()}
+        del U, A
+
+        if SOLAPANDO:
+            pendiente = (i, A_cpu)         # se cierra en la vuelta siguiente
+        else:
+            cerrar_en_cpu(i, A_cpu)
+            del A_cpu
+
+    if pendiente is not None:              # el ultimo paso no tiene siguiente
+        cerrar_en_cpu(*pendiente)
+    return curvas
 
 
 # ════════════════════════════════════════════════════════════════════════════
