@@ -119,31 +119,59 @@ class Montaje:
     """
 
     # --- fuente ---
-    lamb: float = SinMedir(
-        "lambda del láser", "mm",
-        "se lee en el láser o su hoja de datos; HeNe son 632.8e-6, no 633e-6")
+    #: 528 nm, dados por Carlos el 09/09/2026. NO es ninguno de los que ya
+    #: había: ni las 632.8 de la Tabla 1, ni los 633 de los retro_*.py, ni los
+    #: 405 de comparacion.py -ni el 532e-9 que usan sus propios main_dlhm.py y
+    #: reconstruction_dlhm.py-. Entre 528 y 532 hay un 0.76 %; parece nada, pero
+    #: lambda entra en la fase del propagador, y esos scripts suyos son la
+    #: referencia contra la que se valida. Si algo no cuadra al 1 %, mirar aquí.
+    lamb: float = 528e-6
     laser: str = SinMedir("modelo del láser", "-", "se lee en el equipo")
-    pinhole: float = SinMedir(
-        "diámetro del pinhole", "mm",
-        "se lee en la montura; de aquí sale NA si no viene especificada")
+    #: 5 um de DIAMETRO. La apertura es circular: confirmado el 09/09/2026, y
+    #: eso cierra la duda que dejaba la lectura de Carlos, que venía como
+    #: "5 x 5 um" y podía ser una apertura cuadrada. Importa porque la NA que
+    #: salga de esta geometría es UNA SOLA, no una por eje: el cono de
+    #: iluminación tiene simetría de revolución. (El sensor sigue sin tenerla:
+    #: delta_x/delta_y y px_x/px_y van por separado por la tarea 61, y eso no
+    #: cambia.)
+    #:
+    #: Cota que ya se puede calcular, y que NO es la NA del sistema: el primer
+    #: cero de Airy de una apertura circular abre el cono a sin(theta) =
+    #: 1.22*lamb/d = 0.1288 -7.40 grados-, o sea 2.60 mm de mancha iluminada a
+    #: L = 10 mm, que con pasos de 1.83 um son 1420 px de diámetro. Sirve de
+    #: comprobación cruzada en cuanto lleguen px_x/px_y: si el sensor es más
+    #: ancho que eso, la NA del sistema la fija el pinhole; si es más estrecho,
+    #: la fija el sensor. Por eso NA sigue en SinMedir: le falta el sensor.
+    pinhole: float = 5e-3
 
     # --- sensor ---
-    delta_x: float = SinMedir(
-        "paso de píxel horizontal", "mm",
-        "hoja de datos del sensor; 3.45 um se escribe 3.45e-3")
-    delta_y: float = SinMedir(
-        "paso de píxel vertical", "mm",
-        "hoja de datos del sensor; anótalo aunque parezca igual al horizontal")
+    #: 1.83 um. Tampoco es el 1.85e-6 que traen main_dlhm.py, main_dlhm.m,
+    #: reconstruction_dlhm.py y simulation_reconstruction_asm_dlhm.py.
+    delta_x: float = 1.83e-3
+    #: Carlos dio UN solo tamaño de píxel, así que aquí va el mismo valor. Esto
+    #: es una lectura, no una medida: la hoja de laboratorio pide delta_y aparte
+    #: justamente porque Kf se calcula por eje desde la tarea 61 y un eje
+    #: submuestreado no avisa. Si la hoja de datos del sensor los distingue,
+    #: este es el número que hay que corregir.
+    delta_y: float = 1.83e-3
     px_x: int = SinMedir("ancho del sensor", "px", "hoja de datos del sensor")
     px_y: int = SinMedir("alto del sensor", "px", "hoja de datos del sensor")
     sensor: str = SinMedir("modelo del sensor", "-", "se lee en la cámara")
     bits: int = SinMedir("profundidad de bits", "-", "ajustes de la cámara")
 
     # --- geometría DLHM ---
-    L: float = SinMedir(
-        "distancia fuente -> sensor", "mm", "se mide en el banco")
-    z: float = SinMedir(
-        "distancia fuente -> muestra", "mm", "se mide en el banco")
+    #: 10.0 mm, y ESTE NUMERO NO SE MIDIO: SE SUMO. Carlos dio las dos
+    #: distancias del banco por tramos -fuente->muestra 3 mm, muestra->sensor
+    #: 7 mm- y L es la total, o sea 3 + 7. Consecuencias: (1) la incertidumbre
+    #: de L es la de los DOS tramos sumada, no la de una regla; (2) si alguna
+    #: vez se remide, se remiden los tramos y se vuelve a sumar aquí, porque el
+    #: tramo muestra->sensor no tiene campo propio en esta clase.
+    L: float = 10.0
+    #: 3.0 mm, fuente (pinhole) -> muestra. Este sí es un tramo medido.
+    #: M = L/z = 3.33. Encaja en el orden de sus dos scripts, que no concuerdan
+    #: entre sí: main_dlhm.py va con L = 8, z = 2 (M = 4) y
+    #: reconstruction_dlhm.py con L = 11, z = 4.95 (M = 2.22).
+    z: float = 3.0
     z_min: float = SinMedir(
         "z mínima alcanzable", "mm",
         "recorrido de la platina; define el borde del barrido de la tarea 29")
@@ -152,7 +180,9 @@ class Montaje:
         "recorrido de la platina; define el borde del barrido de la tarea 29")
     NA: float = SinMedir(
         "apertura numérica", "-",
-        "especificada, o de la geometría del pinhole y la distancia")
+        "especificada, o la menor de dos: la del cono del pinhole -circular, "
+        "1.22*lamb/pinhole = 0.1288- y la que abarca el sensor desde L. La "
+        "segunda necesita px_x/px_y, que siguen sin medir")
 
     # --- adquisición ---
     gamma: bool = SinMedir(
@@ -178,7 +208,11 @@ class Montaje:
 
 TABLA1 = Tabla1()
 
-#: Al 01/09 está entero sin medir: es exactamente lo que persigue la tarea 17.
+#: Al 09/09 tiene seis de quince, todos dados por Carlos: lambda, pinhole, los
+#: dos pasos de píxel y la geometría L/z. Los nueve que faltan son el sensor
+#: entero (modelo, píxeles por lado, bits), el recorrido de la platina
+#: (z_min/z_max, que es lo que dibuja el barrido de la tarea 29), la NA, el
+#: modelo del láser y la gamma. Eso sigue siendo la tarea 17.
 MONTAJE = Montaje()
 
 
