@@ -1,0 +1,53 @@
+% ============================================================
+% Informe final de trabajo de grado
+% Programa de Ingeniería Física, Universidad EAFIT, 2026-2
+%
+% Contenido mínimo de las directrices del programa (2026-2):
+%   portada; tablas de contenido, figuras y tablas; resumen;
+%   introducción con los objetivos aprobados; capítulos de
+%   desarrollo; conclusiones y trabajos futuros; bibliografía.
+% ============================================================
+\documentclass[12pt,letterpaper,oneside]{report}
+
+\input{preambulo}
+
+% ---------- Datos del trabajo ----------
+\newcommand{\titulotrabajo}{Implementación y validación de propagadores
+numéricos con muestreo controlado para la reconstrucción de hologramas en
+microscopía holográfica digital sin lentes}
+\newcommand{\autor}{Camilo Rodriguez Londoño}
+\newcommand{\tutor}{Carlos Alejandro Trujillo Anaya}
+\newcommand{\titulotutor}{PhD. Ciencias Físicas}
+\newcommand{\fechaentrega}{2026} % TODO: mes de la entrega final (semana 15)
+
+\hypersetup{pdftitle={\titulotrabajo}, pdfauthor={\autor}}
+
+\begin{document}
+
+% ---------- Preliminares ----------
+% ICONTEC: la portada y los preliminares se cuentan pero no se numeran;
+% el número se ve desde la introducción.
+\pagenumbering{arabic}
+\input{capitulos/portada}
+
+\pagestyle{empty}
+\assignpagestyle{\chapter}{empty} % también la primera hoja de cada lista
+\input{capitulos/resumen}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+% ---------- Cuerpo ----------
+\pagestyle{plain}
+\assignpagestyle{\chapter}{plain}
+\input{capitulos/01_introduccion}
+\input{capitulos/02_marco_teorico}
+\input{capitulos/03_metodos}
+\input{capitulos/04_resultados}
+\input{capitulos/05_conclusiones}
+
+% ---------- Bibliografía ----------
+\printbibliography[heading=bibintoc, title={Bibliografía}]
+
+\end{document}

@@ -1,0 +1,72 @@
+% ============================================================
+% 3. MATERIALES Y MÉTODOS
+% Una sección por fase del anteproyecto. Aquí va lo que se
+% construyó y cómo se midió; los números van en el capítulo 4.
+% Los comentarios "Repo:" señalan de dónde sale cada parte.
+% ============================================================
+\chapter{Materiales y métodos}
+\label{cap:metodos}
+
+\pendiente{un párrafo sobre la metodología en cascada y la validación en dos
+niveles (referencias numéricas y hologramas de laboratorio), con todos los
+métodos aplicados al mismo dato.}
+
+% ------------------------------------------------------------
+\section{Marco computacional unificado (Fase 1)}
+\label{sec:implementacion}
+% Repo: CamposT/propagadores.py, propagacion.py, backend.py (CPU/GPU),
+%       campos.py; scripts/mpasm_minimo.py; código de referencia
+%       en referencia/ y el parche de scripts/parchar_referencias.py.
+
+\pendiente{arquitectura del paquete y la interfaz común de los tres
+propagadores; soporte de GPU; cómo se reprodujo primero el código de
+referencia \cite{zhao2020code}.}
+
+\subsection{Verificación}
+\label{sec:verificacion}
+% Repo: CamposT/referencias.py, metricas.py; scripts/exactitud.py;
+%       tests/test_rs1.py, test_propagadores.py.
+
+\pendiente{referencia de Rayleigh--Sommerfeld en 1D; haz gaussiano analítico;
+métrica SAM \cite{zhao2020}; pruebas automáticas.}
+
+% ------------------------------------------------------------
+\section{Calibración numérica (Fase 2)}
+\label{sec:calibracion}
+% Repo: scripts/comparacion.py, kf_evolucion.py, contraste_referencias.py;
+%       resultados/kf, escalado_N.csv, escalado_s.csv.
+
+\pendiente{parámetros barridos (distancias, paso y tamaño del sensor, $\lambda$,
+$s$, $K_f$); cómo se construyen los mapas de error; criterio de «precisión
+aceptable».}
+
+\subsection{Iluminación esférica y distancia efectiva}
+\label{sec:esferica}
+% Repo: CamposT/montaje.py, retropropagacion.py; tarea 24 del cronograma.
+
+\pendiente{el cambio de coordenadas antes de propagar: paso $\delta/M$ y la
+distancia efectiva $z_\text{eq}$, validados contra RS.}
+
+\subsection{Contraste con la transformada Z \emph{chirp}}
+\label{sec:czt}
+
+\pendiente{cómo se implementó la CZT y cómo se comparó con el MPASM.}
+
+% ------------------------------------------------------------
+\section{Montaje y registro experimental (Fase 3)}
+\label{sec:montaje}
+% Repo: docs/hoja_parametros_montaje.md; CamposT/montaje.py.
+
+\pendiente{esquema del montaje; tabla de parámetros medidos ($\lambda$,
+$\delta_x$, $\delta_y$, $N_x \times N_y$, $L$, $z$); muestras (USAF 1951 u
+otra) y protocolo de adquisición.}
+
+% ------------------------------------------------------------
+\section{Reconstrucción y métricas de comparación (Fase 4)}
+\label{sec:metricas}
+% Repo: CamposT/pipeline.py, roi.py, metricas.py; scripts/barrido_foco.py,
+%       retro_*.py, mi_prueba_*.py.
+
+\pendiente{cadena de reconstrucción; búsqueda del plano de foco por nitidez
+(sin verdad de terreno); resolución lateral sobre el \emph{target}, contraste,
+relación señal--ruido y tiempo de cómputo.}

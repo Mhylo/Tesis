@@ -1,0 +1,135 @@
+% ============================================================
+% 1. INTRODUCCIÓN
+% Base: secciones A, C, D y F del anteproyecto. Las directrices exigen
+% los objetivos APROBADOS: van literales, no se reescriben.
+% TODO: pasar a pasado lo que el anteproyecto dejaba en futuro.
+% ============================================================
+\chapter{Introducción}
+\label{cap:introduccion}
+
+% ------------------------------------------------------------
+\section{Planteamiento del problema}
+\label{sec:planteamiento}
+
+En holografía digital el sensor no registra la imagen del objeto sino un patrón
+de interferencia: para recuperarla hay que modelar numéricamente cómo viajó la
+luz hasta el plano del objeto~\cite{buitrago2022}. Dentro de la teoría escalar
+de la difracción ese cálculo ya tiene solución cerrada: la integral de
+Rayleigh--Sommerfeld y el espectro angular (ASM) son la misma solución escrita
+en el dominio espacial y en el de las frecuencias espaciales, y ninguna aproxima
+el ángulo de propagación \cite{goodman2005, ersoy2006}. Lo que las separa es el
+costo: el ASM se calcula con la transformada rápida de Fourier (FFT) en
+$\mathcal{O}(N^2\log N)$ operaciones frente a las $\mathcal{O}(N^4)$ de la suma
+directa, y por eso es el método más usado~\cite{buitrago2020}. La contrapartida
+es que la exactitud deja de depender de la formulación y pasa a depender del
+muestreo con que se discretiza.
+
+La FFT impone sus propias reglas de muestreo: el espaciado de los puntos en
+frecuencia queda fijado por el tamaño de la ventana de entrada, y el plano de
+salida hereda el tamaño del de partida \cite{goodman2005}. Cuando esas reglas no
+alcanzan a describir la propagación aparece \emph{aliasing}: frecuencias altas
+que se confunden con bajas y contaminan la imagen. Las soluciones conocidas
+pagan un precio: el método de banda limitada (BLAS) descarta las frecuencias
+problemáticas y pierde detalle a distancias largas \cite{matsushima2009};
+ampliar la ventana de entrada corrige el muestreo pero dispara memoria y tiempo
+de cómputo \cite{yu2012}. Una alternativa reciente reemplaza la FFT por un
+producto de matrices ---el método de espectro angular por producto matricial
+(MPASM)~\cite{zhao2020}---: el muestreo deja de estar impuesto por el algoritmo
+y se elige mediante dos coeficientes de control. $K_f$ comprime el intervalo de
+muestreo en frecuencia, concentrando los puntos donde la función de
+transferencia sí cumple la condición de muestreo; $s$ multiplica el número de
+puntos en frecuencia y amplía el ancho de banda efectivo a distancias largas, a
+costa de más operaciones.
+
+La microscopía holográfica digital sin lentes (DLHM) es un escenario donde ese
+control resulta pertinente. Al eliminar el objetivo del microscopio, la muestra
+se ilumina con una onda esférica proveniente de un orificio muy pequeño
+(\emph{pinhole}) y el sensor registra directamente el patrón de difracción, de
+modo que la resolución queda determinada por la geometría del
+montaje~\cite{lopera2024}. Dos rasgos de esa geometría tensionan al ASM
+convencional: el paso del sensor deja el contenido frecuencial del campo cerca
+del límite de Nyquist, y la iluminación divergente introduce una magnificación
+que sitúa el patrón registrado en una escala distinta a la del objeto, algo que
+la FFT no puede representar. El MPASM ofrece justamente ese control, pero solo
+había sido evaluado en simulaciones con haces gaussianos e iluminación de onda
+plana: no se había reportado su aplicación a hologramas experimentales ni
+existían criterios publicados para elegir sus parámetros en condiciones reales
+de registro.
+
+\vspace{0.2cm}
+\noindent\textbf{Pregunta de investigación:} ¿Qué características de un
+propagador con control explícito del muestreo, como el MPASM, permiten mejorar
+la calidad de las reconstrucciones en microscopía holográfica digital sin lentes
+respecto de los propagadores empleados habitualmente en la técnica, y bajo qué
+condiciones de registro resulta ventajoso?
+
+% ------------------------------------------------------------
+\section{Objetivos}
+\label{sec:objetivos}
+
+% Literales del anteproyecto aprobado. No editar.
+\subsection*{Objetivo general}
+
+Aplicar propagadores de campo óptico basados en el producto matricial, con
+control flexible del muestreo espacial y frecuencial, a la reconstrucción de
+hologramas en microscopía holográfica digital sin lentes.
+
+\subsection*{Objetivos específicos}
+
+\begin{enumerate}[label=\arabic*.]
+  \item Implementar en un marco computacional unificado los métodos de
+  propagación FFT-ASM, BLAS y MPASM, verificando su correcta ejecución mediante
+  casos analíticos de referencia.
+
+  \item Validar el desempeño de los métodos implementados bajo las condiciones
+  de muestreo propias de DLHM, determinando los rangos de distancia, apertura
+  numérica y coeficientes de control ($s$ y $K_f$, definidos en la
+  Sección~\ref{sec:planteamiento}) en los que cada método mantiene una
+  precisión aceptable, y contrastando la formulación matricial con la de la
+  transformada Z \emph{chirp} (CZT), que permite un control de muestreo
+  análogo.
+
+  \item Comparar las reconstrucciones obtenidas con los propagadores
+  implementados frente al método de espectro angular con iluminación de onda
+  esférica, empleado actualmente en el montaje DLHM del laboratorio, mediante
+  métricas cuantitativas de calidad sobre hologramas experimentales de muestras
+  de resolución conocida.
+\end{enumerate}
+
+% ------------------------------------------------------------
+\section{Justificación}
+
+El MPASM aporta un grado de libertad que los métodos convencionales no tienen:
+elegir de forma independiente cómo se muestrea el campo en el espacio y en la
+frecuencia. Ese control encaja con lo que exige DLHM, donde la magnificación
+geométrica y las condiciones de registro imponen restricciones que el ASM
+basado en FFT no puede acomodar. Verificar si esa flexibilidad se traduce en
+mejoras medibles sobre la reconstrucción de hologramas experimentales es una
+pregunta que la literatura aún no respondía, ya que el método solo había sido
+evaluado en simulaciones; y contar con criterios explícitos para elegir los
+parámetros de muestreo evita el ajuste por ensayo y error que exige usar estos
+propagadores. A esto se suma que su formulación matricial se parece
+estructuralmente a la transformada Z \emph{chirp} (CZT), un algoritmo que
+también permite calcular espectros con muestreo arbitrario; observar esa
+relación durante la caracterización numérica ayuda a situar el método entre los
+propagadores existentes.
+
+% ------------------------------------------------------------
+\section{Alcance}
+
+El trabajo se limita al régimen de difracción escalar y a hologramas en línea
+registrados en un montaje DLHM existente; no incluye instrumentación nueva, el
+régimen vectorial ni algoritmos de recuperación de fase.
+
+\pendiente{productos entregados: el paquete de software (nombre, licencia,
+repositorio), los hologramas con sus reconstrucciones y los mapas de validez.
+Decirlo en pasado y con lo que de verdad se entregó.}
+
+% ------------------------------------------------------------
+\section{Estructura del documento}
+
+\pendiente{un párrafo que recorra los capítulos: el
+Capítulo~\ref{cap:marco} presenta el marco teórico y los antecedentes; el
+Capítulo~\ref{cap:metodos}, la implementación, los barridos y el montaje; el
+Capítulo~\ref{cap:resultados}, los resultados por objetivo; y el
+Capítulo~\ref{cap:conclusiones}, las conclusiones y el trabajo futuro.}
