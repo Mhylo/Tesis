@@ -1,0 +1,99 @@
+% ============================================================
+% 2. MARCO TEÓRICO Y ESTADO DEL ARTE
+% Lo que el lector necesita para entender los métodos y los
+% resultados, y dónde está la literatura. Solo teoría ajena:
+% lo que se desarrolló en el trabajo (p. ej. la distancia
+% efectiva de la tarea 24) va en el capítulo 3.
+% ============================================================
+\chapter{Marco teórico y estado del arte}
+\label{cap:marco}
+
+% ------------------------------------------------------------
+\section{Difracción escalar}
+\label{sec:difraccion}
+
+\pendiente{integral de Rayleigh--Sommerfeld y espectro angular como la misma
+solución en dos dominios \cite{goodman2005, ersoy2006}; función de
+transferencia $H(f_x,f_y)$; componentes evanescentes.}
+
+% ------------------------------------------------------------
+\section{Espectro angular por FFT y sus límites de muestreo}
+\label{sec:asm-fft}
+
+\pendiente{discretización; paso en frecuencia $1/L$ fijado por la ventana;
+condición de muestreo de la función de transferencia y la frecuencia máxima
+que la cumple (Ec.~12 de \cite{zhao2020}); aliasing; la ventana de salida
+hereda la de entrada \cite{li2007}.}
+
+% ------------------------------------------------------------
+\section{Soluciones conocidas al submuestreo}
+\label{sec:soluciones}
+
+\subsection{Espectro angular de banda limitada (BLAS)}
+\pendiente{recorte de la función de transferencia \cite{matsushima2009}; por
+qué pierde detalle a distancias largas.}
+
+\subsection{Ventana ampliada y muestreo no uniforme}
+\pendiente{WWASM \cite{yu2012} y NUFFT \cite{kim2014}, en un párrafo cada uno:
+qué resuelven y qué cuestan.}
+
+% ------------------------------------------------------------
+\section{Espectro angular por producto matricial (MPASM)}
+\label{sec:mpasm}
+
+\pendiente{la DFT como triple producto de matrices; los coeficientes $K_f$ y
+$s$ y el muestreo de salida $r$; ancho de banda efectivo frente a BLAS;
+complejidad \cite{zhao2020, zhao2020code}.}
+
+\subsection{Relación con la transformada Z \emph{chirp}}
+\pendiente{la CZT como otro cálculo de la DFT con muestreo arbitrario y el
+parecido estructural con el MPASM (objetivo 2).}
+
+% ------------------------------------------------------------
+\section{Microscopía holográfica digital sin lentes}
+\label{sec:dlhm}
+
+\pendiente{geometría fuente puntual--muestra--sensor ($z$, $L$); magnificación
+$M = L/z$; apertura numérica y resolución; modelo de formación del holograma
+como difracción de un frente esférico más magnificación no homogénea
+\cite{lopera2024}.}
+
+\subsection{Reconstrucción en DLHM}
+\pendiente{RS no aproximada como referencia de exactitud \cite{buitrago2019};
+el espectro angular con iluminación de onda esférica que se usa de rutina en
+el laboratorio, que es la línea base del objetivo 3.}
+
+% ------------------------------------------------------------
+\section{Antecedentes}
+\label{sec:antecedentes}
+
+% Base: sección B del anteproyecto.
+Las limitaciones de muestreo del espectro angular basado en FFT se
+identificaron tempranamente \cite{li2007}. El método de banda limitada
+\cite{matsushima2009} restringe el cálculo a las frecuencias que sí cumplen la
+condición de muestreo y es hoy la solución más difundida; una alternativa
+opuesta amplía la ventana de entrada para comprimir el muestreo en frecuencia
+\cite{yu2012}; también se han explorado transformadas de Fourier con muestreo
+no uniforme, que amplían el rango útil a costa de una implementación más
+compleja \cite{kim2014}.
+
+El MPASM se propuso en 2020 junto con una implementación en Python de acceso
+abierto \cite{zhao2020, zhao2020code}. Los resultados publicados lo comparan
+contra el ASM convencional, el método de banda limitada y la integral de
+Rayleigh--Sommerfeld, cuya evaluación directa sirve de referencia porque no
+impone restricciones de muestreo sobre el plano de salida. Toda esa
+validación, sin embargo, se hizo en simulación ---un haz gaussiano atravesando
+una lente---, sin datos experimentales.
+
+En DLHM, el grupo de Óptica de la Universidad Nacional de Colombia (Sede
+Medellín) ha abordado la reconstrucción mediante la implementación no
+aproximada de la integral de Rayleigh--Sommerfeld (RSD), que elimina las
+restricciones sobre el rango de propagación a costa de un elevado costo
+computacional, mitigado en GPU \cite{buitrago2019}; por esa ausencia de
+restricciones de muestreo se emplea aquí como referencia de exactitud
+numérica. La reconstrucción de rutina en el montaje DLHM del laboratorio, en
+cambio, se realiza con un propagador de espectro angular que incorpora la
+iluminación de onda esférica del \emph{pinhole}, y es esa la línea base frente
+a la cual se contrastan los métodos implementados. Este trabajo se inserta en
+esa línea, evaluando una familia de propagadores ---la del producto
+matricial--- no explorada antes en DLHM.

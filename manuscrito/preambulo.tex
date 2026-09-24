@@ -1,0 +1,87 @@
+% ============================================================
+% Preámbulo del informe final. Parte del .tex del anteproyecto
+% (fuente, idioma, paquetes) y le cambia la página a ICONTEC.
+% ============================================================
+
+% ---------- Codificación e idioma ----------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% es-tabla: "Tabla" e "Índice de tablas" en lugar de "Cuadro", que es
+% como las nombran las directrices ("tablas de contenido, de figuras y
+% de tablas").
+\usepackage[spanish,es-nodecimaldot,es-tabla]{babel}
+\usepackage{csquotes}
+
+% ---------- Fuente tipo Calibri (la del anteproyecto) ----------
+% ICONTEC solo *sugiere* Arial 12; se conserva la del anteproyecto.
+\usepackage{carlito}
+\renewcommand{\familydefault}{\sfdefault}
+
+% ---------- Página según ICONTEC (NTC 1486, 6.a actualización, 2008) ----------
+% Los cuatro márgenes a 3 cm, la variante simétrica que ICONTEC admite
+% (la pide para impresión a doble cara), para que el texto quede
+% centrado en la hoja. La variante para encuadernar es left=4cm,
+% right=2cm. Número de página centrado a 2 cm del borde inferior
+% (footskip = 3 cm - 2 cm); título de capítulo a 4 cm (ver titlesec).
+\usepackage[letterpaper, top=3cm, left=3cm, right=3cm, bottom=3cm,
+            footskip=1cm]{geometry}
+
+% ---------- Interlineado ----------
+% ICONTEC pide interlineado sencillo con una línea en blanco entre
+% párrafos, que es una convención de Word. Se deja el 1.5 del
+% anteproyecto, que es más legible con ecuaciones.
+\usepackage{setspace}
+\onehalfspacing
+
+% ---------- Matemáticas, tablas y gráficos ----------
+\usepackage{amsmath,amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\graphicspath{{figuras/}}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{subcaption}
+
+% ---------- Unidades ----------
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={.}, group-digits=false}
+
+% ---------- Listas compactas ----------
+\usepackage{enumitem}
+\setlist{itemsep=2pt, topsep=4pt, parsep=0pt}
+
+% ---------- Títulos según ICONTEC ----------
+% Capítulo en página nueva, centrado, en mayúscula sostenida y a 4 cm
+% del borde (3 cm de margen + 1 cm).
+\usepackage{titlesec}
+\titleformat{\chapter}[block]
+  {\normalfont\large\bfseries\centering}{\thechapter.}{0.5em}{\MakeUppercase}
+\titlespacing*{\chapter}{0pt}{1cm}{1cm}
+\titleformat{\section}{\normalfont\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalfont\bfseries\itshape}{\thesubsection}{0.8em}{}
+\titlespacing*{\section}{0pt}{12pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+% ---------- Nombres de las listas ----------
+\addto\captionsspanish{%
+  \renewcommand{\contentsname}{Tabla de contenido}%
+  \renewcommand{\listfigurename}{Lista de figuras}%
+  \renewcommand{\listtablename}{Lista de tablas}%
+}
+
+% ---------- Bibliografía: IEEE numérico, como el anteproyecto ----------
+% Para pasar a ICONTEC (NTC 5613) basta cambiar style=ieee.
+% En Overleaf compila con biber sin configurar nada.
+\usepackage[backend=biber, style=ieee]{biblatex}
+\addbibresource{referencias.bib}
+
+% ---------- Enlaces (va al final) ----------
+\usepackage[hidelinks]{hyperref}
+
+% ---------- Marcas de trabajo ----------
+% \pendiente{...} deja en rojo lo que falta escribir. Antes de entregar,
+% buscar "pendiente" en el proyecto debe dar cero resultados.
+\newcommand{\pendiente}[1]{\textcolor{red}{[Pendiente: #1]}}
