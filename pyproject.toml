@@ -10,7 +10,9 @@ requires-python = ">=3.10"
 # matplotlib lo usa scripts/comparacion.py para las figuras del benchmark; se
 # importa dentro de la funcion que grafica, pero sin el la corrida falla al
 # final, despues de haber medido todo.
-dependencies = ["numpy", "matplotlib"]
+# scipy: las integrales de Fresnel de CamposT/dlhm.py (scipy.special.fresnel),
+# que son las que meten la onda esferica de la DLHM en las matrices del MPASM.
+dependencies = ["numpy", "matplotlib", "scipy"]
 
 # CuPy no va aqui: el paquete que hay que instalar depende de la version de
 # CUDA (cupy-cuda12x, cupy-cuda11x...) y el codigo cae a NumPy si no esta.

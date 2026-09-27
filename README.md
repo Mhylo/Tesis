@@ -32,6 +32,11 @@ y qué parte del cambio de precisión.
                         El camino de vuelta: de un holograma medido al objeto.
                         Toma la imagen que le des y la retropropaga con los
                         tres métodos sobre un barrido de distancias.
+      dlhm.py           La DLHM con su fuente puntual: MPASM con la onda
+                        esférica exacta dentro de las matrices de la DFT, en
+                        los dos sentidos y sin aproximación paraxial.
+                        holograma() simula, Reconstructor reconstruye un
+                        barrido de z reutilizando el espectro del sensor.
       backend.py        Debajo de todo: elige CuPy (GPU) o NumPy (CPU) y fija
                         la política de precisión: fases en float64 siempre,
                         campos en complex64 en GPU.
@@ -79,6 +84,12 @@ y qué parte del cambio de precisión.
                         corte axial x-z del haz. Este ultimo comprueba que el
                         radio 1/e sigue a w0(R+z)/R, o sea que la lente del
                         paper es un pinhole virtual.
+      verif_dlhm_esferico.py
+                        De dónde salen las cifras de CamposT/dlhm.py: la ida
+                        contra Rayleigh-Sommerfeld directo, el campo completo
+                        con tres reconstrucciones (exacta, sin ventanas y el
+                        escalado paraxial de la tarea 24) y el contraste con
+                        la cadena de Carlos. Escribe en resultados/dlhm_esferico/.
 
     tests/              Verificación (pytest). Un fichero por módulo:
       test_propagadores.py   propiedades de los propagadores, Kf por eje
@@ -88,6 +99,9 @@ y qué parte del cambio de precisión.
       test_retropropagacion.py
                              re-localización del objeto, convención de signo y
                              la ambigüedad de la imagen gemela
+      test_dlhm.py           la ventana de Fresnel contra su definición, la ida
+                             contra Rayleigh-Sommerfeld, y la vuelta: recupera
+                             el objeto y lo pone donde está
 
     resultados/         Salidas de los scripts: figuras y CSV. Se regeneran.
       escenario/        Las tres figuras del escenario de la Tabla 1.
@@ -187,7 +201,40 @@ que los dos caminos no pueden divergir.
 Dos límites que conviene conocer antes de leer una reconstrucción, ambos
 documentados en el módulo y fijados en su suite: asume iluminación colimada
 (sin la corrección de fuente puntual del DLHM), y la reconstrucción trae la
-imagen gemela superpuesta, que no se suprime.
+imagen gemela superpuesta, que no se suprime. Para un holograma DLHM de
+verdad, con fuente puntual, está la sección siguiente.
+
+### DLHM: la fuente puntual
+
+`CamposT/dlhm.py` reconstruye con la onda esférica exacta y sin aproximación
+paraxial. Pide el holograma de contraste (dividido por el fondo), el paso del
+sensor y la geometría del banco en milímetros: `z` de la fuente a la muestra y
+`L` de la fuente al sensor.
+
+```python
+from CamposT import dlhm
+from CamposT.backend import a_numpy
+from CamposT.montaje import MONTAJE
+
+# una sola z
+t = dlhm.reconstruir(holo, MONTAJE.delta_x, MONTAJE.lamb, MONTAJE.z, MONTAJE.L,
+                     fondo=referencia)
+
+# un barrido de enfoque: el espectro del sensor se calcula una vez
+R = dlhm.Reconstructor(holo, MONTAJE.delta_x, MONTAJE.lamb, MONTAJE.L, (2.5, 3.5),
+                       fondo=referencia)
+campos = {z: a_numpy(R.campo(z)) for z in (2.8, 2.9, 3.0, 3.1)}
+```
+
+Con un sensor de 3000 x 4000 px el Reconstructor tarda ~10 s en construirse y
+0.56 s por z en una GPU de 4 GB, prácticamente lo mismo que el escalado
+paraxial de la tarea 24 (`dlhm.reconstruir_escalado`), que con detalle fino
+se equivoca: 0.89 de correlación con el objeto en el eje y 0.63 en el borde,
+frente a 1.000 y 0.93. Las cifras y su verificación:
+
+```bash
+Tesis_env/Scripts/python.exe -m scripts.verif_dlhm_esferico
+```
 
 ### Propagar un objeto hacia adelante
 

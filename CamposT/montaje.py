@@ -195,8 +195,12 @@ class Montaje:
         """M = L/z, la magnificación geométrica de la fuente puntual.
 
         Es la forma que fija la tarea 26. La DISTANCIA EFECTIVA no está aquí a
-        propósito: sale del desarrollo de la tarea 24, que aún no está escrito,
-        y ponerle una fórmula ahora sería inventarla.
+        propósito, y ya no hace falta: la tarea 24 la dio por el escalado de
+        Fresnel, z_eq = z(L-z)/L en la malla delta/M, pero eso es paraxial y
+        con detalle fino se equivoca (0.89 de correlación en el eje, 0.63 en
+        el borde del sensor). CamposT/dlhm.py reconstruye sin ella, con z y L
+        directamente y la esférica exacta; distancia_equivalente() queda ahí
+        solo para el escalado de comparación.
         """
         return self.L / self.z
 
