@@ -1,6 +1,6 @@
 """Propagación de campos ópticos en CPU o GPU con el mismo código.
 
-Nueve módulos, cada uno con una responsabilidad. Leídos en este orden se sigue
+Diez módulos, cada uno con una responsabilidad. Leídos en este orden se sigue
 el camino que recorre un campo:
 
     campos        construye el campo de entrada U0: una imagen, o el target
@@ -42,6 +42,12 @@ lo anterior:
                   intensidad que elige el usuario y la retropropaga con los
                   tres métodos sobre un barrido de distancias, porque la de
                   enfoque no se conoce de antemano.
+
+Y la DLHM con su fuente puntual, que las dos de arriba no tienen:
+
+    dlhm          MPASM con la onda esférica exacta metida en las matrices de
+                  la DFT: holograma() de ida, Reconstructor/reconstruir() de
+                  vuelta, sin aproximación paraxial.
 
 Para empezar por algún sitio: `python -m CamposT.pipeline` propaga el target
 por los tres métodos y escribe los PNG en resultados/campos/.
