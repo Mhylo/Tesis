@@ -29,13 +29,14 @@ Tres partes, cada una con su orden en la línea de comandos:
              (la cadena de Carlos, validada contra reconstruction_dlhm.py) en
              N = 1024, tal cual y con sus dos detalles cambiados por separado:
              el remuestreo lineal de cv.resize y la malla de tamaño impar que
-             devuelve malla_remuestreada. La impar es la que pesa: su rejilla
-             de frecuencias, linspace(-P/2, P/2 - 1, P)·dfx, no pasa por
-             f = 0 con P impar, H se evalúa medio paso corrida y la
-             reconstrucción sale desplazada lambda·d/(2W) ~ 1 um, del orden
-             del detalle (el mismo fallo que documenta frecuencias_fft() en
-             propagadores.py). Medido: 0.875 con la exacta tal cual, 0.990
-             solo con hacer la malla par, 0.993 además con banda limitada.
+             devolvía malla_remuestreada antes de redondear al par (2027 aquí;
+             ahora 2028). La impar es la que pesa: su rejilla de frecuencias,
+             linspace(-P/2, P/2 - 1, P)·dfx, no pasa por f = 0 con P impar, H
+             se evalúa medio paso corrida y la reconstrucción sale desplazada
+             lambda·d/(2W) ~ 1 um, del orden del detalle (el mismo fallo que
+             documenta frecuencias_fft() en propagadores.py). Medido: 0.875
+             con la malla impar, 0.990 tal cual (la par), 0.993 además con
+             banda limitada.
 
 Las tres reconstruyen c - 1 (el holograma de contraste menos el fondo): ver
 el docstring de CamposT/dlhm.py.
@@ -318,13 +319,15 @@ def parte_carlos(N=1024):
     V = a_numpy(dlhm.holograma(1 - a, DO, LAMB, Z, L, (N, N), DELTA, complejo=True))
     X = dlhm.coordenadas(N, DELTA)
     fN = (np.arange(N) - N / 2) / (N * DELTA)
-    impar = mp.malla_remuestreada(N, N, Z, LAMB, DELTA)[0]
+    # malla_remuestreada ya redondea al par; la impar es la que daba antes,
+    # int(N·of) = 2027 en N = 1024, y se rehace aquí para medir lo que costaba
+    par = mp.malla_remuestreada(N, N, Z, LAMB, DELTA)[0]
+    impar = par - 1
     for entrada, c in (("campo complejo", 1 + V), ("intensidad", np.abs(1 + V) ** 2)):
         R = dlhm.Reconstructor(c, DELTA, LAMB, L, Z)
         print(f"   {entrada}:")
-        par = impar + impar % 2
-        for nombre, Nr, remuestreo in (("tal cual (cv.resize lineal, malla impar)", impar, None),
-                                       ("cv.resize lineal, malla par", par, "lineal"),
+        for nombre, Nr, remuestreo in (("tal cual (cv.resize lineal, malla par)", par, None),
+                                       ("cv.resize lineal, malla impar", impar, "lineal"),
                                        ("banda limitada, malla impar", impar, "banda"),
                                        ("banda limitada, malla par", par, "banda")):
             p = DELTA * N / Nr

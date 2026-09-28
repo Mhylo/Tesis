@@ -83,6 +83,11 @@ z = 4.95 mm):
 O sea que reconstruir() es fiel. Eso DESCARTA la reconstruccion como causa: el
 fallo esta en la puntuacion.
 
+OJO, esa comparacion es de ANTES de que malla_remuestreada() redondeara al
+par: con esos parametros la malla salia 337 en las dos cadenas. Hoy
+reconstruir() usa 338 y reconstruction_dlhm.py sigue en 337, que desplaza su
+reconstruccion. Se aparta a proposito; ver malla_remuestreada().
+
 OJO A ESE 1e-6, que es (1e-3)^2 y no un error: point_src devuelve exp(ikr)/r, y
 el 1/r NO es invariante de escala. Trabajar en milimetros en vez de metros lo
 cambia por 1000, y como Rec = U*conj(U0) el factor entra al cuadrado. Es un
@@ -540,11 +545,43 @@ def malla_remuestreada(lado_x, lado_y, z, lamb, delta):
     FISICO del sensor, no del paso de pixel. Submuestrear el holograma no
     reduce la malla ni un punto; recortarlo si, y linealmente. Por eso aqui el
     ROI es lo que hace viable el barrido y no una comodidad.
+
+    Y SIEMPRE PAR: int(lado*of) y, si sale impar, el par siguiente. Con P
+    impar, fts() deja la continua en el indice (P+1)/2 y la rejilla de
+    angular_spectrum(),
+
+        linspace(-P/2*dfx, (P/2 - 1)*dfx, P)
+
+    le asigna ahi +dfx/2: no pasa por f = 0. H se evalua medio paso corrida y
+    la reconstruccion sale desplazada lambda*(L - z)/(2W), con W el ancho del
+    sensor. Con los numeros del montaje -528 nm, 1.83 um, z = 3, L = 10- un
+    sensor de 1024 daba 2027 y un corrimiento de 0.99 um en el plano de la
+    muestra, del orden del detalle del objeto. Contra la reconstruccion exacta
+    de CamposT.dlhm, con el holograma complejo, la correlacion era 0.875; con
+    2028 es 0.990, y 0.993 si ademas se remuestrea en banda limitada en vez de
+    con cv.resize (scripts/verif_dlhm_esferico.py, parte carlos). Es el mismo
+    fallo que documenta frecuencias_fft() en CamposT/propagadores.py.
+
+    El arreglo va aqui porque angular_spectrum() es copia literal de dlhm.py y
+    no se toca, y espectro_angular() tiene que darle lo mismo bit a bit. Hacia
+    ARRIBA porque subir no le quita nunca un punto a la malla: el paso W/N
+    solo puede afinarse. Y solo los impares: donde int() ya daba par la malla
+    es la de siempre, y la tabla de la cabecera -13144, 2802, 1624- sigue
+    valiendo con su memoria y sus tiempos.
+
+    El precio: cuando int(lado*of) sale impar, reconstruir() deja de ser bit a
+    bit el reconstruction_dlhm.py de Carlos, que se queda con la impar. Es a
+    proposito. Lo fija tests/test_malla_remuestreada.py.
+
+    QUEDA ABIERTO: esto solo cubre la rama que remuestrea. Con SOBREMUESTREO =
+    1 la malla es la del holograma, y un recorte impar se corre igual: medido
+    con 511 de lado, 2 um.
     """
     Wx, Wy = lado_x * delta, lado_y * delta
     s = lamb * np.sqrt((Wx / 2) ** 2 + (Wy / 2) ** 2 + z ** 2) / Wx
     of = delta / s
-    return int(lado_y * of), int(lado_x * of)
+    N, M = int(lado_y * of), int(lado_x * of)
+    return N + N % 2, M + M % 2
 
 
 def comprobar_memoria(holo, zs, lamb, delta, tope_gb, xp=np,
@@ -569,7 +606,8 @@ def comprobar_memoria(holo, zs, lamb, delta, tope_gb, xp=np,
     if xp is cp:
         libre, _ = cp.cuda.runtime.memGetInfo()
         tope_gb = min(tope_gb, 0.85 * libre / 2 ** 30)
-    # el peor caso es la z mas chica: s crece con z, y la malla es Wx/s
+    # el peor caso es la z mas chica: s crece con z, y la malla es Wx/s. El
+    # redondeo al par no lo cambia: n + n % 2 no baja nunca al subir n
     if SOBREMUESTREO is not None:
         gb = 6 * Q * P * itemsize / 2 ** 30
         print(f"  SOBREMUESTREO = {SOBREMUESTREO}: la malla se queda en "

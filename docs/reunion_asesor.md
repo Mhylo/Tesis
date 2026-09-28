@@ -87,7 +87,7 @@ usa `L = 8 mm, z = 2 mm`; `reconstruction_dlhm.py` usa `L = 11 mm, z = 4.95 mm`�
 
 ---
 
-## 4. Dos cosas de su código, en tono de pregunta
+## 4. Tres cosas de su código, en tono de pregunta
 
 Es su repositorio. Plantearlas como «me pasó esto, ¿lo estoy usando mal?».
 
@@ -112,6 +112,24 @@ del de `main_dlhm.py`. Ahí no salta porque `W_provided` y `W_s` valen
 dejando el paso del sample en `dx_in·Mag = 7.4 µm`, cuando el píxel del sensor
 retroproyectado al plano de la muestra son `dx_out/Mag = 0.4625 µm`. Parece
 invertido — pero puede ser que yo esté leyendo mal la convención.
+
+**La rejilla de `angular_spectrum` con tamaños impares.** La arma con
+`linspace`:
+
+```python
+fx = np.linspace(-P/2 * dfx, (P/2 - 1) * dfx, P)
+```
+
+Con `P` par pasa por `f = 0`; con `P` impar no: `fts()` deja la continua en el
+índice `(P+1)/2` y la rejilla le asigna `+dfx/2`. `H` se evalúa medio paso
+corrida y la reconstrucción sale desplazada `λ(L−z)/(2W)`. Y el tamaño impar
+sale solo: el remuestreo de `reconstruction_dlhm.py` pide `int(P·of)` puntos, que
+con nuestro montaje y un sensor de 1024 son **2027**. Medido: ~1 µm de
+corrimiento en el plano de la muestra, del orden del detalle, y la correlación
+con una reconstrucción exacta baja de 0.990 con malla par a 0.875 con la impar.
+En el repo lo esquivamos redondeando la malla al par, sin tocar su función.
+**¿Lo tenían visto, o siempre trabajan con tamaños pares? ¿Lo estoy usando
+mal?**
 
 **Mencionar** que el repo ya le aplica **tres parches** (`[parche TG]`, ver
 `scripts/parchar_referencias.py`) por incompatibilidades con NumPy 2 y un
