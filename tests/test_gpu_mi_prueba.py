@@ -219,7 +219,7 @@ def test_dlhm_equivale_en_las_dos_ramas(sobremuestreo):
     """Las dos ramas de reconstruir(): malla del sensor, y remuestreada.
 
     La segunda es la que pide la geometria y la que no cabe en la tarjeta a
-    tamano real; a 256x256 sale una malla de 221 y se puede comprobar.
+    tamano real; a 256x256 sale una malla de 222 y se puede comprobar.
     """
     m = importlib.import_module("scripts.mi_prueba_dlhm")
     assert m.comprobar_equivalencia(np, np.complex128, sobremuestreo) == 0.0
