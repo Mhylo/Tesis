@@ -554,7 +554,11 @@ c.c., y como a_z ≈ a_L en la proyección de cada punto (el mismo rayo), el
 cociente deshace la envolvente en los dos planos. Falla cerca de los ceros de
 a; ahí el Reconstructor pone c - 1 = 0 bajo un piso. Medido en 256 px con un
 pinhole de 20 um: correlación con el objeto dentro del disco 0.819 con fuente
-y 0.817 sin ella; sin piso, 0.023; dividiendo por la media, 0.253.
+y 0.817 sin ella; sin piso, 0.023; dividiendo por la media, 0.253. Dividir por
+amplitud -(I - fondo)/sqrt(fondo) en el sensor y la salida entre sqrt(fondo)
+proyectado- solo es exacto con campo complejo: con intensidad amplifica la
+gemela hacia el borde de la luz, y en el ROI del USAF del BenchmarkTarget
+entero empata (0.7906 frente a 0.7900 de esta división; 0.7990 sin fuente).
 
 ```
 

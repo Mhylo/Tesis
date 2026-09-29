@@ -135,6 +135,24 @@ borde difracta dentro del ROI. `piso > 0` exige un fondo que sea un array
 (con `None`, `'media'` o un escalar aborta), y `piso` va en [0, 1). Con 0
 todo queda como hoy.
 
+**Comparada con dividir por amplitud (2026-09-29).** La alternativa es
+c1 = (I − fondo)/√fondo en el sensor y la salida dividida por √fondo
+proyectado en la muestra. Con campo complejo es exacta y la D4 no: error
+6.7e-4 en 256 px con NA 0.17. Con intensidad, que es lo que mide el sensor,
+manda la imagen gemela, y la división de la salida la amplifica hacia el borde
+de la luz. Medido en el BenchmarkTarget entero (z = 3 mm, pinhole de 5 µm),
+correlación de t − 1 con el objeto:
+
+| ventana | sin fuente | D4 | amplitud |
+|---|---|---|---|
+| ROI del USAF, 256 px | 0.7990 | 0.7900 | 0.7906 |
+| centro, 512 px | 0.8231 | 0.7875 | 0.7874 |
+
+En 256 px con NA 0.17 la amplitud empata en el centro y queda peor en la
+periferia (0.52 frente a 0.70). Una revisión anterior había medido lo
+contrario en parches de otro objeto (N = 1536); con este objeto no se
+reproduce. Se queda la D4: da lo mismo donde se mide y es mucho menos código.
+
 ### D5 — mi_prueba_dlhm: FUENTE y PISO
 
 - **`FUENTE`** acepta tres valores:
