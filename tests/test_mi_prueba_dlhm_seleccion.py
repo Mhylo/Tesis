@@ -445,6 +445,7 @@ def config(tmp_path, monkeypatch, globales):
         Z_MIN=Z - 0.05, Z_MAX=Z + 0.05, PASOS=21, PASOS_FINO=11,
         ROI=(48, 32, 64, 64), BORDE_PX=None, MOTOR="exacto", DISPOSITIVO="cpu",
         DTYPE=None, SOBREMUESTREO=None, SIMULADOR="exacto", NA_FUENTE=0.1,
+        FUENTE=None, PISO=0.05,
         RESULTADOS=tmp_path / "salida")
     for k, v in valores.items():
         monkeypatch.setattr(mp, k, v)
@@ -635,3 +636,54 @@ def test_el_motor_exacto_pasa_el_piso(globales):
                            device="cpu")
     np.testing.assert_allclose(dlhm.a_numpy(m.campo(Z, (0, 0, *FORMA))),
                                dlhm.a_numpy(R.campo(Z)), rtol=1e-12, atol=1e-12)
+
+
+#: Pinhole que da, con L = 0.8 mm, un disco (|a|² >= 0.05) de ~69 px de radio:
+#: la ventana de config (48, 32, 64, 64), con las esquinas a 45 px, cae dentro.
+PINHOLE_PRUEBA = 3.2e-3
+
+
+def test_main_con_fuente_guarda_el_fondo_y_encuentra_el_foco(config, monkeypatch):
+    """Medido con el prototipo: el exacto a 2.0 um (1.0 sin fuente), el de
+    Carlos a 2.7 um, las mismas cotas que sin fuente."""
+    a = dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB)
+    monkeypatch.setattr(mp, "FUENTE", a)
+    z_foco = mp.main()
+    carpeta = config.parent / config.name.replace("_intensidad_", "_intensidad_fuente_")
+    nombre = "sim_objeto_z0.24mm_intensidad_fuente"
+    holo = np.load(carpeta / f"{nombre}.npy")
+    fondo = np.load(carpeta / f"{nombre}_fondo.npy")
+    np.testing.assert_allclose(fondo, dlhm.iluminacion(FORMA, DELTA, L, a), rtol=1e-12)
+    M, N = FORMA
+    # el disco brillante: medido 283 veces el nivel de la esquina
+    assert holo[M // 2 - 5:M // 2 + 5, N // 2 - 5:N // 2 + 5].mean() > 100 * holo[:10, :10].mean()
+    # y dividido por su fondo, dentro del disco, es un holograma de contraste
+    luz = fondo >= 0.05 * fondo.max()
+    assert 0.5 < (holo[luz] / fondo[luz]).mean() < 1.5
+    assert all(abs(z - Z) < PASO / 2 for z in z_foco.values()), z_foco
+    # releido con RUTA y FONDO, sin FUENTE: el mismo foco, en la misma carpeta
+    monkeypatch.setattr(mp, "FUENTE", None)
+    monkeypatch.setattr(mp, "RUTA", carpeta / f"{nombre}.npy")
+    monkeypatch.setattr(mp, "FONDO", carpeta / f"{nombre}_fondo.npy")
+    z_foco_2 = mp.main()
+    assert all(abs(z_foco_2[n] - z_foco[n]) <= 2 * PASO / 10 for n in z_foco), (z_foco, z_foco_2)
+
+
+def test_main_con_fuente_y_el_motor_de_carlos(config, monkeypatch):
+    monkeypatch.setattr(mp, "FUENTE", dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB))
+    monkeypatch.setattr(mp, "MOTOR", "carlos")
+    z_foco = mp.main()
+    assert all(abs(z - Z) < PASO for z in z_foco.values()), z_foco
+
+
+def test_main_avisa_si_la_region_medida_sale_de_la_luz(config, monkeypatch, capsys):
+    """Una ventana casi entera: sus esquinas (a 91 px) salen del disco de 69."""
+    for k, v in dict(FUENTE=dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB),
+                     ROI=(8, 8, 144, 112), METRICAS=("tamura",), EN_CPU=set()).items():
+        monkeypatch.setattr(mp, k, v)
+    mp.main()
+    salida = capsys.readouterr().out
+    assert "AVISO" in salida and "PISO" in salida
+    lado = mp.zona_iluminada(dlhm.iluminacion(FORMA, DELTA, L, mp.FUENTE),
+                             (8, 8, 112, 144), 0.05)[1]
+    assert f"{lado}, {lado})" in salida

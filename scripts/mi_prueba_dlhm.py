@@ -1954,7 +1954,8 @@ def figura_campos(paneles, forma, ventana, zoom_px, con_roi, titulo=""):
 def main():
     """Conecta las constantes con las funciones. Devuelve {metrica: z de foco}."""
     comprobar_configuracion(METRICAS, FORMATO_BARRIDO, OBJETO, MOTOR, CAMPO, RUTA,
-                            REFERENCIA, Z_REAL, SIMULADOR)
+                            REFERENCIA, Z_REAL, SIMULADOR, FUENTE, PISO)
+    fuente = fuente_de(FUENTE, MONTAJE.pinhole, LAMB)
     xp_, dev = elegir_dispositivo(DISPOSITIVO)
     dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
     zs, paso, z_rango = rango_del_barrido(Z_MIN, Z_MAX, PASOS, L)
@@ -1975,13 +1976,17 @@ def main():
     t0 = time.perf_counter()
     if RUTA is None:
         holo = simular(t_ref, LAMB, DELTA, L, Z_REAL, CAMPO, dev, dtype, SIMULADOR,
-                       NA_FUENTE)
+                       NA_FUENTE, fuente=fuente)
         # la ida deja en el pool de CuPy lo que uso -en 3000x4000, ~1.6 GB- y el
         # motor no lo encontraria libre
         liberar(xp_)
-        # el de Lopera lleva la envolvente de la fuente y 8 bits: se divide por
-        # su media, como uno de laboratorio sin FONDO
-        fondo = None if SIMULADOR == "exacto" else "media"
+        if fuente is not None:
+            # la imagen sin muestra, en la normalizacion del holograma
+            fondo = dlhm_exacto.iluminacion(holo.shape, DELTA, L, fuente)
+        else:
+            # el de Lopera lleva la envolvente de la fuente y 8 bits: se divide por
+            # su media, como uno de laboratorio sin FONDO
+            fondo = None if SIMULADOR == "exacto" else "media"
         print(f"holograma simulado ({tipo}) de {pathlib.Path(REFERENCIA).name} a "
               f"z = {Z_REAL:g} mm: {holo.shape[0]}x{holo.shape[1]} en "
               f"{time.perf_counter() - t0:.1f} s")
@@ -1997,6 +2002,8 @@ def main():
             f"{holo.shape[0]}x{holo.shape[1]}. Tiene que ser el objeto en la malla que "
             f"el sensor proyecta,\nun pixel por pixel del sensor: si no lo es, pon "
             f'REFERENCIA = None y METRICAS = ("tamura",).')
+    # el piso solo cuando se divide por una imagen: la simulada o FONDO
+    piso = PISO if isinstance(fondo, np.ndarray) else 0.0
     M, N = holo.shape
 
     # --- la region medida y la salida ---------------------------------------
@@ -2004,14 +2011,28 @@ def main():
     ventana, roi = region_medida((M, N), ROI, BORDE_PX, imagen,
                                  "arrastra la region donde enfocar")
     f0, c0, alto, ancho = ventana
+    if piso > 0:
+        fraccion, lado = zona_iluminada(fondo, ventana, piso)
+        if fraccion > 0:
+            print(f"AVISO: el {100 * fraccion:.0f} % de la region medida cae donde el "
+                  f"fondo esta bajo PISO = {PISO:g} de su maximo: ahi no se divide y no "
+                  f"hay informacion.\n  El mayor cuadrado centrado que queda iluminado "
+                  f"es de {lado} px:\n\n    ROI = ({(N - lado) // 2}, {(M - lado) // 2}, "
+                  f"{lado}, {lado})\n")
     if roi is not None:
         print(f"ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})   # repite esta ventana")
     salida, nombre = carpeta_de_salida(RESULTADOS, RUTA, REFERENCIA, Z_REAL, tipo,
-                                       MOTOR, OBJETO, roi)
+                                       MOTOR, OBJETO, roi,
+                                       sufijo_fuente(FUENTE, MONTAJE.pinhole))
     salida.mkdir(parents=True, exist_ok=True)
     if RUTA is None:
         np.save(salida / f"{nombre}.npy", holo)
-        print(f"  -> {salida / f'{nombre}.npy'}  (ponlo en RUTA para no volver a simular)")
+        if fuente is None:
+            print(f"  -> {salida / f'{nombre}.npy'}  (ponlo en RUTA para no volver a simular)")
+        else:
+            np.save(salida / f"{nombre}_fondo.npy", fondo)
+            print(f"  -> {salida / f'{nombre}.npy'} y {nombre}_fondo.npy  (ponlos en RUTA "
+                  f"y FONDO, con FUENTE = None, para no volver a simular)")
 
     print(f"  lambda {LAMB * 1e6:.0f} nm | delta {DELTA * 1e3:.2f} um | L = {L:g} mm | "
           f"objeto {OBJETO} | motor {MOTOR}")
@@ -2023,8 +2044,8 @@ def main():
     # --- el motor -----------------------------------------------------------
     t0 = time.perf_counter()
     if MOTOR == "exacto":
-        motor = MotorExacto(holo, LAMB, DELTA, L, z_rango, fondo=fondo, device=dev,
-                            dtype=dtype)
+        motor = MotorExacto(holo, LAMB, DELTA, L, z_rango, fondo=fondo, piso=piso,
+                            device=dev, dtype=dtype)
         sincronizar(motor.xp)
         print(f"  motor exacto: {motor.describir()}; construido en "
               f"{time.perf_counter() - t0:.1f} s")
@@ -2033,7 +2054,9 @@ def main():
             print(f"AVISO: el ROI no esta centrado en la malla {M}x{N}. El motor de "
                   f"Carlos pone la fuente en el centro\n  del recorte: su fisica ya no "
                   f"es la del banco.")
-        motor = MotorCarlos(holo, ventana, LAMB, DELTA, L, xp_, dtype, SOBREMUESTREO)
+        # con la fuente simulada recibe el contraste; con RUTA y FONDO, como siempre
+        h_carlos = holo if fuente is None else contraste_enmascarado(holo, fondo, piso)
+        motor = MotorCarlos(h_carlos, ventana, LAMB, DELTA, L, xp_, dtype, SOBREMUESTREO)
         comprobar_memoria(motor.h, z_rango, LAMB, DELTA, MEMORIA_MAX_GB, xp_, dtype)
         print(f"  motor de Carlos: {motor.describir(z_rango)}")
         print(f"  reconstruir() vs la cadena intacta de dlhm.py: "
