@@ -15,7 +15,8 @@ docs/superpowers/specs/2026-09-28-mi-prueba-dlhm-seleccion-design.md):
       absoluto, y la Tamura invertida enfoca en Z_REAL;
 - D2  la ventana del motor exacto es el trozo de la reconstruccion entera, y
       los dos motores entregan la ventana alineada con la referencia;
-- D3  el motor de Carlos exige un ROI cuadrado y divide por |U0|^2;
+- D3  el motor de Carlos exige un recorte cuadrado -el ROI cuando
+      CARLOS_RECORTE es None- y divide por |U0|^2;
 - el barrido grueso + fino encuentra Z_REAL con los dos motores;
 - D6  Pearson o SSIM sin referencia abortan; D2 un rango que se sale de
       0 < z < L con la guarda del fino tambien;
@@ -759,3 +760,33 @@ def test_carlos_con_fondo_divide_su_salida_por_la_raiz():
     base = uno.campo(Z, VENTANA)
     esperado = 1 + np.where(luz, (base - 1) / np.where(luz, r, 1), 0)
     np.testing.assert_allclose(m.campo(Z, VENTANA), esperado, rtol=1e-10, atol=1e-12)
+
+
+def test_carlos_con_fondo_pone_exactamente_1_bajo_el_piso():
+    """Spec D5bis, la rama de la mascara: bajo raiz_min la salida es EXACTAMENTE
+    1, en todo el recorte, y sobre el piso es 1 + (t - 1)/raiz.
+
+    La prueba de arriba no la pisa: con PISO = 0.05 el piso de la raiz es 0.22 y
+    el minimo del recorte de 96 es 0.25, asi que ningun pixel cae bajo el y un
+    (t - 1)/r sin mascara la dejaria pasar. Con PISO = 0.3 (raiz_min = 0.55) caen
+    1961 de 9216, las esquinas del recorte, donde el pinhole ya no ilumina."""
+    a = dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB)
+    t = 1 - 0.8 * objeto_de_prueba()
+    h = mp.simular(t, LAMB, DELTA, L, Z, "intensidad", device="cpu", fuente=a)
+    fondo = dlhm.iluminacion(FORMA, DELTA, L, a)
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(h, fondo, 0.3)
+    uno = mp.MotorCarlos(1 + c1, VENTANA, LAMB, DELTA, L, recorte=96,
+                         raiz=np.ones_like(raiz))
+    m = mp.MotorCarlos(1 + c1, VENTANA, LAMB, DELTA, L, recorte=96, raiz=raiz,
+                       raiz_min=raiz_min)
+    rf0, rc0, lado, _ = m.ventana_maxima
+    r = raiz[rf0:rf0 + lado, rc0:rc0 + lado]
+    bajo = r < raiz_min
+    # que no pase en vacio: hay pixeles bajo el piso y tambien sobre el
+    assert bajo.any() and not bajo.all()
+    salida = m.campo(Z, m.ventana_maxima)
+    assert np.isfinite(salida).all()
+    assert (salida[bajo] == 1.0).all()
+    base = uno.campo(Z, uno.ventana_maxima)
+    esperado = 1 + (base - 1) / np.where(bajo, 1, r)
+    np.testing.assert_allclose(salida[~bajo], esperado[~bajo], rtol=1e-10, atol=1e-12)
