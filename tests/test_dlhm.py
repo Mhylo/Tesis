@@ -397,59 +397,122 @@ def test_un_holograma_crudo_sin_fondo_aborta():
 
 
 def test_el_piso_anula_el_contraste_donde_el_fondo_es_oscuro():
-    """Bajo piso·max|fondo| no se divide: c - 1 = 0, 'sin información', como lo
-    que cae fuera del sensor. Un fondo con ceros no da NaN."""
+    """Bajo sqrt(piso·max|fondo|) no se divide: c1 = 0, 'sin información',
+    como lo que cae fuera del sensor. Un fondo con ceros no da NaN."""
     fondo = np.ones((32, 32))
     fondo[:, :8] = 1e-3
     fondo[0, 0] = 0.0
-    c1 = dlhm._contraste(1.2 * fondo, fondo, piso=0.05)
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(1.2 * fondo, fondo, piso=0.05)
     assert np.isfinite(c1).all()
     np.testing.assert_array_equal(c1[:, :8], 0.0)
     np.testing.assert_allclose(c1[:, 8:], 0.2, rtol=1e-12)
+    np.testing.assert_array_equal(raiz, np.sqrt(fondo))
+    assert raiz_min == pytest.approx(np.sqrt(0.05))
 
 
-def test_sin_piso_el_contraste_es_el_de_siempre():
+def test_sin_piso_el_contraste_por_amplitud_es_holo_menos_fondo_entre_su_raiz():
     rng = np.random.default_rng(3)
     fondo = 0.5 + rng.random((16, 16))
     holo = 0.5 + rng.random((16, 16))
-    np.testing.assert_array_equal(dlhm._contraste(holo, fondo, piso=0.0), holo / fondo - 1)
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(holo, fondo, piso=0.0)
+    np.testing.assert_allclose(c1, (holo - fondo) / np.sqrt(fondo), rtol=1e-12)
+    assert raiz_min == 0.0
 
 
 @pytest.mark.parametrize("fondo", [None, "media", 2.0])
 def test_el_piso_sin_imagen_de_fondo_aborta(fondo):
     with pytest.raises(ValueError, match="piso"):
-        dlhm._contraste(np.ones((8, 8)), fondo, piso=0.05)
+        dlhm.Reconstructor(np.ones((8, 8)), DELTA, LAMB, L, Z, fondo=fondo, piso=0.05,
+                           device="cpu")
 
 
 @pytest.mark.parametrize("piso", [-0.1, 1.0])
 def test_un_piso_fuera_de_rango_aborta(piso):
     with pytest.raises(ValueError, match="piso"):
-        dlhm._contraste(np.ones((8, 8)), np.ones((8, 8)), piso=piso)
+        dlhm.contraste_amplitud(np.ones((8, 8)), np.ones((8, 8)), piso=piso)
 
 
-def test_ida_y_vuelta_con_el_airy_dentro_del_disco():
+@pytest.mark.parametrize("holo, fondo, mensaje", [
+    (np.ones((8, 8)), np.zeros((8, 8)), "finito"),
+    (np.ones((8, 8)), np.full((8, 8), np.nan), "finito"),
+    (np.ones((8, 8)), np.ones((8, 6)), "fondo es"),
+    (np.ones((8, 8), complex), np.linspace(1, 2, 64).reshape(8, 8), "intensidad")])
+def test_un_fondo_imagen_mal_hecho_aborta(holo, fondo, mensaje):
+    with pytest.raises(ValueError, match=mensaje):
+        dlhm.contraste_amplitud(holo, fondo, piso=0.05)
+
+
+def test_con_fondo_imagen_la_salida_es_la_vuelta_de_c1_entre_la_raiz_proyectada():
+    """1 + B{c1}/sqrt(fondo) proyectado, con B la vuelta de siempre: se arma a
+    mano con un Reconstructor SIN fondo sobre 1 + c1. En la malla por defecto
+    la proyección es píxel a píxel."""
+    n = 64
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.01, -0.01)], 3e-3)
+    holo = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    R = dlhm.Reconstructor(holo, DELTA, LAMB, L, Z, fondo=fondo, piso=0.05, device="cpu")
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(holo, fondo, piso=0.05)
+    B = a_numpy(dlhm.Reconstructor(1 + c1, DELTA, LAMB, L, Z, device="cpu").campo(Z)) - 1
+    luz = raiz >= raiz_min
+    esperado = 1 + np.where(luz, B / np.where(luz, raiz, 1), 0)
+    np.testing.assert_allclose(a_numpy(R.campo(Z)), esperado, rtol=1e-10, atol=1e-12)
+
+
+def test_el_fondo_proyectado_es_la_amplitud_de_la_fuente_en_la_muestra():
+    """sqrt(iluminacion()) llevado a la muestra por (y, x)·L/z -el mismo rayo-
+    es |a(s_z)|: en la malla por defecto y en otra más fina y desplazada."""
+    n = 64
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    R = dlhm.Reconstructor(fondo.copy(), DELTA, LAMB, L, Z, fondo=fondo, device="cpu")
+    for paso, m, centro in ((DO, n, (0.0, 0.0)), (DO / 2, 48, (3 * DO, -5 * DO))):
+        y = dlhm.coordenadas(m, paso, centro[0])
+        x = dlhm.coordenadas(m, paso, centro[1])
+        rho = np.hypot(x[None, :], y[:, None])
+        esperado = np.abs(a(rho / np.sqrt(rho**2 + Z**2)))
+        np.testing.assert_allclose(R._raiz_proyectada(y, x, Z), esperado, rtol=1e-3)
+
+
+def test_bajo_el_piso_la_salida_vale_uno_y_un_fondo_con_ceros_no_da_nan():
+    """Fuera del disco, sin piso, la salida se multiplica por 1/sqrt de un fondo
+    casi nulo: medido |t - 1| hasta 288 (0.54 dentro). Con piso vale 1."""
+    n = 256
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.03, -0.02)], 6e-3)
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    fondo[:, :4] = 0.0
+    holo = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+    tr = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, fondo=fondo, piso=0.05,
+                                  device="cpu"))
+    assert np.isfinite(tr).all()
+    np.testing.assert_array_equal(tr[fondo < 0.05 * fondo.max()], 1.0)
+
+
+def test_ida_y_vuelta_con_el_airy_en_el_centro_del_disco():
     """Holograma de INTENSIDAD con la emisión del pinhole, reconstruido
-    dividiendo por iluminacion() con piso. Un pinhole de 20 um para que el
-    disco (|a|² >= 0.05, 138 px de radio) quepa en 256 px. Dentro del disco
-    rinde lo mismo que sin fuente; sin fondo o sin piso, no. Medido: 0.8193 con
-    fuente, 0.8165 sin fuente, 0.253 dividiendo por la media y 0.023 con el
-    fondo sin piso."""
+    dividiendo por amplitud con piso. Pinhole de 20 um: el disco (|a|² >= 0.05,
+    138 px de radio) cubre la malla de 256 salvo las esquinas. En el centro del
+    disco (|a|² >= 0.5) rinde lo mismo que sin fuente; dividiendo por la
+    media, no. Medido: 0.888 con fuente, 0.893 sin fuente, 0.313 dividiendo
+    por la media. Hacia el borde de la luz la división de la salida amplifica
+    la gemela (0.656 en |a|² >= 0.05, contra 0.817 sin fuente): por eso se mide
+    en el centro."""
     n = 256
     a = dlhm.fuente_pinhole(20e-3, LAMB)
     t = manchas(n, DO, [(0.0, 0.0), (0.03, -0.02), (-0.025, 0.03), (0.02, 0.035)], 6e-3)
     fondo = dlhm.iluminacion((n, n), DELTA, L, a)
-    luz = fondo >= 0.05
+    centro = fondo >= 0.5
     sin = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, device="cpu"))
     con = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
 
     def corr(holo, **kw):
         tr = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, device="cpu", **kw))
-        return correlacion((tr - 1)[luz], (t - 1)[luz])
+        return correlacion((tr - 1)[centro], (t - 1)[centro])
 
     c_sin, c_con = corr(sin), corr(con, fondo=fondo, piso=0.05)
     assert c_con >= c_sin - 0.02, (c_con, c_sin)
     assert corr(con, fondo="media") < 0.5
-    assert corr(con, fondo=fondo) < 0.5
 
 
 # -------------------------------------------------------------------- guardas
@@ -507,6 +570,20 @@ def test_gpu_da_lo_mismo_que_cpu_con_fuente():
     gpu = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (64, 64), DELTA, device="gpu", **kw))
     fondo = dlhm.iluminacion((64, 64), DELTA, L, a, centro=X0)
     assert error_relativo(gpu - fondo, cpu - fondo) < 1e-4
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not gpu_disponible(), reason="sin GPU CUDA")
+def test_gpu_da_lo_mismo_que_cpu_con_fondo_imagen():
+    n = 64
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.01, -0.01)], 3e-3)
+    holo = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    kw = dict(fondo=fondo, piso=0.05)
+    cpu = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, device="cpu", **kw))
+    gpu = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, device="gpu", **kw))
+    assert error_relativo(gpu - 1, cpu - 1) < 1e-4
 
 
 if __name__ == "__main__":
