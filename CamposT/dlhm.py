@@ -119,9 +119,10 @@ donde centro es la posición del píxel central respecto del eje óptico (el pie
 de la perpendicular desde la fuente). Con un recorte del sensor, centro es lo
 que dice dónde estaba el recorte: la esférica depende de la posición absoluta.
 
-REQUIERE scipy (scipy.special.fresnel) para las ventanas. Se calculan en la
-CPU en doble precisión y solo después suben al dispositivo, una vez por
-holograma: dependen del sensor, de L y de lamb, no de z.
+REQUIERE scipy: scipy.special.fresnel para las ventanas y scipy.special.j1 para
+fuente_pinhole. Las ventanas se calculan en la CPU en doble precisión y solo
+después suben al dispositivo, una vez por holograma: dependen del sensor, de L
+y de lamb, no de z.
 """
 
 import numpy as np
@@ -246,8 +247,8 @@ def _evaluar_fuente(fuente, y, x, R):
 
 def iluminacion(forma, delta, L, fuente, centro=(0.0, 0.0)):
     """|a(s_L)|² en el sensor: la imagen SIN muestra, en la normalización del
-    holograma (dividida por |e^{ikR}/R|²). Es el fondo por el que se divide
-    para reconstruir. Unos con fuente=None. En NumPy, float64.
+    holograma (dividida por |e^{ikR}/R|²). La reconstrucción normaliza por su
+    raíz (contraste_amplitud). Unos con fuente=None. En NumPy, float64.
 
     No lleva lamb: la función fuente ya la trae dentro.
     """
@@ -654,13 +655,25 @@ def reconstruir_escalado(holo, delta, lamb, z, L, *, fondo=None, s=1,
     """La formulación (i) de la tarea 24: onda plana en la malla delta·z/L a
     -z_eq. Paraxial. Para comparar con reconstruir(), no para producir.
 
-    Reconstruye c - 1 por lo mismo que reconstruir(). El factor e^{ik z_eq}
-    es la fase del teorema de escalado: sin él, t sale girado una constante.
+    Reconstruye c - 1 con `_contraste` (fondo None, 'media', escalar o un fondo
+    array constante), es decir, dividiendo por el fondo. reconstruir() con un
+    fondo imagen normaliza por su amplitud, que no es lo mismo: por eso aquí un
+    fondo que varía se rechaza y se manda a reconstruir() / Reconstructor. El
+    factor e^{ik z_eq} es la fase del teorema de escalado: sin él, t sale
+    girado una constante.
     """
     dy, dx = _por_eje(delta)
     if dy != dx:
         raise ValueError("el escalado va con propagadores.mpasm(), que toma un solo "
                          "paso: delta_y y delta_x tienen que coincidir")
+    if fondo is not None and not isinstance(fondo, str):
+        f = np.asarray(a_numpy(fondo))
+        if f.size > 1 and np.ptp(f) > 1e-12 * np.abs(f).max():
+            raise ValueError(
+                "el escalado divide por el fondo, y un fondo que varía (una imagen sin "
+                "muestra) no es lo que hace reconstruir(): con un fondo imagen usa "
+                "reconstruir() o Reconstructor, que normalizan por su amplitud. Aquí el "
+                "fondo puede ser None, 'media', un escalar o una constante.")
     xp, dev = get_xp(device)
     dtype = dtype or dtype_por_defecto(dev)
     c1 = _contraste(holo, fondo)

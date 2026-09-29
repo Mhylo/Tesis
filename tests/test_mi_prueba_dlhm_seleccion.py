@@ -634,8 +634,9 @@ PINHOLE_PRUEBA = 3.2e-3
 
 
 def test_main_con_fuente_guarda_el_fondo_y_encuentra_el_foco(config, monkeypatch):
-    """Medido con el prototipo: el exacto a 2.0 um (1.0 sin fuente), el de
-    Carlos a 2.7 um, las mismas cotas que sin fuente."""
+    """Medido con el prototipo (normalizando por amplitud, recorte de 96): el
+    exacto a 2.0 / 1.0 / 1.0 um (Tamura / Pearson / SSIM), el de Carlos a
+    1.0 / 1.0 / 0.0 um, las mismas cotas que sin fuente."""
     a = dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB)
     monkeypatch.setattr(mp, "FUENTE", a)
     z_foco = mp.main()

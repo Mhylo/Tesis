@@ -542,6 +542,21 @@ def test_el_escalado_exige_un_solo_paso():
                                   device="cpu")
 
 
+def test_el_escalado_rechaza_un_fondo_que_varia_y_acepta_uno_constante():
+    """El escalado divide por el fondo (D4): con un fondo imagen que varia no
+    es lo que hace reconstruir() (normaliza por amplitud), asi que aborta y
+    manda a reconstruir()/Reconstructor. Un fondo array CONSTANTE es lo mismo
+    que un escalar: da lo mismo que sin fondo."""
+    _, c = _holograma_prueba(n=64)
+    varia = 1 + 0.2 * np.linspace(0, 1, c.size).reshape(c.shape)
+    with pytest.raises(ValueError, match="reconstruir"):
+        dlhm.reconstruir_escalado(c * varia, DELTA, LAMB, Z, L, fondo=varia, device="cpu")
+    sin = a_numpy(dlhm.reconstruir_escalado(c, DELTA, LAMB, Z, L, device="cpu"))
+    const = a_numpy(dlhm.reconstruir_escalado(c, DELTA, LAMB, Z, L,
+                                              fondo=np.ones_like(c), device="cpu"))
+    assert error_relativo(const - 1, sin - 1) < 1e-12
+
+
 # ------------------------------------------------------------------ CPU / GPU
 @pytest.mark.gpu
 @pytest.mark.skipif(not gpu_disponible(), reason="sin GPU CUDA")

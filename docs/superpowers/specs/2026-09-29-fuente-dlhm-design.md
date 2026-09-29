@@ -180,6 +180,11 @@ reproduce. Se queda la D4: da lo mismo donde se mide y es mucho menos código.
   corrida simulada con `RUTA` y `FONDO` da el mismo foco que simularla, con
   los dos motores (decidido por el usuario el 2026-09-29, tras la revisión de
   la Task 5; antes Carlos ignoraba `FONDO`).
+
+  > **Sustituido por D5bis:** ver «Revisión tras la verificación a escala
+  > real», D5bis. Con un fondo imagen Carlos recibe 1 + c1 sin normalizar y
+  > su salida se corrige por √fondo; ya no recibe c = holo/fondo en [0, 1].
+
 - **`PISO` se aplica siempre que se divide por una imagen:** la simulada, o
   `FONDO` con un holograma grabado, que en el laboratorio también tiene
   esquinas oscuras. Con `FONDO = None` (`'media'`) no se usa.
@@ -202,6 +207,10 @@ centro en (1434.5, 2011.5). El cuadrado le deja 48-51 px de margen por lado
 para las franjas, no toca ningún otro grupo del target y su esquina más lejana
 queda a 239 px del centro del sensor, dentro del disco iluminado del pinhole
 (555 px con `PISO = 0.05`). Es cuadrado porque el motor de Carlos lo exige.
+
+> **Sustituido por D9:** ver «Revisión tras la verificación a escala real»,
+> D9. Carlos reconstruye su propio recorte centrado, así que el ROI
+> descentrado ya no le importa y su aviso no salta.
 
 No está centrado en la malla: queda 65.5 px arriba y 11.5 px a la derecha del
 centro (1500, 2000). El motor exacto no lo nota, porque el ROI solo elige qué
@@ -301,7 +310,7 @@ ROI = (1884, 1306, 256, 256)   # el grupo USAF central del BenchmarkTarget (D8)
 
 ## Documentación
 
-- Una sección «LA FUENTE» en el docstring de `CamposT/dlhm.py` con D1 y D4.
+- Una sección «LA FUENTE» en el docstring de `CamposT/dlhm.py` con D1 y D4bis.
 - En la cabecera de `mi_prueba_dlhm.py`: `FUENTE` y `PISO`, y lo que salió en
   el punto 4 de la Verificación.
 - Una tarea nueva en `docs/Cronograma_TG_DLHM.xlsx`, con la convención de
