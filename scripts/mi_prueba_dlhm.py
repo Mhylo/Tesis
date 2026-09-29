@@ -28,11 +28,14 @@ DOS MOTORES DETRAS DE LA MISMA SELECCION (MOTOR):
 
     "carlos"  reconstruir(), la cadena de reconstruction_dlhm.py: remuestrear
               por geometria, multiplicar por la onda esferica, propagar L - z
-              y quitar la referencia. Necesita el holograma RECORTADO al ROI
-              -con el sensor entero pide 15 GB por paso-, y el recorte tiene
-              que ser cuadrado y conviene centrado. Se conserva porque es la
-              cadena validada contra el modelo de Carlos, y compararlas sobre
-              el mismo holograma es de lo que va la tesis. Ver MotorCarlos.
+              y quitar la referencia. Necesita el holograma RECORTADO -con el
+              sensor entero pide 15 GB por paso-: reconstruye su propio
+              cuadrado centrado, de lado CARLOS_RECORTE, y las metricas se
+              miden solo en el ROI, dentro de el (con CARLOS_RECORTE = None
+              el recorte ES el ROI, y tiene que ser cuadrado y conviene
+              centrado). Se conserva porque es la cadena validada contra el
+              modelo de Carlos, y compararlas sobre el mismo holograma es de
+              lo que va la tesis. Ver MotorCarlos.
 
 LA MALLA ES LA DEL SENSOR, PROYECTADA DESDE LA FUENTE: paso DELTA*z/L, un pixel
 por pixel del sensor. En ella un detalle cae en el MISMO pixel a toda z -el
@@ -275,7 +278,7 @@ GUARDAR_FIGURA = True
 
 #: True guarda la reconstruccion de CADA z del barrido (grueso y fino). A
 #: diferencia de barrido_foco guarda la VENTANA MEDIDA, no la malla entera: el
-#: motor de Carlos no tiene otra.
+#: motor de Carlos solo da su recorte, y las metricas miden un trozo de el.
 GUARDAR_BARRIDO = False
 
 #: Que se guarda por cada z: "png" (|t|^2, o angle(t) con OBJETO = "fase", a
@@ -424,8 +427,11 @@ PASOS_FINO = 21
 #:     (X0, Y0, ANCHO, ALTO)   ventana fija: X0 la columna e Y0 la fila de la
 #:                             esquina superior izquierda.
 #: Con el motor exacto el holograma entra ENTERO y solo se evalua la ventana.
-#: Con el de Carlos la ventana es ademas el RECORTE del holograma, y tiene que
-#: ser cuadrada y conviene centrada (ver MotorCarlos).
+#: Con el de Carlos la ventana es solo donde se miden las metricas: el motor
+#: reconstruye su propio recorte centrado, de lado CARLOS_RECORTE, y la ventana
+#: tiene que caber dentro (ver MotorCarlos). Solo con CARLOS_RECORTE = None la
+#: ventana es ademas el recorte, y entonces tiene que ser cuadrada y conviene
+#: centrada.
 #:
 #: El defecto es el grupo USAF del CENTRO del BenchmarkTarget: filas 1357-1512
 #: y columnas 1932-2091 de la imagen (pixeles > 0.5), y este cuadrado de 256
@@ -433,8 +439,10 @@ PASOS_FINO = 21
 #: esquina mas lejana queda a 239 px del centro del sensor: dentro de la luz del
 #: pinhole con FUENTE = "pinhole" (disco de 555 px con PISO = 0.05). NO esta
 #: centrado -65.5 px arriba y 11.5 a la derecha del centro-: el motor exacto no
-#: lo nota, y el de Carlos, que pone la fuente en el centro de su recorte, lo
-#: avisa. Con otro holograma en RUTA se cambia a mano o se pone None o True.
+#: lo nota, y el de Carlos tampoco mientras CARLOS_RECORTE traiga un lado: su
+#: recorte es el centrado y el ROI cabe dentro, sin AVISO. Con CARLOS_RECORTE =
+#: None el recorte es el ROI, que pone la fuente en su centro, y entonces si
+#: lo avisa. Con otro holograma en RUTA se cambia a mano o se pone None o True.
 ROI = (1884, 1306, 256, 256)
 
 #: Pixeles por lado que no se miden con ROI = None. None = 3*min(M, N)//8, el
@@ -450,7 +458,7 @@ BORDE_PX = None
 # ── 1e. EL MOTOR ──────────────────────────────────────────────────────────
 
 #: "exacto" (CamposT.dlhm, el holograma entero) o "carlos" (reconstruir(),
-#: sobre el recorte del ROI). Ver la cabecera.
+#: sobre su recorte centrado, CARLOS_RECORTE). Ver la cabecera.
 MOTOR = "exacto"
 
 #: DISPOSITIVO de calculo, para los dos motores: "auto" (la GPU si la hay),
@@ -931,7 +939,8 @@ def malla_remuestreada(lado_x, lado_y, z, lamb, delta):
     y la malla es lado*of = Wx/s. OJO A ESO: el resultado depende del ANCHO
     FISICO del sensor, no del paso de pixel. Submuestrear el holograma no
     reduce la malla ni un punto; recortarlo si, y linealmente. Por eso aqui el
-    ROI es lo que hace viable el barrido y no una comodidad.
+    recorte (CARLOS_RECORTE, o el ROI con None) es lo que hace viable el
+    barrido y no una comodidad.
 
     Y SIEMPRE PAR: int(lado*of) y, si sale impar, el par siguiente. Con P
     impar, fts() deja la continua en el indice (P+1)/2 y la rejilla de
@@ -987,6 +996,10 @@ def comprobar_memoria(holo, zs, lamb, delta, tope_gb, xp=np,
     Y el tamano depende del dtype: en complex64 la misma malla ocupa la mitad,
     que es lo que hace que en la tarjeta quepa aproximadamente el doble de
     recorte que en CPU.
+
+    `holo` es el recorte de Carlos (motor.h), asi que la palanca que mueve este
+    numero es CARLOS_RECORTE, o el ROI mismo cuando CARLOS_RECORTE es None. Los
+    avisos nombran la que toca.
     """
     Q, P = holo.shape
     itemsize = np.dtype(dtype).itemsize
@@ -1003,8 +1016,10 @@ def comprobar_memoria(holo, zs, lamb, delta, tope_gb, xp=np,
         if gb > tope_gb:
             raise SystemExit(
                 f"Ni siquiera sin remuestrear cabe: {gb:.2f} GB de pico "
-                f"contra un tope de {tope_gb:.2f} GB.\nRecorta con un "
-                f"ROI mas chico, o usa DISPOSITIVO = 'cpu'.")
+                f"contra un tope de {tope_gb:.2f} GB.\n"
+                + ("Baja CARLOS_RECORTE" if CARLOS_RECORTE is not None
+                   else "Recorta con un ROI mas chico")
+                + ", o usa DISPOSITIVO = 'cpu'.")
         return
     N, M = malla_remuestreada(P, Q, min(zs), lamb, delta)
     # seis mallas complejas de pico: h, ref, dos productos y dos espectros
@@ -1024,7 +1039,10 @@ def comprobar_memoria(holo, zs, lamb, delta, tope_gb, xp=np,
         f"El remuestreo por geometria pide una malla de {N}x{M} "
         f"({gb:.1f} GB de pico) y el tope es {tope_gb} GB.\n\n"
         f"Eso depende del ANCHO FISICO del sensor, no del paso de pixel: "
-        f"submuestrear no ayuda,\nhay que RECORTAR. Con ROI (cuadrado y centrado):\n\n"
+        f"submuestrear no ayuda,\nhay que RECORTAR. "
+        + ("Con CARLOS_RECORTE (el ROI tiene que caber dentro):"
+           if CARLOS_RECORTE is not None else "Con ROI (cuadrado y centrado):")
+        + "\n\n"
         + "\n".join(lineas)
         + f"\n\nO sube MEMORIA_MAX_GB si sabes que tu maquina lo aguanta "
           f"(en GPU manda la VRAM libre,\nque MEMORIA_MAX_GB no puede subir).")
@@ -1206,7 +1224,7 @@ def onda_de_referencia(forma, z, lamb, delta, L_fuente, xp=np,
 
 
 class MotorCarlos:
-    """reconstruir() -la cadena de Carlos- sobre el recorte del ROI.
+    """reconstruir() -la cadena de Carlos- sobre su recorte centrado.
 
     TRES COSAS LA HACEN COMPARABLE CON LA EXACTA:
 
@@ -1226,12 +1244,13 @@ class MotorCarlos:
        de las pruebas: correlacion con el objeto 0.84 dividiendo, 0.21 sin
        dividir. Cuesta una propagacion mas por z (tres en vez de dos).
 
-    3. SE DEVUELVE LA HUELLA, EN LA MALLA DEL ROI. La salida de reconstruir()
+    3. SE DEVUELVE LA HUELLA, EN LA MALLA DEL SENSOR. La salida de reconstruir()
        abarca en la muestra el mismo ancho que el recorte en el sensor, pero el
        objeto que el recorte ve ocupa solo su 1/M central: los rayos
        principales que llegan al recorte cruzan el plano z en su ancho por z/L.
-       Esa huella se interpola en la malla del ROI, paso delta*z/L, que es la
-       del motor exacto: asi las metricas no dependen del motor.
+       Esa huella se interpola en la malla del recorte, paso delta*z/L, que es
+       la del motor exacto, y la ventana medida es un trozo de ella: asi las
+       metricas no dependen del motor.
 
     El holograma entra normalizado a [0, 1], como antes: una escala global no
     cambia ninguna metrica. Con raiz (un fondo imagen) entra el contraste por
