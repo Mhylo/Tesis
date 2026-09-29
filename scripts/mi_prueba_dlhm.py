@@ -325,9 +325,10 @@ from CamposT.roi import Roi, elegir                                  # noqa: E40
 RUTA = None
 
 #: Solo con RUTA y MOTOR = "exacto": la imagen SIN muestra, por la que se
-#: divide el holograma. None divide por su propia media, que deja dentro la
-#: envolvente del cono del pinhole. El motor de Carlos no la usa: recibe la
-#: intensidad normalizada a [0, 1].
+#: divide el holograma, con PISO. None divide por su propia media, que deja
+#: dentro la envolvente del cono del pinhole. El motor de Carlos no la usa:
+#: recibe la intensidad normalizada a [0, 1]. Un simulado con FUENTE se relee
+#: con RUTA = <nombre>.npy y FONDO = <nombre>_fondo.npy.
 FONDO = None
 
 #: EL OBJETO, en la malla que el sensor proyecta desde la fuente: paso
@@ -376,6 +377,30 @@ CAMPO = "intensidad"
 #: exp(-2r/(L tan(asin(NA)))). 0.1 es la de su main_dlhm.py. Con 0 su codigo
 #: usa exp(-r), que depende de las unidades.
 NA_FUENTE = 0.1
+
+#: La EMISION de la fuente, solo al simular con SIMULADOR = "exacto" y CAMPO =
+#: "intensidad":
+#:   None       fuente puntual ideal, isotropa: ilumina el sensor entero por
+#:              igual. Lo de siempre.
+#:   "pinhole"  el Airy del pinhole de MONTAJE.pinhole (5 um): primer cero a
+#:              sin(theta) = 0.1288, 710 px del centro del sensor a L = 10 mm.
+#:              Es el disco brillante con anillos de un holograma de
+#:              laboratorio, el "patron esferico" de los de Lopera y Carlos.
+#:   a(s)       cualquier funcion de s = sin(theta) con a(0) = 1: AMPLITUD, no
+#:              intensidad.
+#: Apagada por defecto: la NA real no esta medida (MONTAJE.NA), y la puede fijar
+#: el objetivo que enfoca el laser en vez del pinhole. Con fuente el holograma
+#: se guarda junto a su fondo, <nombre>_fondo.npy, y los dos motores lo dividen
+#: por el (ver PISO).
+FUENTE = None
+
+#: Fraccion de max|fondo| bajo la que no se divide por el fondo: ahi c - 1 = 0
+#: en el motor exacto y c = 1 en el de Carlos, "sin informacion", como lo que
+#: cae fuera del sensor. Dividir en los ceros de Airy explota: medido en 256 px,
+#: sin piso la correlacion con el objeto cae de 0.82 a 0.02. Se usa con FUENTE
+#: y, en el motor exacto, con FONDO; con FONDO = None no. Con el pinhole, 0.05
+#: deja un disco de 555 px de radio (0.01, 632; 0.1, 504).
+PISO = 0.05
 
 #: El montaje del laboratorio, CamposT/montaje.py: 528 nm, 1.83 um, L = 10 mm.
 #: L -fuente a sensor- se mide una vez en el banco y NO se barre.
@@ -1086,10 +1111,10 @@ class MotorExacto:
     del rango, y pedir una z fuera aborta.
     """
 
-    def __init__(self, holo, lamb, delta, L_fuente, z_rango, fondo=None,
+    def __init__(self, holo, lamb, delta, L_fuente, z_rango, fondo=None, piso=0.0,
                  device="auto", dtype=None):
         self.R = dlhm_exacto.Reconstructor(holo, delta, lamb, L_fuente, z_rango,
-                                    fondo=fondo, device=device, dtype=dtype)
+                                    fondo=fondo, piso=piso, device=device, dtype=dtype)
         self.xp = self.R.xp
         self.forma = self.R.forma
         self.delta, self.L = float(delta), float(L_fuente)
@@ -1524,7 +1549,8 @@ def enfocar(motor, ventana, zs, pasos_fino, metricas, objeto, en_cpu=(),
 # ════════════════════════════════════════════════════════════════════════════
 
 def comprobar_configuracion(metricas, formato, objeto, motor, campo, ruta,
-                            referencia, z_real, simulador="exacto"):
+                            referencia, z_real, simulador="exacto", fuente=None,
+                            piso=0.0):
     """Aborta ANTES de leer ni reconstruir nada si la combinacion no tiene sentido."""
     if formato not in ("png", "npy", "ambos"):
         raise SystemExit(f'FORMATO_BARRIDO = {formato!r}: usa "png", "npy" o "ambos".')
@@ -1537,6 +1563,24 @@ def comprobar_configuracion(metricas, formato, objeto, motor, campo, ruta,
         raise SystemExit(f'OBJETO = {objeto!r}: usa "amplitud" o "fase".')
     if motor not in ("exacto", "carlos"):
         raise SystemExit(f'MOTOR = {motor!r}: usa "exacto" o "carlos".')
+    if not 0 <= piso < 1:
+        raise SystemExit(f"PISO = {piso!r}: va en [0, 1).")
+    if fuente is not None:
+        if (isinstance(fuente, str) and fuente != "pinhole") or not (
+                isinstance(fuente, str) or callable(fuente)):
+            raise SystemExit(f'FUENTE = {fuente!r}: usa None, "pinhole" o una funcion '
+                             f'a(s) con a(0) = 1.')
+        if ruta is not None:
+            raise SystemExit("FUENTE solo vale al simular (RUTA = None): un holograma "
+                             "grabado ya trae su fuente. Pasa su imagen sin muestra en "
+                             "FONDO y deja FUENTE = None.")
+        if simulador != "exacto":
+            raise SystemExit('FUENTE va con SIMULADOR = "exacto": el modelo de Lopera '
+                             'trae su propia envolvente (NA_FUENTE).')
+        if campo != "intensidad":
+            raise SystemExit('FUENTE va con CAMPO = "intensidad": con "complejo" el '
+                             'holograma es 1 + V, normalizado por la esferica ideal, y la '
+                             'fuente no tiene donde ir.')
     if ruta is None:
         if referencia is None:
             raise SystemExit("RUTA = None simula el holograma de REFERENCIA, y "
@@ -1651,8 +1695,57 @@ def fondo_de(img):
     return float(np.median(np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]])))
 
 
+def fuente_de(valor, pinhole, lamb):
+    """FUENTE -> la funcion a(s) de CamposT.dlhm, o None."""
+    if valor is None:
+        return None
+    if isinstance(valor, str):
+        return dlhm_exacto.fuente_pinhole(pinhole, lamb)
+    return valor
+
+
+def sufijo_fuente(valor, pinhole):
+    """Lo que FUENTE anade al nombre del simulado: '', _pinhole<d>um o _fuente."""
+    if valor is None:
+        return ""
+    if isinstance(valor, str):
+        return f"_pinhole{pinhole * 1e3:g}um"
+    return "_fuente"
+
+
+def contraste_enmascarado(holo, fondo, piso):
+    """c = holo/fondo donde |fondo| >= piso*max|fondo| (y fondo != 0), y 1 donde
+    no: lo que recibe el motor de Carlos con la fuente simulada. El 1 no es
+    opaco: es "sin informacion", como lo que cae fuera del recorte."""
+    holo = np.asarray(holo, dtype=np.float64)
+    fondo = np.asarray(fondo, dtype=np.float64)
+    vale = (np.abs(fondo) >= piso * np.abs(fondo).max()) & (fondo != 0)
+    c = np.ones_like(holo)
+    np.divide(holo, fondo, out=c, where=vale)
+    return c
+
+
+def zona_iluminada(fondo, ventana, piso):
+    """-> (fraccion de la ventana bajo el piso, lado del mayor cuadrado centrado
+    en la malla que queda entero sobre el piso). Para el AVISO de main(): lo que
+    cae bajo el piso no se mide, se enmascara."""
+    luz = np.abs(np.asarray(fondo, dtype=np.float64))
+    luz = luz >= piso * luz.max()
+    f0, c0, alto, ancho = ventana
+    fraccion = float(1 - luz[f0:f0 + alto, c0:c0 + ancho].mean())
+    M, N = luz.shape
+    lo, hi = 0, min(M, N) // 2                      # medio lado
+    while lo < hi:
+        m = (lo + hi + 1) // 2
+        if luz[M // 2 - m:M // 2 + m, N // 2 - m:N // 2 + m].all():
+            lo = m
+        else:
+            hi = m - 1
+    return fraccion, 2 * lo
+
+
 def simular(t, lamb, delta, L_fuente, z, campo, device="auto", dtype=None,
-            simulador="exacto", na_fuente=0.1):
+            simulador="exacto", na_fuente=0.1, fuente=None):
     """El holograma de t en un sensor de la forma de t, paso delta. En NumPy.
 
     t va en la malla que el sensor proyecta, paso delta*z/L: un pixel del objeto
@@ -1660,6 +1753,7 @@ def simular(t, lamb, delta, L_fuente, z, campo, device="auto", dtype=None,
 
     simulador = "exacto": la ida de CamposT.dlhm. campo "intensidad" da el de
     contraste |1 + V|^2 = I/I_ref; "complejo", 1 + V, sin imagen gemela.
+    fuente: la emision a(s) (CamposT.dlhm), solo con "exacto".
 
     simulador = "lopera": dlhm(), su modelo, tal cual, y su salida de 8 bits
     pasada a [0, 1]; campo no aplica. Se le pasa dx_in = 0, que salta su
@@ -1673,8 +1767,8 @@ def simular(t, lamb, delta, L_fuente, z, campo, device="auto", dtype=None,
         return dlhm(t, 0, L_fuente, z, N * delta, M * delta, delta, lamb,
                     NA_s=na_fuente) / 255.0
     h = a_cpu(dlhm_exacto.holograma(t, delta * z / L_fuente, lamb, z, L_fuente, t.shape,
-                                    delta, complejo=campo == "complejo", device=device,
-                                    dtype=dtype))
+                                    delta, complejo=campo == "complejo", fuente=fuente,
+                                    device=device, dtype=dtype))
     return 1 + h if campo == "complejo" else h
 
 
@@ -1694,15 +1788,15 @@ def vista(a, objeto="amplitud"):
     return v / m if m > 0 else v
 
 
-def carpeta_de_salida(raiz, ruta, referencia, z_real, campo, motor, objeto, roi):
+def carpeta_de_salida(raiz, ruta, referencia, z_real, campo, motor, objeto, roi, sufijo=""):
     """-> (carpeta, nombre). carpeta = raiz/<nombre>_<motor>_<objeto>[_roi...].
 
-    nombre es el del holograma, o sim_<referencia>_z<Z_REAL>mm_<CAMPO o lopera> si se
+    nombre es el del holograma, o sim_<referencia>_z<Z_REAL>mm_<CAMPO o lopera><sufijo de FUENTE> si se
     simula: el simulado se guarda como <nombre>.npy, asi que leerlo despues con
     RUTA da el mismo nombre y escribe en la misma carpeta.
     """
     if ruta is None:
-        nombre = f"sim_{pathlib.Path(referencia).stem}_z{z_real:g}mm_{campo}"
+        nombre = f"sim_{pathlib.Path(referencia).stem}_z{z_real:g}mm_{campo}{sufijo}"
     else:
         nombre = pathlib.Path(ruta).stem
     carpeta = f"{nombre}_{motor}_{objeto}"

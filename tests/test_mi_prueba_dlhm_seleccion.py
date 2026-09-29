@@ -539,3 +539,99 @@ def test_main_con_el_simulador_de_lopera(config, monkeypatch):
     carpeta = config.parent / "sim_objeto_z0.24mm_lopera_exacto_amplitud_roi48-32-64x64"
     assert (carpeta / "sim_objeto_z0.24mm_lopera.npy").exists()
     assert all(abs(z - Z) < PASO for z in z_foco.values()), z_foco
+
+
+# ── la fuente (2026-09-29) ──────────────────────────────────────────────────
+
+@pytest.mark.parametrize("cambio", [
+    dict(fuente="pinhole", ruta="holo.npy"),       # un holograma grabado ya trae su fuente
+    dict(fuente="pinhole", simulador="lopera"),     # el suyo trae su envolvente
+    dict(fuente="pinhole", campo="complejo"),
+    dict(fuente="led"), dict(fuente=3.0),
+    dict(piso=1.0), dict(piso=-0.1)])
+def test_una_fuente_o_un_piso_que_no_casan_abortan(cambio):
+    kw = dict(metricas=("tamura",), formato="png", objeto="amplitud", motor="exacto",
+              campo="intensidad", ruta=None, referencia="objeto.png", z_real=3.0)
+    kw.update(cambio)
+    with pytest.raises(SystemExit):
+        mp.comprobar_configuracion(**kw)
+
+
+def test_fuente_pinhole_o_una_funcion_pasan():
+    kw = dict(metricas=("tamura",), formato="png", objeto="amplitud", motor="exacto",
+              campo="intensidad", ruta=None, referencia="objeto.png", z_real=3.0,
+              piso=0.05)
+    mp.comprobar_configuracion(fuente="pinhole", **kw)
+    mp.comprobar_configuracion(fuente=lambda s: np.ones_like(s), **kw)
+
+
+def test_fuente_de_y_su_sufijo():
+    assert mp.fuente_de(None, 5e-3, LAMB) is None
+    a = mp.fuente_de("pinhole", 5e-3, LAMB)
+    s = np.array([0.0, 0.05, 0.2])
+    np.testing.assert_array_equal(a(s), dlhm.fuente_pinhole(5e-3, LAMB)(s))
+    f = lambda s: np.ones_like(s)                   # noqa: E731
+    assert mp.fuente_de(f, 5e-3, LAMB) is f
+    assert mp.sufijo_fuente(None, 5e-3) == ""
+    assert mp.sufijo_fuente("pinhole", 5e-3) == "_pinhole5um"
+    assert mp.sufijo_fuente(f, 5e-3) == "_fuente"
+
+
+def test_la_carpeta_de_un_simulado_con_fuente_lleva_su_sufijo():
+    carpeta, nombre = mp.carpeta_de_salida("raiz", None, "dir/BenchmarkTarget.png", 3.0,
+                                           "intensidad", "exacto", "amplitud", None,
+                                           "_pinhole5um")
+    assert nombre == "sim_BenchmarkTarget_z3mm_intensidad_pinhole5um"
+    assert carpeta.name == "sim_BenchmarkTarget_z3mm_intensidad_pinhole5um_exacto_amplitud"
+    # con RUTA el nombre es el del archivo, lleve lo que lleve
+    _, nombre = mp.carpeta_de_salida("raiz", "x/holo.npy", None, None, "intensidad",
+                                     "exacto", "amplitud", None, "_pinhole5um")
+    assert nombre == "holo"
+
+
+def test_simular_con_fuente_es_la_ida_con_fuente():
+    a = dlhm.fuente_pinhole(3.2e-3, LAMB)
+    t = 1 - 0.8 * objeto_de_prueba()
+    h = mp.simular(t, LAMB, DELTA, L, Z, "intensidad", device="cpu", fuente=a)
+    esperado = dlhm.a_numpy(dlhm.holograma(t, DELTA * Z / L, LAMB, Z, L, FORMA, DELTA,
+                                           fuente=a, device="cpu"))
+    np.testing.assert_array_equal(h, esperado)
+
+
+def test_contraste_enmascarado_divide_solo_donde_hay_luz():
+    fondo = np.ones((8, 8))
+    fondo[:, :2] = 1e-3
+    fondo[0, 0] = 0.0
+    c = mp.contraste_enmascarado(1.5 * fondo, fondo, 0.05)
+    np.testing.assert_array_equal(c[:, :2], 1.0)
+    np.testing.assert_allclose(c[:, 2:], 1.5)
+    # con piso 0 un cero del fondo tampoco divide
+    assert np.isfinite(mp.contraste_enmascarado(1.5 * fondo, fondo, 0.0)).all()
+
+
+def test_zona_iluminada_mide_la_fraccion_oscura_y_el_mayor_cuadrado_centrado():
+    """Disco de radio 50 centrado en (100, 150): el mayor cuadrado centrado que
+    cabe tiene medio lado m con sqrt(2) m <= 50, o sea m = 35 y lado 70."""
+    yy, xx = np.mgrid[:200, :300]
+    fondo = ((yy - 100) ** 2 + (xx - 150) ** 2 <= 50 ** 2).astype(float)
+    fr, lado = mp.zona_iluminada(fondo, (80, 130, 40, 40), 0.05)
+    assert fr == 0.0 and lado == 70
+    fr, _ = mp.zona_iluminada(fondo, (0, 0, 64, 64), 0.05)
+    assert fr == 1.0
+    fr, _ = mp.zona_iluminada(fondo, (100, 100, 64, 64), 0.05)
+    assert 0.0 < fr < 1.0
+
+
+def test_el_motor_exacto_pasa_el_piso(globales):
+    """Con fuente y piso el motor exacto reconstruye lo mismo que el
+    Reconstructor con esos argumentos."""
+    a = dlhm.fuente_pinhole(3.2e-3, LAMB)
+    t = 1 - 0.8 * objeto_de_prueba()
+    h = mp.simular(t, LAMB, DELTA, L, Z, "intensidad", device="cpu", fuente=a)
+    fondo = dlhm.iluminacion(FORMA, DELTA, L, a)
+    m = mp.MotorExacto(h, LAMB, DELTA, L, (Z - 0.01, Z + 0.01), fondo=fondo, piso=0.05,
+                       device="cpu")
+    R = dlhm.Reconstructor(h, DELTA, LAMB, L, (Z - 0.01, Z + 0.01), fondo=fondo, piso=0.05,
+                           device="cpu")
+    np.testing.assert_allclose(dlhm.a_numpy(m.campo(Z, (0, 0, *FORMA))),
+                               dlhm.a_numpy(R.campo(Z)), rtol=1e-12, atol=1e-12)
