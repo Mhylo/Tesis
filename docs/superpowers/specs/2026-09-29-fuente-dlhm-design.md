@@ -115,9 +115,10 @@ suavidad (D1).
 
 ### D4 — El fondo simulado y el piso del Reconstructor
 
-`iluminacion(forma, delta, lamb, L, fuente, centro=(0, 0))` devuelve |a_L|²
-en el sensor: la imagen sin muestra en la misma normalización que el
-holograma (dividida por |S_L|²). Con `fuente=None` son unos.
+`iluminacion(forma, delta, L, fuente, centro=(0, 0))` devuelve |a_L|² en el
+sensor: la imagen sin muestra en la misma normalización que el holograma
+(dividida por |S_L|²). Con `fuente=None` son unos. No lleva `lamb`: la
+función fuente ya lo trae dentro.
 
 Por qué basta dividir por ese fondo para reconstruir: con c = I/|a_L|²,
 c - 1 ≈ V/a_L + c.c. El V de cada punto del objeto lleva su a_z, y a_z ≈ a_L
@@ -126,7 +127,8 @@ deshace la envolvente en la muestra y en el sensor a la vez, y la referencia
 de las métricas sigue siendo t_ref.
 
 Esa aproximación se rompe cerca de los ceros de a. `Reconstructor(...,
-piso=0.0)` pone c - 1 = 0 donde `fondo < piso·max(fondo)`, sin dividir ahí,
+piso=0.0)` pone c - 1 = 0 donde `|fondo| < piso·max|fondo|`, sin dividir ahí
+(el módulo, para que valga también con un fondo complejo de amplitud),
 como lo que cae fuera del sensor: sin información. Se descartó dividir por
 max(fondo, piso): en lo oscuro daría c - 1 ≈ -1, una zona opaca falsa cuyo
 borde difracta dentro del ROI. `piso > 0` exige un fondo que sea un array
@@ -150,11 +152,13 @@ todo queda como hoy.
   - `PISO` fuera de [0, 1).
 - **El motor exacto** recibe `fondo = iluminacion(...)` y `piso = PISO`.
   `MotorExacto` pasa `piso` al `Reconstructor`.
-- **El motor de Carlos** recibe c = holo/fondo donde el fondo supera el piso,
-  y 1 donde no, normalizado a [0, 1] como hoy.
-- **`PISO` se aplica siempre que se divide por una imagen:** la simulada, o
-  `FONDO` con un holograma grabado, que en el laboratorio también tiene
-  esquinas oscuras. Con `FONDO = None` (`'media'`) no se usa.
+- **El motor de Carlos**, con la fuente simulada, recibe c = holo/fondo donde
+  el fondo supera el piso, y 1 donde no; `MotorCarlos` lo normaliza a [0, 1]
+  como hoy. Con `RUTA` y `FONDO` sigue como hoy: no divide.
+- **En el motor exacto, `PISO` se aplica siempre que se divide por una
+  imagen:** la simulada, o `FONDO` con un holograma grabado, que en el
+  laboratorio también tiene esquinas oscuras. Con `FONDO = None` (`'media'`)
+  no se usa.
 
 ### D6 — Aviso si la región medida sale de la zona iluminada
 
@@ -201,7 +205,7 @@ central siguen valiendo, pero dejan de llamarse «el defecto».
 def fuente_pinhole(diametro, lamb):
     """a(s) = 2·J1(x)/x con x = pi·diametro·s/lamb; a(0) = 1. Amplitud con signo."""
 
-def iluminacion(forma, delta, lamb, L, fuente, centro=(0.0, 0.0)):
+def iluminacion(forma, delta, L, fuente, centro=(0.0, 0.0)):
     """|a(s_L)|² en el sensor (float64, NumPy); unos con fuente=None."""
 
 def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
