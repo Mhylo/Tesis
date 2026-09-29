@@ -75,8 +75,8 @@ difracción; aquí se evita no propagándola: se retropropaga c - 1 y se suma el
 
 VALIDADO (scripts/verif_dlhm_esferico.py):
     - la ida contra Rayleigh-Sommerfeld directo (Lopera, Ec. 1), objeto de
-      ~1.25 um: error relativo 3.7e-6 en el eje, 3.6e-6 a 5.7 y a 12.4
-      grados (el escalado, en los mismos puntos: 0.47, 0.65 y 0.89);
+      ~1.25 um: error relativo 3.7e-6 en el eje, 3.6e-6 a 5.7 grados y
+      3.7e-6 a 12.4 (el escalado, en los mismos puntos: 0.47, 0.65 y 0.89);
     - la vuelta contra reconstruir() de scripts/mi_prueba_dlhm.py (la cadena
       de Carlos, validada contra reconstruction_dlhm.py) con remuestreo de
       banda limitada y malla par: correlación 0.993 en la ventana entera,
@@ -568,25 +568,41 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
 
     (ffy, alc_y), (ffx, alc_x) = tramo(yo, Ys, bo[0]), tramo(xo, Xs, bo[1])
 
-    def soporte(o, otro, b, bo_otro, ff):
+    def soporte(o, otro, b, bo_otro, ff, ff_otro):
+        """Las dos frecuencias van recortadas a la banda de SU eje, que es lo que
+        hay en la rejilla. Recortar la del otro eje a +-1/lambda, como se hacía,
+        deja pasar esquinas (fx, fy) que no existen: con un objeto muestreado por
+        debajo de lambda/2 salen evanescentes, con aterrizaje infinito, y la
+        rejilla pedía memoria sin techo (el BenchmarkTarget de 3000x4000 px,
+        86.7 GB)."""
         vals = []
         for p in (o[0], o[-1]):
             for q in (otro[0], otro[-1]):
                 for sx in (-1, 1):
                     for sy in (-1, 1):
                         fx = np.clip(p / (lamb * z) + sx * b, *ff)
-                        fy = np.clip(q / (lamb * z) + sy * bo_otro, -0.999 / lamb, 0.999 / lamb)
+                        fy = np.clip(q / (lamb * z) + sy * bo_otro, *ff_otro)
                         vals.append(_aterrizaje(p, fx, fy, lamb, d))
         return min(vals), max(vals)
 
-    sx = soporte(xo, yo, bo[1], bo[0], ffx)
-    sy = soporte(yo, xo, bo[0], bo[1], ffy)
+    # El soporte de los rayos no es todo el campo: cada frecuencia llega como un
+    # haz de anchura ~sqrt(lamb d), la zona de Fresnel en espacio, y sus colas
+    # no pueden entrar en la ventana desde la copia periódica vecina. Se ensancha
+    # guarda·sqrt(lamb d) por cada lado, la misma guarda que la banda lleva en
+    # frecuencia. Sin esto, en ventanas del orden del milímetro el 10 % de
+    # margen queda por debajo de una zona de Fresnel: medido contra RS en un
+    # trozo de 24x24 px, 1.1e-4 sin ensanchar.
+    colas = guarda * np.sqrt(lamb * d)
+    sx = soporte(xo, yo, bo[1], bo[0], ffx, ffy)
+    sy = soporte(yo, xo, bo[0], bo[1], ffy, ffx)
+    sx, sy = (sx[0] - colas, sx[1] + colas), (sy[0] - colas, sy[1] + colas)
     Px = margen * max(sx[1] - Xs[0], Xs[-1] - sx[0])
     Py = margen * max(sy[1] - Ys[0], Ys[-1] - sy[0])
     fx, fy = _rejilla(*ffx, Px), _rejilla(*ffy, Py)
 
-    # El espectro NO se materializa: con el sensor entero son ~17000² frecuencias
-    # (2.4 GB en complex64). Se recorre por bloques de filas de fy, y cada
+    # El espectro NO se materializa: con un objeto de 3000x4000 px a delta*z/L
+    # son 22295x33503 frecuencias (6 GB en complex64; 20209² en 3000x3000).
+    # Se recorre por bloques de filas de fy, y cada
     # bloque se propaga y se acumula en T = sum_bloques Ey_b @ (F_b · H_b):
     #
     #     JA = J @ Ax                      (ny_o, nfx)   una vez
