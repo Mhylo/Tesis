@@ -110,7 +110,10 @@ def mosaico(N, paso_red=128, lado=48):
 
 
 def correlacion(u, v):
-    u, v = np.ravel(u), np.ravel(v)
+    # en doble: con los campos complex64 de la GPU la cuenta en simple daba
+    # 1.000001, que parece un fallo y es redondeo
+    u = np.ravel(u).astype(np.complex128)
+    v = np.ravel(v).astype(np.complex128)
     return abs(np.vdot(u, v)) / np.sqrt(np.vdot(u, u).real * np.vdot(v, v).real)
 
 
