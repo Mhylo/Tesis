@@ -395,10 +395,10 @@ NA_FUENTE = 0.1
 #: por el (ver PISO).
 FUENTE = None
 
-#: Fraccion de max|fondo| bajo la que no se divide por el fondo: ahi c - 1 = 0
-#: en el motor exacto y c = 1 en el de Carlos, "sin informacion", como lo que
-#: cae fuera del sensor. Dividir en los ceros de Airy explota: medido en 256 px,
-#: sin piso la correlacion con el objeto cae de 0.82 a 0.02. Se usa con FUENTE
+#: Fraccion de max|fondo| bajo la que no se divide por el fondo, ni en el
+#: sensor ni a la salida: ahi t = 1, "sin informacion", como lo que cae fuera
+#: del sensor, en los dos motores. Dividir en los ceros de Airy explota: medido
+#: en 256 px, sin piso |t - 1| llega a 288 fuera del disco. Se usa con FUENTE
 #: y con FONDO, en los dos motores; con FONDO = None no. Con el pinhole, 0.05
 #: deja un disco de 555 px de radio (0.01, 632; 0.1, 504).
 PISO = 0.05
@@ -488,6 +488,19 @@ DTYPE = None
 #: recortando, la difraccion del borde del recorte tapaba el objeto hasta que
 #: MotorCarlos empezo a dividir por |U0|^2.
 SOBREMUESTREO = None
+
+#: Solo MOTOR = "carlos". Lado del cuadrado CENTRADO en la malla que Carlos
+#: reconstruye; las metricas se miden solo en la region medida (ROI), dentro de
+#: el. Separado del ROI porque con un recorte chico Carlos no tiene NA: medido
+#: el 2026-09-29 sobre el BenchmarkTarget entero (z = 3 mm), con el ROI del USAF
+#: como recorte (256 px) la Tamura se iba +0.10 mm y SSIM -0.50 incluso sin
+#: fuente, y con 384 centrado igual; con 1024 centrado, a 2 um. Centrado, su
+#: fuente queda en el eje. Con FUENTE el recorte tiene que ser MAYOR que el ROI:
+#: dividir la salida por la raiz del fondo amplifica el borde del recorte (en
+#: 128x160 con recorte = ROI, la Tamura se iba -53 um; con recorte 96, a 1 um).
+#: None: el recorte es el ROI, como hasta el 2026-09-29 (cuadrado, y conviene
+#: centrado).
+CARLOS_RECORTE = 1024
 
 #: Solo MOTOR = "carlos". Presupuesto de memoria [GB] para la malla
 #: remuestreada. Si el barrido pide mas, aborta ANTES de empezar con la tabla
@@ -1197,13 +1210,13 @@ class MotorCarlos:
 
     TRES COSAS LA HACEN COMPARABLE CON LA EXACTA:
 
-    1. EL RECORTE ES OBLIGADO, CENTRADO Y CUADRADO. Obligado por memoria: con
-       el sensor entero la malla remuestreada pide 15 GB por paso (ver
-       comprobar_memoria). Centrado porque reconstruir() pone la fuente en el
-       centro del recorte: con un ROI descentrado la fisica de este motor ya
-       no es la del banco, y main() lo avisa. Cuadrado porque reconstruir()
-       usa el mismo paso, delta*P/N, en los dos ejes: con un recorte
-       rectangular la esferica sale con otra curvatura en x que en y.
+    1. EL RECORTE ES OBLIGADO, CUADRADO Y, CON recorte, CENTRADO. Obligado por
+       memoria: con el sensor entero la malla remuestreada pide 15 GB por paso
+       (ver comprobar_memoria). Cuadrado porque reconstruir() usa el mismo
+       paso, delta*P/N, en los dos ejes. Con recorte (CARLOS_RECORTE) es el
+       cuadrado de ese lado centrado en la malla -la fuente en el eje- y la
+       ventana medida es un trozo de el; sin recorte, la ventana misma, y
+       reconstruir() pone la fuente en su centro (main() avisa si no lo esta).
 
     2. SE DIVIDE POR |U0|^2. reconstruir() devuelve Rec = U*conj(U0), que quita
        la FASE de la referencia pero deja su AMPLITUD, |U0|^2, con la
@@ -1221,31 +1234,58 @@ class MotorCarlos:
        del motor exacto: asi las metricas no dependen del motor.
 
     El holograma entra normalizado a [0, 1], como antes: una escala global no
-    cambia ninguna metrica.
+    cambia ninguna metrica. Con raiz (un fondo imagen) entra el contraste por
+    amplitud 1 + c1 SIN normalizar -la cadena reconstruye L{1} = 1 exacto,
+    porque divide por la referencia propagada- y la salida se corrige como la
+    del exacto: t = 1 + (t - 1)/raiz en cada pixel, 1 bajo raiz_min.
     """
 
     def __init__(self, holo, ventana, lamb, delta, L_fuente, xp=np,
-                 dtype=np.complex128, sobremuestreo=None):
+                 dtype=np.complex128, sobremuestreo=None, recorte=None, raiz=None,
+                 raiz_min=0.0):
         holo = np.asarray(holo)
+        M, N = holo.shape
         f0, c0, alto, ancho = (int(v) for v in ventana)
-        if alto != ancho:
-            M, N = holo.shape
-            lado = min(alto, ancho)
-            raise SystemExit(
-                f"El motor de Carlos necesita un ROI CUADRADO y la region medida "
-                f"es de {alto}x{ancho} px (alto x ancho): reconstruir() usa el "
-                f"mismo paso en los dos ejes, delta*P/N, y con un recorte "
-                f"rectangular la esferica sale con otra curvatura en x que en y."
-                f"\nUsa un ROI cuadrado y centrado, por ejemplo\n\n"
-                f"    ROI = ({(N - lado) // 2}, {(M - lado) // 2}, {lado}, {lado})\n")
-        h = holo[f0:f0 + alto, c0:c0 + ancho]
-        self.h = h / np.abs(h).max()
-        self.ventana = self.ventana_maxima = (f0, c0, alto, ancho)
+        if recorte is None:
+            if alto != ancho:
+                lado = min(alto, ancho)
+                raise SystemExit(
+                    f"El motor de Carlos necesita un ROI CUADRADO y la region medida "
+                    f"es de {alto}x{ancho} px (alto x ancho): reconstruir() usa el "
+                    f"mismo paso en los dos ejes, delta*P/N, y con un recorte "
+                    f"rectangular la esferica sale con otra curvatura en x que en y."
+                    f"\nUsa un ROI cuadrado y centrado, por ejemplo\n\n"
+                    f"    ROI = ({(N - lado) // 2}, {(M - lado) // 2}, {lado}, {lado})\n")
+            rf0, rc0, lado = f0, c0, alto
+        else:
+            lado = int(recorte)
+            if lado > min(M, N):
+                raise SystemExit(f"CARLOS_RECORTE = {lado} no cabe en la malla {M}x{N}: "
+                                 f"bajalo a {min(M, N)} como mucho.")
+            rf0, rc0 = (M - lado) // 2, (N - lado) // 2
+            if not (rf0 <= f0 and rc0 <= c0 and f0 + alto <= rf0 + lado
+                    and c0 + ancho <= rc0 + lado):
+                raise SystemExit(
+                    f"La region medida (fila {f0}, columna {c0}, {alto}x{ancho}) se "
+                    f"sale del recorte centrado de Carlos (fila {rf0}, columna {rc0}, "
+                    f"{lado}x{lado}). Sube CARLOS_RECORTE o mueve el ROI.")
+        h = holo[rf0:rf0 + lado, rc0:rc0 + lado]
+        if raiz is None:
+            self.h = h / np.abs(h).max()
+            self.raiz = None
+        else:
+            self.h = h
+            self.raiz = np.asarray(raiz, dtype=np.float64)[rf0:rf0 + lado, rc0:rc0 + lado]
+            self.raiz_min = float(raiz_min)
+        self.ventana = self.ventana_maxima = (rf0, rc0, lado, lado)
         self.lamb, self.delta, self.L = float(lamb), float(delta), float(L_fuente)
         self.xp, self.dtype, self.sobremuestreo = xp, dtype, sobremuestreo
 
     def campo(self, z, ventana):
-        if tuple(int(v) for v in ventana) != self.ventana:
+        f0, c0, alto, ancho = (int(v) for v in ventana)
+        rf0, rc0, lado, _ = self.ventana
+        if not (rf0 <= f0 and rc0 <= c0 and f0 + alto <= rf0 + lado
+                and c0 + ancho <= rc0 + lado):
             raise ValueError(f"el motor de Carlos solo reconstruye su recorte, "
                              f"{self.ventana}; se pidio {tuple(ventana)}")
         kw = dict(xp=self.xp, dtype=self.dtype, sobremuestreo=self.sobremuestreo)
@@ -1254,8 +1294,14 @@ class MotorCarlos:
         Rec /= self.xp.abs(U0) ** 2
         del U0
         n = self.h.shape[0]
-        return interpolar_centrado(Rec, self.delta * n / Rec.shape[0], (n, n),
-                                   self.delta * z / self.L, self.xp)
+        t = interpolar_centrado(Rec, self.delta * n / Rec.shape[0], (n, n),
+                                self.delta * z / self.L, self.xp)
+        if self.raiz is not None:
+            r = self.xp.asarray(self.raiz)
+            luz = (r >= self.raiz_min) & (r > 0)
+            t = 1 + self.xp.where(luz, (t - 1) / self.xp.where(luz, r, 1), 0)
+        i, j = f0 - rf0, c0 - rc0
+        return t[i:i + alto, j:j + ancho]
 
     def describir(self, z_rango):
         n = self.h.shape[0]
@@ -1723,19 +1769,6 @@ def sufijo_fuente(valor, pinhole):
     return "_fuente"
 
 
-def contraste_enmascarado(holo, fondo, piso):
-    """c = holo/fondo donde |fondo| >= piso*max|fondo| (y fondo != 0), y 1 donde
-    no: lo que recibe el motor de Carlos cuando hay una imagen de fondo, la
-    simulada o FONDO. El 1 no es opaco: es "sin informacion", como lo que
-    cae fuera del recorte."""
-    holo = np.asarray(holo, dtype=np.float64)
-    fondo = np.asarray(fondo, dtype=np.float64)
-    vale = (np.abs(fondo) >= piso * np.abs(fondo).max()) & (fondo != 0)
-    c = np.ones_like(holo)
-    np.divide(holo, fondo, out=c, where=vale)
-    return c
-
-
 def zona_iluminada(fondo, ventana, piso):
     """-> (fraccion de la ventana bajo el piso, lado del mayor cuadrado centrado
     en la malla que queda entero sobre el piso). Para el AVISO de main(): lo que
@@ -2061,15 +2094,22 @@ def main():
         print(f"  motor exacto: {motor.describir()}; construido en "
               f"{time.perf_counter() - t0:.1f} s")
     else:
-        if abs(f0 + alto / 2 - M / 2) > 1 or abs(c0 + ancho / 2 - N / 2) > 1:
+        if CARLOS_RECORTE is None and (abs(f0 + alto / 2 - M / 2) > 1
+                                       or abs(c0 + ancho / 2 - N / 2) > 1):
             print(f"AVISO: el ROI no esta centrado en la malla {M}x{N}. El motor de "
                   f"Carlos pone la fuente en el centro\n  del recorte: su fisica ya no "
                   f"es la del banco.")
-        # con una imagen de fondo -la simulada o FONDO- recibe el contraste, como
-        # el exacto: releer con RUTA y FONDO da lo mismo que simular
-        h_carlos = (contraste_enmascarado(holo, fondo, piso)
-                    if isinstance(fondo, np.ndarray) else holo)
-        motor = MotorCarlos(h_carlos, ventana, LAMB, DELTA, L, xp_, dtype, SOBREMUESTREO)
+        if isinstance(fondo, np.ndarray):
+            # con una imagen de fondo -la simulada o FONDO- el contraste por
+            # amplitud, sin normalizar, y la salida entre la raiz del fondo, como
+            # el exacto: releer con RUTA y FONDO da lo mismo que simular
+            c1, raiz, raiz_min = dlhm_exacto.contraste_amplitud(holo, fondo, piso)
+            motor = MotorCarlos(1 + c1, ventana, LAMB, DELTA, L, xp_, dtype,
+                                SOBREMUESTREO, recorte=CARLOS_RECORTE, raiz=raiz,
+                                raiz_min=raiz_min)
+        else:
+            motor = MotorCarlos(holo, ventana, LAMB, DELTA, L, xp_, dtype, SOBREMUESTREO,
+                                recorte=CARLOS_RECORTE)
         comprobar_memoria(motor.h, z_rango, LAMB, DELTA, MEMORIA_MAX_GB, xp_, dtype)
         print(f"  motor de Carlos: {motor.describir(z_rango)}")
         print(f"  reconstruir() vs la cadena intacta de dlhm.py: "
