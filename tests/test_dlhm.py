@@ -130,6 +130,24 @@ def test_ida_coincide_con_rayleigh_sommerfeld(X0):
     assert error_relativo(a_numpy(V), ref) < 1e-4
 
 
+def test_la_ida_con_un_objeto_muestreado_por_debajo_de_lambda_medios():
+    """REGRESION. El soporte de la ida recortaba la frecuencia del OTRO eje a
+    +-0.999/lambda y no a la banda de ese eje, que es lo que hay en la rejilla.
+    Con un objeto muestreado por debajo de lambda/2 su banda de Nyquist pasa de
+    1/lambda: la esquina (fx, fy) salia evanescente, el aterrizaje infinito y
+    la rejilla de frecuencias pedia memoria sin techo. Es lo que pasaba con el
+    BenchmarkTarget entero, 3000x4000 px a delta*z/L = 0.55 um (86.7 GB solo
+    para la rejilla); el cuadrado de 3000 no lo notaba porque su esquina aun
+    se propagaba. Aqui, 0.25 um con lambda = 528 nm."""
+    p = 0.25e-3
+    t = manchas(48, p, [(0.0, -2e-3), (2e-3, 2e-3)], 1e-3)
+    n_s = 24
+    V = dlhm.holograma(t, p, LAMB, Z, L, (n_s, n_s), 4 * DELTA, complejo=True, device="cpu")
+    Ys = Xs = (np.arange(n_s) - n_s / 2) * 4 * DELTA
+    ref = rs_directo(t, p, (0.0, 0.0), Ys, Xs)
+    assert error_relativo(a_numpy(V), ref) < 1e-4
+
+
 def test_holograma_de_contraste_es_el_modulo_de_uno_mas_V():
     t = manchas(32, DO, [(0.0, 0.0)], 3e-3)
     kw = dict(device="cpu")
