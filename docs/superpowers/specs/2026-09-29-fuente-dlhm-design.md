@@ -52,6 +52,9 @@ Dentro:
   `iluminacion()` y `Reconstructor(..., piso=0.0)`.
 - `scripts/mi_prueba_dlhm.py`: las constantes `FUENTE` y `PISO`, el fondo
   simulado para los dos motores y lo que se guarda para releer la corrida.
+- El ROI por defecto de `mi_prueba_dlhm.py`, que pasa del cuarto central al
+  grupo USAF central del BenchmarkTarget (D8), pedido por el usuario el
+  2026-09-29.
 - Pruebas nuevas en `tests/test_dlhm.py` y
   `tests/test_mi_prueba_dlhm_seleccion.py`.
 - La corrida a escala real, su resultado en la cabecera del script y una tarea
@@ -159,8 +162,29 @@ Con fuente o con `FONDO`, `main()` mide qué fracción de la ventana medida
 cae bajo el piso. Si es mayor que cero imprime un AVISO con esa fracción y
 con el lado del mayor cuadrado centrado que queda entero dentro de la zona
 iluminada, para usarlo de ROI. No aborta: es una elección del usuario. Con el
-cuarto central por defecto (750x1750 px, ±875 px en x) y el pinhole, el aviso
-salta.
+ROI por defecto (D8) no salta; con `ROI = None` —el cuarto central, 750x1750
+px, ±875 px en x— y el pinhole, sí.
+
+### D8 — El ROI por defecto es el grupo USAF central
+
+`ROI = (1884, 1306, 256, 256)`: un cuadrado de 256 px centrado en el grupo
+USAF del centro del BenchmarkTarget. El grupo, medido sobre la imagen
+(píxeles > 0.5), ocupa las filas 1357-1512 y las columnas 1932-2091, con
+centro en (1434.5, 2011.5). El cuadrado le deja 48-51 px de margen por lado
+para las franjas, no toca ningún otro grupo del target y su esquina más lejana
+queda a 239 px del centro del sensor, dentro del disco iluminado del pinhole
+(555 px con `PISO = 0.05`). Es cuadrado porque el motor de Carlos lo exige.
+
+No está centrado en la malla: queda 65.5 px arriba y 11.5 px a la derecha del
+centro (1500, 2000). El motor exacto no lo nota, porque el ROI solo elige qué
+se evalúa. El de Carlos pone la fuente en el centro del recorte, así que la
+supone 0.12 mm corrida en el sensor, e imprime el aviso que ya tiene. Se mide
+en la Verificación y no se le cambia nada a ese motor.
+
+El valor describe el caso por defecto: el BenchmarkTarget simulado a
+3000x4000. Con otro holograma en `RUTA`, el ROI se cambia a mano o se pone en
+`None` o `True`, como hoy. Las filas de «LO QUE SALIÓ» medidas con el cuarto
+central siguen valiendo, pero dejan de llamarse «el defecto».
 
 ### D7 — Salida: nombre y fondo guardado para releer
 
@@ -193,6 +217,9 @@ class Reconstructor:
 # scripts/mi_prueba_dlhm.py, en 1b (el holograma y el objeto)
 FUENTE = None          # None | "pinhole" | funcion a(sin theta) con a(0) = 1
 PISO = 0.05            # fraccion del maximo del fondo bajo la que c - 1 = 0
+
+# en 1d (la region medida)
+ROI = (1884, 1306, 256, 256)   # el grupo USAF central del BenchmarkTarget (D8)
 ```
 
 `reconstruir(holo, ..., **kw)` hereda `piso` por `**kw`.
@@ -227,17 +254,22 @@ PISO = 0.05            # fraccion del maximo del fondo bajo la que c - 1 = 0
      correlación con el objeto queda a 0.02 o menos de la que da sin fuente.
    - GPU igual que CPU con la fuente (marcada `gpu`).
 3. `tests/test_mi_prueba_dlhm_seleccion.py`:
+   - el ROI por defecto es un cuadrado que contiene el grupo USAF central de
+     `BenchmarkTarget.png` con 48 px de margen como mínimo, sin tocar otro
+     grupo (se salta si `referencia/` no está);
    - las combinaciones de D5 abortan;
    - el sufijo `_pinhole5um` en el nombre y el `_fondo.npy` (D7);
    - el aviso de D6, con el lado del cuadrado sugerido;
    - con la fuente, c = holo/fondo tiene media ~1 dentro del disco.
 4. **A escala real, fuera de la suite.** El BenchmarkTarget simulado entero
-   (3000x4000, z = 3 mm, amplitud, intensidad) con `FUENTE = "pinhole"` y un
-   ROI de 768x768 centrado (esquinas a 543 px, dentro del disco de 555),
-   con los dos motores. Se exige la tolerancia de 2026-09-28: el exacto a
-   medio paso grueso y el de Carlos a un paso grueso. Se anotan foco, FWHM y
-   alt/riz junto a la misma corrida sin fuente, y el aspecto del holograma.
-   Si falla, no se toca ningún umbral: se busca por qué.
+   (3000x4000, z = 3 mm, amplitud, intensidad) con el ROI por defecto (el
+   USAF central, D8), los dos motores, sin fuente y con
+   `FUENTE = "pinhole"`: cuatro corridas. Se exige la tolerancia de
+   2026-09-28: el exacto a medio paso grueso y el de Carlos a un paso
+   grueso. Se anotan foco, FWHM y alt/riz de las cuatro, y el aspecto del
+   holograma con fuente. Si falla, no se toca ningún umbral: se busca por
+   qué. En particular, si el de Carlos falla con el ROI descentrado, se
+   repite con un cuadrado centrado que contenga el USAF, y se anotan las dos.
 
 ## Documentación
 
