@@ -176,7 +176,9 @@ mancha de un detalle fino abarca pixeles de distinta iluminacion, y la
 deformacion cambia con z. Con amplitud el SSIM del exacto con fuente pasa de
 -0.035 mm (alt/riz 20.7) a +0.000 (54.9). El precio, medido: hacia el borde
 de la luz la imagen gemela se amplifica (ida y vuelta en 256 px con un
-pinhole de 20 um: centro del disco 0.888 con fuente contra 0.893 sin ella).
+pinhole de 20 um: en el centro del disco, donde no hay precio, 0.888 con
+fuente contra 0.893 sin ella; en el disco entero, |a|^2 >= 0.05, la
+correlacion cae a 0.656 contra 0.817).
 
 (3) Carlos reconstruye su propio recorte CENTRADO, de lado CARLOS_RECORTE =
 1024, y mide en el ROI dentro de el; divide tambien por FONDO (releer con RUTA
@@ -206,8 +208,8 @@ foco - 3.000 en mm, FWHM del grueso:
 Se exigia el exacto a medio paso grueso (0.005 mm) y Carlos a un paso grueso
 (0.01 mm): once de las doce celdas se cumplen, con el exacto a 1 um como mucho,
 y la doceava es el limite de abajo. Los tiempos: simular el holograma, 41-44
-s; el motor exacto, 12 s, y sus 122 planos, 13 s (96 ms/z); Carlos, malla
-remuestreada de hasta 2358x2358, 23-28 s por barrido (180 ms/z), y su
+s; el motor exacto, 12 s, y sus 122 planos, 13 s (107 ms/z en total); Carlos,
+malla remuestreada de hasta 2358x2358, 23-28 s por barrido (190-230 ms/z), y su
 reconstruir() contra la cadena intacta de dlhm.py da 5.4e-07. Con el pinhole,
 el holograma se ve como un disco brillante.
 
@@ -580,7 +582,9 @@ SOBREMUESTREO = None
 #: el. Separado del ROI porque con un recorte chico Carlos no tiene NA: medido
 #: el 2026-09-29 sobre el BenchmarkTarget entero (z = 3 mm), con el ROI del USAF
 #: como recorte (256 px) la Tamura se iba +0.10 mm y SSIM -0.50 incluso sin
-#: fuente, y con 384 centrado igual; con 1024 centrado, a 2 um. Centrado, su
+#: fuente, y con 384 centrado igual; con 1024 centrado, a 2 um (ventana =
+#: recorte, la primera corrida); con el ROI del USAF dentro del recorte de
+#: 1024, a 1 um en Tamura y Pearson (cabecera, punto (3)). Centrado, su
 #: fuente queda en el eje. Con FUENTE el recorte tiene que ser MAYOR que el ROI:
 #: dividir la salida por la raiz del fondo amplifica el borde del recorte (en
 #: 128x160 con recorte = ROI, la Tamura se iba -53 um; con recorte 96, a 1 um).
@@ -1367,16 +1371,20 @@ class MotorCarlos:
                     f"sale del recorte centrado de Carlos (fila {rf0}, columna {rc0}, "
                     f"{lado}x{lado}). Sube CARLOS_RECORTE o mueve el ROI.")
         h = holo[rf0:rf0 + lado, rc0:rc0 + lado]
+        self.xp, self.dtype, self.sobremuestreo = xp, dtype, sobremuestreo
         if raiz is None:
             self.h = h / np.abs(h).max()
-            self.raiz = None
+            self.raiz = self.luz = None
         else:
             self.h = h
-            self.raiz = np.asarray(raiz, dtype=np.float64)[rf0:rf0 + lado, rc0:rc0 + lado]
             self.raiz_min = float(raiz_min)
+            r = np.asarray(raiz, dtype=np.float64)[rf0:rf0 + lado, rc0:rc0 + lado]
+            # la mascara se decide en float64 y la raiz sube UNA vez, en el dtype
+            # real del trabajo: en campo() no se sube nada por z ni se promueve
+            self.luz = xp.asarray((r >= self.raiz_min) & (r > 0))
+            self.raiz = xp.asarray(r, dtype=np.zeros(0, dtype=dtype).real.dtype)
         self.ventana = self.ventana_maxima = (rf0, rc0, lado, lado)
         self.lamb, self.delta, self.L = float(lamb), float(delta), float(L_fuente)
-        self.xp, self.dtype, self.sobremuestreo = xp, dtype, sobremuestreo
 
     def campo(self, z, ventana):
         f0, c0, alto, ancho = (int(v) for v in ventana)
@@ -1394,9 +1402,9 @@ class MotorCarlos:
         t = interpolar_centrado(Rec, self.delta * n / Rec.shape[0], (n, n),
                                 self.delta * z / self.L, self.xp)
         if self.raiz is not None:
-            r = self.xp.asarray(self.raiz)
-            luz = (r >= self.raiz_min) & (r > 0)
-            t = 1 + self.xp.where(luz, (t - 1) / self.xp.where(luz, r, 1), 0)
+            # r al dtype real de t: complex64 / float64 promoveria a complex128
+            r = self.raiz.astype(t.real.dtype, copy=False)
+            t = 1 + self.xp.where(self.luz, (t - 1) / self.xp.where(self.luz, r, 1), 0)
         i, j = f0 - rf0, c0 - rc0
         return t[i:i + alto, j:j + ancho]
 
