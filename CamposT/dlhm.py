@@ -106,8 +106,9 @@ from CamposT.backend import (a_dispositivo, a_numpy, bloques, comprobar_memoria,
 from CamposT.propagadores import mpasm, transfer_function
 
 __all__ = ["magnificacion", "distancia_equivalente", "coordenadas", "esferica",
-           "ventana_chirp", "holograma", "Reconstructor", "reconstruir",
-           "reconstruir_escalado", "memoria", "memoria_holograma"]
+           "fuente_pinhole", "iluminacion", "ventana_chirp", "holograma",
+           "Reconstructor", "reconstruir", "reconstruir_escalado", "memoria",
+           "memoria_holograma"]
 
 
 # ------------------------------------------------------------------ geometría
@@ -166,6 +167,72 @@ def esferica(y, x, R, lamb, xp=np, dtype=np.complex128, parte="entera"):
             raise ValueError(f"parte desconocida: {parte!r}")
         out[i0:i1] = v.astype(dtype, copy=False)
     return out
+
+
+# ------------------------------------------------------------------ la fuente
+def fuente_pinhole(diametro, lamb):
+    """La emisión de un pinhole circular iluminado uniforme, en campo lejano:
+    a(s) = 2·J1(x)/x con x = pi·diametro·s/lamb y s = sin(theta).
+
+    a(0) = 1 y es una AMPLITUD con signo: entre el primer cero, s =
+    1.2197·lamb/diametro, y el segundo, a es negativa. Con el pinhole del banco
+    (5 um, 528 nm) el primer cero cae a sin(theta) = 0.1288. Es campo lejano ya
+    en la muestra: el número de Fresnel del pinhole a z = 3 mm es 0.004.
+    """
+    if not diametro > 0:
+        raise ValueError(f"diametro = {diametro!r}: tiene que ser > 0")
+    from scipy.special import j1
+    c = np.pi * diametro / lamb
+
+    def a(s):
+        x = c * np.asarray(s, dtype=np.float64)
+        out = np.ones_like(x)
+        m = np.abs(x) > 1e-8                  # por debajo, 1 - x²/8 = 1 en float64
+        out[m] = 2 * j1(x[m]) / x[m]
+        return out
+    return a
+
+
+def _comprobar_fuente(fuente):
+    """a(0) = 1, finita y con la forma de su entrada, o ValueError."""
+    a0 = np.asarray(fuente(np.zeros(1)))
+    if a0.shape != (1,) or not np.all(np.isfinite(a0)) or abs(a0[0] - 1) > 1e-6:
+        raise ValueError(f"la fuente tiene que dar a(0) = 1 (finita, con la forma de "
+                         f"su entrada), y fuente(zeros(1)) = {a0!r}")
+
+
+def _evaluar_fuente(fuente, y, x, R):
+    """a(s) sobre la malla (y, x) a distancia R de la fuente, s = rho/sqrt(rho² + R²).
+
+    En NumPy y float64: a varía despacio frente a la banda del objeto y se sube
+    al dispositivo ya evaluada.
+    """
+    y = np.asarray(y, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+    rho = np.hypot(x[None, :], y[:, None])
+    s = rho / np.sqrt(rho * rho + R * R)
+    a = np.asarray(fuente(s))
+    if a.shape != s.shape:
+        raise ValueError(f"la fuente devolvió forma {a.shape} para una entrada {s.shape}")
+    if not np.all(np.isfinite(a)):
+        raise ValueError("la fuente devolvió valores no finitos")
+    return a
+
+
+def iluminacion(forma, delta, L, fuente, centro=(0.0, 0.0)):
+    """|a(s_L)|² en el sensor: la imagen SIN muestra, en la normalización del
+    holograma (dividida por |e^{ikR}/R|²). Es el fondo por el que se divide
+    para reconstruir. Unos con fuente=None. En NumPy, float64.
+
+    No lleva lamb: la función fuente ya la trae dentro.
+    """
+    ny, nx = forma
+    if fuente is None:
+        return np.ones((ny, nx))
+    _comprobar_fuente(fuente)
+    (dy, dx), (cy, cx) = _por_eje(delta), _por_eje(centro)
+    a = _evaluar_fuente(fuente, coordenadas(ny, dy, cy), coordenadas(nx, dx, cx), L)
+    return np.abs(a) ** 2
 
 
 # ------------------------------------------------------ la DFT con el chirp dentro

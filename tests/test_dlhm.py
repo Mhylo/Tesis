@@ -114,6 +114,54 @@ def test_ventana_chirp_rechaza_un_chirp_convergente():
         dlhm.ventana_chirp([0.0], [0.0], DELTA, LAMB, -1.0)
 
 
+# ------------------------------------------------------------------ la fuente
+#: Primer cero de 2 J1(x)/x: x = 3.8317..., o sea s = 1.2197 lamb/d.
+X_CERO = 3.8317059702075125
+
+
+def test_fuente_pinhole_es_el_airy_de_amplitud():
+    """a(0) = 1, el primer cero donde dice la teoría y 2 J1(x)/x en puntos
+    sueltos, con el signo: entre el primer cero y el segundo es negativa."""
+    from scipy.special import j1
+    d = 5e-3
+    a = dlhm.fuente_pinhole(d, LAMB)
+    assert a(np.zeros(1))[0] == 1.0
+    s0 = X_CERO * LAMB / (np.pi * d)
+    assert s0 / (LAMB / d) == pytest.approx(1.2197, abs=1e-4)
+    assert abs(a(np.array([s0]))[0]) < 1e-12
+    s = np.array([0.01, 0.05, 0.1, 0.2, 0.3])
+    x = np.pi * d * s / LAMB
+    np.testing.assert_allclose(a(s), 2 * j1(x) / x, rtol=1e-12)
+    assert a(np.array([0.2]))[0] < 0
+
+
+def test_fuente_pinhole_rechaza_un_diametro_no_positivo():
+    with pytest.raises(ValueError, match="diametro"):
+        dlhm.fuente_pinhole(0.0, LAMB)
+
+
+def test_iluminacion_es_el_modulo_al_cuadrado_de_a_en_el_sensor():
+    a = dlhm.fuente_pinhole(5e-3, LAMB)
+    X0 = (0.7, 1.9)
+    Ys = (np.arange(16) - 8) * DELTA + X0[0]
+    Xs = (np.arange(24) - 12) * DELTA + X0[1]
+    rho = np.hypot(Xs[None, :], Ys[:, None])
+    esperado = a(rho / np.sqrt(rho**2 + L**2)) ** 2
+    np.testing.assert_allclose(dlhm.iluminacion((16, 24), DELTA, L, a, centro=X0),
+                               esperado, rtol=1e-12)
+    np.testing.assert_array_equal(dlhm.iluminacion((16, 24), DELTA, L, None),
+                                  np.ones((16, 24)))
+
+
+@pytest.mark.parametrize("fuente, mensaje", [
+    (lambda s: 0.5 * np.ones_like(s), r"a\(0\) = 1"),
+    (lambda s: np.ones(3), "forma"),
+    (lambda s: np.where(s > 1e-3, np.nan, 1.0), "finit")])
+def test_una_fuente_mal_hecha_aborta(fuente, mensaje):
+    with pytest.raises(ValueError, match=mensaje):
+        dlhm.iluminacion((16, 16), DELTA, L, fuente, centro=(0.7, 1.9))
+
+
 # ------------------------------------------------------------------ la ida
 @pytest.mark.parametrize("X0", [(0.0, 0.0), (0.7, 1.9)])
 def test_ida_coincide_con_rayleigh_sommerfeld(X0):
