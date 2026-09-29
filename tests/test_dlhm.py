@@ -42,9 +42,10 @@ def manchas(n, paso, centros, sigma):
     return 1 - 0.5 * a
 
 
-def rs_directo(t, paso, centro_obj, Ys, Xs):
+def rs_directo(t, paso, centro_obj, Ys, Xs, zm=Z, Lm=L):
     """Rayleigh-Sommerfeld I directo (Lopera, Ec. 1), campo de t - 1 sobre la
-    malla (Ys, Xs) del sensor, dividido por la esférica en el sensor."""
+    malla (Ys, Xs) del sensor, dividido por la esférica en el sensor. zm y Lm,
+    los del montaje salvo que se pidan otros."""
     n = t.shape[0]
     g = (np.arange(n) - n / 2) * paso
     xs = (g + centro_obj[1])[None, :].repeat(n, 0).ravel()
@@ -52,16 +53,17 @@ def rs_directo(t, paso, centro_obj, Ys, Xs):
     fuente = (t - 1).ravel()
     m = np.abs(fuente) > 1e-12
     xs, ys, fuente = xs[m], ys[m], fuente[m]
-    rho = np.sqrt(xs**2 + ys**2 + Z**2)
+    rho = np.sqrt(xs**2 + ys**2 + zm**2)
     fuente = fuente * np.exp(1j * K * rho) / rho * paso**2
     XX, YY = np.meshgrid(Xs, Ys)
     U = np.zeros(XX.size, complex)
+    dm = Lm - zm
     for i in range(0, xs.size, 256):
         dx = XX.ravel()[None, :] - xs[i:i + 256, None]
         dy = YY.ravel()[None, :] - ys[i:i + 256, None]
-        r = np.sqrt(dx * dx + dy * dy + D * D)
-        U += fuente[i:i + 256] @ (D / (2 * np.pi * r * r) * (1 / r - 1j * K) * np.exp(1j * K * r))
-    r = np.sqrt(XX**2 + YY**2 + L**2)
+        r = np.sqrt(dx * dx + dy * dy + dm * dm)
+        U += fuente[i:i + 256] @ (dm / (2 * np.pi * r * r) * (1 / r - 1j * K) * np.exp(1j * K * r))
+    r = np.sqrt(XX**2 + YY**2 + Lm**2)
     return U.reshape(XX.shape) / (np.exp(1j * K * r) / r)
 
 
@@ -145,6 +147,23 @@ def test_la_ida_con_un_objeto_muestreado_por_debajo_de_lambda_medios():
     V = dlhm.holograma(t, p, LAMB, Z, L, (n_s, n_s), 4 * DELTA, complejo=True, device="cpu")
     Ys = Xs = (np.arange(n_s) - n_s / 2) * 4 * DELTA
     ref = rs_directo(t, p, (0.0, 0.0), Ys, Xs)
+    assert error_relativo(a_numpy(V), ref) < 1e-4
+
+
+def test_la_ida_con_el_sensor_ancho_frente_a_la_distancia():
+    """REGRESION. Con el sensor ancho frente a d = L - z, las bandas de los dos
+    ejes -validas cada una- llegan juntas a mas de 1/lambda: la esquina
+    (fx, fy) es evanescente, su aterrizaje infinito y el periodo tambien. Es lo
+    que impedia propagar el BenchmarkTarget a planos intermedios (d de 0.1 a
+    4 mm; 14425 GB con d = 0.1) y simular la configuracion 3 de Lopera et al.
+    2024 (d = 0.6 mm). Aqui d = 0.5 mm y un sensor de 0.64 mm de lado, que pide
+    rayos de hasta 43 grados."""
+    p, zc, Lc = 0.25e-3, 3.0, 3.5
+    t = manchas(64, p, [(0.0, -2e-3), (3e-3, 2e-3)], 1e-3)
+    n_s, paso_s = 32, 20e-3
+    V = dlhm.holograma(t, p, LAMB, zc, Lc, (n_s, n_s), paso_s, complejo=True, device="cpu")
+    Ys = Xs = (np.arange(n_s) - n_s / 2) * paso_s
+    ref = rs_directo(t, p, (0.0, 0.0), Ys, Xs, zm=zc, Lm=Lc)
     assert error_relativo(a_numpy(V), ref) < 1e-4
 
 

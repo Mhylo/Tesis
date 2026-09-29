@@ -503,6 +503,29 @@ def _rampa(f, lo, hi, ancho):
     return 0.5 * (1 + np.cos(np.pi * u))
 
 
+#: Topes del disco de la ida, en seno del ángulo: el radio plano y donde la
+#: rampa llega a cero. Más allá la luz es rasante (82 y 87 grados).
+_S_PLANO_TOPE, _S_TOPE = 0.99, 0.999
+
+
+def _en_el_disco(fa, fb, radio):
+    """(fa, fb) dentro del disco |f| <= radio conservando fa, el eje que
+    aterriza, y bajando fb: el punto del disco con esa fa y el rayo más tumbado."""
+    fa = float(np.clip(fa, -radio, radio))
+    fb_max = np.sqrt(max(radio ** 2 - fa ** 2, 0.0))
+    return fa, float(np.clip(fb, -fb_max, fb_max))
+
+
+def _rampa_radial(fx, fy, lamb, s_plano, s_tope, xp):
+    """1 dentro del disco lamb·|f| <= s_plano y un coseno hasta s_tope: el
+    bloque (fy, fx) en el dispositivo, en float64."""
+    s = lamb * xp.sqrt(fx[None, :] ** 2 + fy[:, None] ** 2)
+    if s_tope <= s_plano:
+        return (s <= s_plano).astype(np.float64)
+    u = xp.clip((s - s_plano) / (s_tope - s_plano), 0, 1)
+    return 0.5 * (1 + xp.cos(np.pi * u))
+
+
 def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
               centro=(0.0, 0.0), banda=None, guarda=4.0, margen=1.1, complejo=False,
               device="auto", dtype=None):
@@ -529,6 +552,13 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
              objeto de ~1 um: en un trozo de 24x24 px, guarda 1 -> 6e-3, 2 ->
              2.5e-4, 4 -> 1.8e-5, 6 -> 2.7e-6; en campo completo N = 1024 el
              corte en seco daba 8.3e-3 y guarda 4, 6.6e-6.
+             Lo mismo en 2-D: la banda se limita también en el radio, al
+             ángulo más abierto con que un rayo del objeto llega al sensor,
+             con la misma guarda. Sin eso, con el sensor ancho frente a d las
+             esquinas (fx, fy) salían evanescentes y la rejilla infinita.
+             Con objetos muestreados por debajo de lambda/2 y d de pocos mm la
+             rejilla puede ser grande igual (luz a 60-70 grados que se abre
+             milímetros): ahí, banda.
     complejo False: el holograma de contraste |1 + V|² = I/I_ref, que es lo
              que mide el sensor dividido por el fondo. True: V = U_obj/S_L,
              el campo del objeto relativo a la referencia, sin imagen gemela.
@@ -568,13 +598,27 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
 
     (ffy, alc_y), (ffx, alc_x) = tramo(yo, Ys, bo[0]), tramo(xo, Xs, bo[1])
 
+    # Y en 2-D. Las bandas de los dos ejes valen cada una, pero juntas pueden
+    # pasar de 1/lambda: con el sensor ancho frente a d la esquina (fx, fy) sale
+    # evanescente, con aterrizaje infinito, y el periodo también (proponer el
+    # BenchmarkTarget a d = 0.1 mm pedía 14425 GB). Así que la banda se limita
+    # también en el radio, al seno del ángulo más abierto con que un rayo del
+    # objeto llega al sensor, con la misma guarda que cada eje: guarda·w plana
+    # y una rampa coseno de otras guarda·w. Lo que queda fuera son rayos que no
+    # tocan el sensor. Se topa en _S_PLANO_TOPE / _S_TOPE: más allá la luz es
+    # rasante y la teoría escalar ya no la describe.
+    dxm = max(Xs[-1] - xo[0], xo[-1] - Xs[0])
+    dym = max(Ys[-1] - yo[0], yo[-1] - Ys[0])
+    s_plano = min(np.sin(np.arctan(np.hypot(dxm, dym) / d)) + lamb * rampa, _S_PLANO_TOPE)
+    s_tope = min(s_plano + lamb * rampa, _S_TOPE)
+
     def soporte(o, otro, b, bo_otro, ff, ff_otro):
         """Las dos frecuencias van recortadas a la banda de SU eje, que es lo que
-        hay en la rejilla. Recortar la del otro eje a +-1/lambda, como se hacía,
-        deja pasar esquinas (fx, fy) que no existen: con un objeto muestreado por
-        debajo de lambda/2 salen evanescentes, con aterrizaje infinito, y la
-        rejilla pedía memoria sin techo (el BenchmarkTarget de 3000x4000 px,
-        86.7 GB)."""
+        hay en la rejilla, y después al disco de radio s_tope/lambda: la
+        esquina que queda fuera del disco no existe, y se usa el rayo más
+        tumbado que el disco deja en ese eje. Recortar solo a +-1/lambda, como
+        se hacía al principio, daba esquinas evanescentes con aterrizaje
+        infinito (el BenchmarkTarget de 3000x4000 px, 86.7 GB)."""
         vals = []
         for p in (o[0], o[-1]):
             for q in (otro[0], otro[-1]):
@@ -582,6 +626,7 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
                     for sy in (-1, 1):
                         fx = np.clip(p / (lamb * z) + sx * b, *ff)
                         fy = np.clip(q / (lamb * z) + sy * bo_otro, *ff_otro)
+                        fx, fy = _en_el_disco(fx, fy, s_tope / lamb)
                         vals.append(_aterrizaje(p, fx, fy, lamb, d))
         return min(vals), max(vals)
 
@@ -624,11 +669,17 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
     del J
     JA *= xp.asarray(_rampa(fx, *alc_x, rampa), dtype=real)[None, :]
     rampa_y = _rampa(fy, *alc_y, rampa)
+    # el disco solo se aplica si alguna esquina de la rejilla cae fuera de él
+    con_disco = lamb * np.hypot(np.abs(fx).max(), np.abs(fy).max()) > s_plano
+    fx_d = xp.asarray(fx, dtype=np.float64)
     T = xp.zeros((ny, fx.size), dtype=dtype)
     for i0, i1 in bloques(fy.size, fx.size):
         Fb = ventana_chirp(yo, fy[i0:i1], py, lamb, z, xp, dtype).T @ JA
         Fb *= transfer_function(fx, fy[i0:i1], lamb, d, xp, dtype)
         Fb *= xp.asarray(rampa_y[i0:i1], dtype=real)[:, None]
+        if con_disco:
+            Fb *= _rampa_radial(fx_d, xp.asarray(fy[i0:i1], dtype=np.float64), lamb,
+                                s_plano, s_tope, xp).astype(real)
         T += phasor(Ys, fy[i0:i1], +1, xp, dtype) @ Fb
     del JA, Fb
     V = xp.zeros((ny, nx), dtype=dtype)
