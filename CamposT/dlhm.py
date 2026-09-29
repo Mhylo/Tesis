@@ -595,7 +595,7 @@ def _rampa_radial(fx, fy, lamb, s_plano, s_tope, xp):
 
 def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
               centro=(0.0, 0.0), banda=None, guarda=4.0, margen=1.1, complejo=False,
-              device="auto", dtype=None):
+              fuente=None, device="auto", dtype=None):
     """El holograma DLHM de un objeto delgado, sin aproximación paraxial.
 
     t        transmitancia compleja (ny, nx) en la muestra, a z de la fuente.
@@ -628,7 +628,17 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
              milímetros): ahí, banda.
     complejo False: el holograma de contraste |1 + V|² = I/I_ref, que es lo
              que mide el sensor dividido por el fondo. True: V = U_obj/S_L,
-             el campo del objeto relativo a la referencia, sin imagen gemela.
+             el campo del objeto relativo a la esférica ideal, sin imagen
+             gemela.
+    fuente   None: fuente puntual ideal, isótropa (lo de siempre). O una
+             función a(s), s = sin(theta), con a(0) = 1: la AMPLITUD que la
+             fuente emite en cada dirección (fuente_pinhole() da el Airy de
+             un pinhole). Apodiza la ida por dentro: el objeto se ilumina con
+             a(s_z)·e^{ikr}/r y la referencia en el sensor es a(s_L)·S_L, así
+             que complejo=False da |a_L + V|² (= I/|S_L|²) y complejo=True da V.
+             iluminacion() es |a_L|², el fondo. Supone que a varía despacio
+             frente a la banda del objeto (el Airy de 5 um, 1.6 mm^-1 en la
+             muestra, frente a 911): no se comprueba.
 
     Devuelve el array en el dispositivo.
     """
@@ -643,6 +653,11 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
         raise ValueError(f"z = {z!r}: hace falta 0 < z < L = {L}")
     yo, xo = coordenadas(t.shape[0], py, oy), coordenadas(t.shape[1], px, ox)
     Ys, Xs = coordenadas(ny, dy, cy), coordenadas(nx, dx, cx)
+
+    if fuente is not None:
+        _comprobar_fuente(fuente)
+        a_obj = _evaluar_fuente(fuente, yo, xo, z)
+        a_sen = _evaluar_fuente(fuente, Ys, Xs, L)
 
     rho_max = np.sqrt(np.abs(xo).max() ** 2 + np.abs(yo).max() ** 2 + z**2)
     bo = (min(1 / (2 * py), banda or np.inf) + np.abs(yo).max() * (1 / z - 1 / rho_max) / lamb,
@@ -730,6 +745,8 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
                           f"holograma({ny}x{nx})", dtype=dtype)
     real = np.zeros(0, dtype=dtype).real.dtype
     J = a_dispositivo(t - 1, xp, dtype) * esferica(yo, xo, z, lamb, xp, dtype, parte="residuo")
+    if fuente is not None:
+        J *= a_dispositivo(a_obj, xp, dtype)
     JA = xp.empty((J.shape[0], fx.size), dtype=dtype)
     for j0, j1 in bloques(fx.size, max(J.shape[1], nx), itemsize=48):
         JA[:, j0:j1] = J @ ventana_chirp(xo, fx[j0:j1], px, lamb, z, xp, dtype)
@@ -755,7 +772,11 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
     del T
     V *= (fx[1] - fx[0]) * (fy[1] - fy[0])
     V *= esferica(Ys, Xs, L, lamb, xp, dtype, parte="inversa")
-    return V if complejo else xp.abs(1 + V) ** 2
+    if complejo:
+        return V
+    if fuente is None:
+        return xp.abs(1 + V) ** 2
+    return xp.abs(a_dispositivo(a_sen, xp, dtype) + V) ** 2
 
 
 def memoria_holograma(forma_objeto, n_f, forma_sensor, dtype=np.complex64):
