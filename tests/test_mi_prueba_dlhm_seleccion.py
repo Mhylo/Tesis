@@ -687,3 +687,34 @@ def test_main_avisa_si_la_region_medida_sale_de_la_luz(config, monkeypatch, caps
     lado = mp.zona_iluminada(dlhm.iluminacion(FORMA, DELTA, L, mp.FUENTE),
                              (8, 8, 112, 144), 0.05)[1]
     assert f"{lado}, {lado})" in salida
+
+
+BENCHMARK = RAIZ / "referencia/carlos/DLHM-model-main/DLHM-model-main/data/BenchmarkTarget.png"
+
+
+@pytest.mark.skipif(not BENCHMARK.exists(),
+                    reason="referencia/carlos no va en el repo (.gitignore)")
+def test_el_roi_por_defecto_encierra_el_usaf_central():
+    """Spec D8: un cuadrado con el grupo USAF del centro del BenchmarkTarget
+    entero, 48 px de margen como minimo, ningun otro grupo dentro y todo el
+    cuadrado en la luz del pinhole del banco (PISO 0.05)."""
+    from scipy import ndimage as ndi
+    from CamposT.montaje import MONTAJE
+    img = cv.imread(str(BENCHMARK), cv.IMREAD_GRAYSCALE) > 127
+    M, N = img.shape
+    x0, y0, ancho, alto = mp.ROI
+    assert ancho == alto
+    etiquetas, _ = ndi.label(ndi.binary_dilation(img, iterations=12))
+    objetos = ndi.find_objects(etiquetas)
+
+    def distancia(sl):
+        return np.hypot((sl[0].start + sl[0].stop) / 2 - M / 2,
+                        (sl[1].start + sl[1].stop) / 2 - N / 2)
+    usaf = 1 + min(range(len(objetos)), key=lambda i: distancia(objetos[i]))
+    ys, xs = np.nonzero(img & (etiquetas == usaf))
+    assert ys.min() - y0 >= 48 and y0 + alto - 1 - ys.max() >= 48
+    assert xs.min() - x0 >= 48 and x0 + ancho - 1 - xs.max() >= 48
+    assert set(np.unique(etiquetas[y0:y0 + alto, x0:x0 + ancho])) <= {0, usaf}
+    a = dlhm.fuente_pinhole(MONTAJE.pinhole, MONTAJE.lamb)
+    fondo = dlhm.iluminacion((M, N), MONTAJE.delta_x, MONTAJE.L, a)
+    assert mp.zona_iluminada(fondo, (y0, x0, alto, ancho), 0.05)[0] == 0.0
