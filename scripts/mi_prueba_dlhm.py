@@ -50,14 +50,15 @@ exp(-i*2pi*(n-1)*h*I/lambda), y por ese signo menos su fase corre AL REVES que
 los grises de la referencia. Todas se maximizan en el foco, como en
 barrido_foco.
 
-LO QUE SALIO el 2026-09-28, con los valores por defecto: el BenchmarkTarget
-simulado entero (3000x4000 px, z = 3 mm, holograma de INTENSIDAD, con gemela)
-con el montaje (528 nm, 1.83 um, L = 10 mm), grueso de 2.5 a 3.5 mm con paso
-0.01 mm y fino de 0.001 mm, en la GPU de desarrollo (RTX 3050 de 4 GB):
+LO QUE SALIO el 2026-09-28, con los valores por defecto de ese dia (ROI =
+None): el BenchmarkTarget simulado entero (3000x4000 px, z = 3 mm, holograma
+de INTENSIDAD, con gemela) con el montaje (528 nm, 1.83 um, L = 10 mm), grueso
+de 2.5 a 3.5 mm con paso 0.01 mm y fino de 0.001 mm, en la GPU de desarrollo
+(RTX 3050 de 4 GB):
 
     variante                            metrica     foco     FWHM   alt/riz
     exacto, cuarto central              tamura      3.0000   0.019    33.6
-      (750x1750 px: el defecto)         pearson     3.0000   0.047    57.7
+      (750x1750 px, ROI = None)         pearson     3.0000   0.047    57.7
                                         ssim        3.0000   0.016    61.0
     exacto, Z_REAL a medio paso de      tamura      3.0000   0.037    10.8
       la rejilla gruesa (caso peor)     pearson     3.0000   0.066    45.2
@@ -425,7 +426,16 @@ PASOS_FINO = 21
 #: Con el motor exacto el holograma entra ENTERO y solo se evalua la ventana.
 #: Con el de Carlos la ventana es ademas el RECORTE del holograma, y tiene que
 #: ser cuadrada y conviene centrada (ver MotorCarlos).
-ROI = None
+#:
+#: El defecto es el grupo USAF del CENTRO del BenchmarkTarget: filas 1357-1512
+#: y columnas 1932-2091 de la imagen (pixeles > 0.5), y este cuadrado de 256
+#: px le deja 48-51 px por lado para sus franjas sin tocar otro grupo. Su
+#: esquina mas lejana queda a 239 px del centro del sensor: dentro de la luz del
+#: pinhole con FUENTE = "pinhole" (disco de 555 px con PISO = 0.05). NO esta
+#: centrado -65.5 px arriba y 11.5 a la derecha del centro-: el motor exacto no
+#: lo nota, y el de Carlos, que pone la fuente en el centro de su recorte, lo
+#: avisa. Con otro holograma en RUTA se cambia a mano o se pone None o True.
+ROI = (1884, 1306, 256, 256)
 
 #: Pixeles por lado que no se miden con ROI = None. None = 3*min(M, N)//8, el
 #: cuarto central del lado corto: la periferia trae la imagen gemela y la
