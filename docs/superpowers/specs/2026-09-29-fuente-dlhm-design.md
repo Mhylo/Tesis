@@ -170,13 +170,15 @@ reproduce. Se queda la D4: da lo mismo donde se mide y es mucho menos código.
   - `PISO` fuera de [0, 1).
 - **El motor exacto** recibe `fondo = iluminacion(...)` y `piso = PISO`.
   `MotorExacto` pasa `piso` al `Reconstructor`.
-- **El motor de Carlos**, con la fuente simulada, recibe c = holo/fondo donde
-  el fondo supera el piso, y 1 donde no; `MotorCarlos` lo normaliza a [0, 1]
-  como hoy. Con `RUTA` y `FONDO` sigue como hoy: no divide.
-- **En el motor exacto, `PISO` se aplica siempre que se divide por una
-  imagen:** la simulada, o `FONDO` con un holograma grabado, que en el
-  laboratorio también tiene esquinas oscuras. Con `FONDO = None` (`'media'`)
-  no se usa.
+- **El motor de Carlos** recibe c = holo/fondo donde el fondo supera el
+  piso, y 1 donde no, siempre que haya una imagen de fondo: la simulada o
+  `FONDO`. `MotorCarlos` lo normaliza a [0, 1] como hoy. Así releer una
+  corrida simulada con `RUTA` y `FONDO` da el mismo foco que simularla, con
+  los dos motores (decidido por el usuario el 2026-09-29, tras la revisión de
+  la Task 5; antes Carlos ignoraba `FONDO`).
+- **`PISO` se aplica siempre que se divide por una imagen:** la simulada, o
+  `FONDO` con un holograma grabado, que en el laboratorio también tiene
+  esquinas oscuras. Con `FONDO = None` (`'media'`) no se usa.
 
 ### D6 — Aviso si la región medida sale de la zona iluminada
 
