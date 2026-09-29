@@ -445,7 +445,7 @@ def config(tmp_path, monkeypatch, globales):
         Z_MIN=Z - 0.05, Z_MAX=Z + 0.05, PASOS=21, PASOS_FINO=11,
         ROI=(48, 32, 64, 64), BORDE_PX=None, MOTOR="exacto", DISPOSITIVO="cpu",
         DTYPE=None, SOBREMUESTREO=None, SIMULADOR="exacto", NA_FUENTE=0.1,
-        FUENTE=None, PISO=0.05,
+        FUENTE=None, PISO=0.05, CARLOS_RECORTE=96,
         RESULTADOS=tmp_path / "salida")
     for k, v in valores.items():
         monkeypatch.setattr(mp, k, v)
@@ -599,17 +599,6 @@ def test_simular_con_fuente_es_la_ida_con_fuente():
     np.testing.assert_array_equal(h, esperado)
 
 
-def test_contraste_enmascarado_divide_solo_donde_hay_luz():
-    fondo = np.ones((8, 8))
-    fondo[:, :2] = 1e-3
-    fondo[0, 0] = 0.0
-    c = mp.contraste_enmascarado(1.5 * fondo, fondo, 0.05)
-    np.testing.assert_array_equal(c[:, :2], 1.0)
-    np.testing.assert_allclose(c[:, 2:], 1.5)
-    # con piso 0 un cero del fondo tampoco divide
-    assert np.isfinite(mp.contraste_enmascarado(1.5 * fondo, fondo, 0.0)).all()
-
-
 def test_zona_iluminada_mide_la_fraccion_oscura_y_el_mayor_cuadrado_centrado():
     """Disco de radio 50 centrado en (100, 150): el mayor cuadrado centrado que
     cabe tiene medio lado m con sqrt(2) m <= 50, o sea m = 35 y lado 70."""
@@ -729,3 +718,44 @@ def test_el_roi_por_defecto_encierra_el_usaf_central():
     a = dlhm.fuente_pinhole(MONTAJE.pinhole, MONTAJE.lamb)
     fondo = dlhm.iluminacion((M, N), MONTAJE.delta_x, MONTAJE.L, a)
     assert mp.zona_iluminada(fondo, (y0, x0, alto, ancho), 0.05)[0] == 0.0
+
+
+# ── el recorte propio de Carlos (2026-09-29) ────────────────────────────────
+
+def test_carlos_con_recorte_mide_un_trozo_de_su_recorte():
+    """Spec D9: reconstruye el cuadrado centrado de `recorte` y las metricas
+    se miden en la ventana, dentro de el."""
+    _, c = holograma("amplitud", "intensidad")
+    m = mp.MotorCarlos(c, VENTANA, LAMB, DELTA, L, recorte=96)
+    assert m.ventana_maxima == (16, 32, 96, 96)
+    entera = m.campo(Z, m.ventana_maxima)
+    f0, c0, alto, ancho = VENTANA
+    np.testing.assert_array_equal(m.campo(Z, VENTANA),
+                                  entera[f0 - 16:f0 - 16 + alto, c0 - 32:c0 - 32 + ancho])
+
+
+@pytest.mark.parametrize("ventana, recorte", [((0, 0, 64, 64), 96), (VENTANA, 200)])
+def test_carlos_aborta_si_la_ventana_no_cabe_en_su_recorte(ventana, recorte):
+    _, c = holograma("amplitud", "intensidad")
+    with pytest.raises(SystemExit):
+        mp.MotorCarlos(c, ventana, LAMB, DELTA, L, recorte=recorte)
+
+
+def test_carlos_con_fondo_divide_su_salida_por_la_raiz():
+    """Spec D5bis: con raiz, la entrada 1 + c1 va sin normalizar y la salida
+    es 1 + (t - 1)/raiz en cada pixel del recorte, 1 bajo el piso."""
+    a = dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB)
+    t = 1 - 0.8 * objeto_de_prueba()
+    h = mp.simular(t, LAMB, DELTA, L, Z, "intensidad", device="cpu", fuente=a)
+    fondo = dlhm.iluminacion(FORMA, DELTA, L, a)
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(h, fondo, 0.05)
+    uno = mp.MotorCarlos(1 + c1, VENTANA, LAMB, DELTA, L, recorte=96,
+                         raiz=np.ones_like(raiz))
+    m = mp.MotorCarlos(1 + c1, VENTANA, LAMB, DELTA, L, recorte=96, raiz=raiz,
+                       raiz_min=raiz_min)
+    f0, c0, alto, ancho = VENTANA
+    r = raiz[f0:f0 + alto, c0:c0 + ancho]
+    luz = r >= raiz_min
+    base = uno.campo(Z, VENTANA)
+    esperado = 1 + np.where(luz, (base - 1) / np.where(luz, r, 1), 0)
+    np.testing.assert_allclose(m.campo(Z, VENTANA), esperado, rtol=1e-10, atol=1e-12)
