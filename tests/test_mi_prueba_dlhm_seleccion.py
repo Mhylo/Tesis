@@ -670,10 +670,21 @@ def test_main_con_fuente_guarda_el_fondo_y_encuentra_el_foco(config, monkeypatch
 
 
 def test_main_con_fuente_y_el_motor_de_carlos(config, monkeypatch):
+    """Con la fuente simulada Carlos recibe el contraste; releido con RUTA y
+    FONDO tambien, asi que da el mismo foco. Antes de dividir tambien con FONDO
+    el releido le daba el holograma crudo y la Tamura se iba ~50 um."""
     monkeypatch.setattr(mp, "FUENTE", dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB))
     monkeypatch.setattr(mp, "MOTOR", "carlos")
     z_foco = mp.main()
     assert all(abs(z - Z) < PASO for z in z_foco.values()), z_foco
+    carpeta = config.parent / config.name.replace("_intensidad_exacto_",
+                                                  "_intensidad_fuente_carlos_")
+    nombre = "sim_objeto_z0.24mm_intensidad_fuente"
+    monkeypatch.setattr(mp, "FUENTE", None)
+    monkeypatch.setattr(mp, "RUTA", carpeta / f"{nombre}.npy")
+    monkeypatch.setattr(mp, "FONDO", carpeta / f"{nombre}_fondo.npy")
+    z_foco_2 = mp.main()
+    assert all(abs(z_foco_2[n] - z_foco[n]) <= 2 * PASO / 10 for n in z_foco), (z_foco, z_foco_2)
 
 
 def test_main_avisa_si_la_region_medida_sale_de_la_luz(config, monkeypatch, capsys):

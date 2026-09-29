@@ -325,11 +325,11 @@ from CamposT.roi import Roi, elegir                                  # noqa: E40
 #: escribe en la misma carpeta.
 RUTA = None
 
-#: Solo con RUTA y MOTOR = "exacto": la imagen SIN muestra, por la que se
-#: divide el holograma, con PISO. None divide por su propia media, que deja
-#: dentro la envolvente del cono del pinhole. El motor de Carlos no la usa:
+#: Solo con RUTA: la imagen SIN muestra, por la que los dos motores dividen el
+#: holograma, con PISO. None: el motor exacto divide por la media del propio
+#: holograma, que deja dentro la envolvente del cono del pinhole, y el de Carlos
 #: recibe la intensidad normalizada a [0, 1]. Un simulado con FUENTE se relee
-#: con RUTA = <nombre>.npy y FONDO = <nombre>_fondo.npy.
+#: con RUTA = <nombre>.npy y FONDO = <nombre>_fondo.npy, y da el mismo foco.
 FONDO = None
 
 #: EL OBJETO, en la malla que el sensor proyecta desde la fuente: paso
@@ -399,7 +399,7 @@ FUENTE = None
 #: en el motor exacto y c = 1 en el de Carlos, "sin informacion", como lo que
 #: cae fuera del sensor. Dividir en los ceros de Airy explota: medido en 256 px,
 #: sin piso la correlacion con el objeto cae de 0.82 a 0.02. Se usa con FUENTE
-#: y, en el motor exacto, con FONDO; con FONDO = None no. Con el pinhole, 0.05
+#: y con FONDO, en los dos motores; con FONDO = None no. Con el pinhole, 0.05
 #: deja un disco de 555 px de radio (0.01, 632; 0.1, 504).
 PISO = 0.05
 
@@ -1725,8 +1725,9 @@ def sufijo_fuente(valor, pinhole):
 
 def contraste_enmascarado(holo, fondo, piso):
     """c = holo/fondo donde |fondo| >= piso*max|fondo| (y fondo != 0), y 1 donde
-    no: lo que recibe el motor de Carlos con la fuente simulada. El 1 no es
-    opaco: es "sin informacion", como lo que cae fuera del recorte."""
+    no: lo que recibe el motor de Carlos cuando hay una imagen de fondo, la
+    simulada o FONDO. El 1 no es opaco: es "sin informacion", como lo que
+    cae fuera del recorte."""
     holo = np.asarray(holo, dtype=np.float64)
     fondo = np.asarray(fondo, dtype=np.float64)
     vale = (np.abs(fondo) >= piso * np.abs(fondo).max()) & (fondo != 0)
@@ -2064,8 +2065,10 @@ def main():
             print(f"AVISO: el ROI no esta centrado en la malla {M}x{N}. El motor de "
                   f"Carlos pone la fuente en el centro\n  del recorte: su fisica ya no "
                   f"es la del banco.")
-        # con la fuente simulada recibe el contraste; con RUTA y FONDO, como siempre
-        h_carlos = holo if fuente is None else contraste_enmascarado(holo, fondo, piso)
+        # con una imagen de fondo -la simulada o FONDO- recibe el contraste, como
+        # el exacto: releer con RUTA y FONDO da lo mismo que simular
+        h_carlos = (contraste_enmascarado(holo, fondo, piso)
+                    if isinstance(fondo, np.ndarray) else holo)
         motor = MotorCarlos(h_carlos, ventana, LAMB, DELTA, L, xp_, dtype, SOBREMUESTREO)
         comprobar_memoria(motor.h, z_rango, LAMB, DELTA, MEMORIA_MAX_GB, xp_, dtype)
         print(f"  motor de Carlos: {motor.describir(z_rango)}")
