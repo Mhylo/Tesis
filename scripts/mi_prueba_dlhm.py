@@ -96,8 +96,9 @@ de 2.5 a 3.5 mm con paso 0.01 mm y fino de 0.001 mm, en la GPU de desarrollo
     recorte domina el contraste de amplitud. Con 1024 ya no.
   - Con Tamura la malla entera tambien acierta: el cuarto central no es lo que
     decide el foco, como si lo era con la nitidez de verif_dlhm_esferico.py.
-    Queda por defecto porque da el pico la mitad de ancho y cuesta 3.5 veces
-    menos por z (ver BORDE_PX).
+    Con ROI = None queda el cuarto central porque da el pico la mitad de
+    ancho y cuesta 3.5 veces menos por z (ver BORDE_PX); el ROI por defecto
+    ahora es el USAF central (ver LA FUENTE, mas abajo).
 
 TIEMPOS en esa GPU: simular el holograma entero, ~45 s, una vez (despues se
 lee con RUTA). Construir el motor exacto, ~11 s: 5560x8357 frecuencias, 354 MB.
@@ -151,6 +152,83 @@ ningun plano. Quitando uno a uno sus pasos el corrimiento no desaparece:
     sin Brown-Conrady, envolvente ni 8 bits   +27 um      +16 um
 
 Es su nucleo paraxial -la onda plana a Mag*(L - z)-, no el posproceso.
+
+LA FUENTE (FUENTE, PISO) Y EL RECORTE DE CARLOS, 2026-09-29. (1) La ida exacta
+supone por defecto una fuente puntual ideal y da I/I_ref: no trae el aspecto
+"esferico" de los hologramas de Lopera y Carlos, que es la EMISION de la
+fuente -su envolvente- y no la propagacion. No era una regresion: con el
+codigo de main la ida regenera el holograma exacto del 2026-09-28 con
+diferencia relativa 1.8e-4. Medido sobre este objeto (z = 3 mm), media radial
+centro/borde: exacto 0.98, la esferica ideal sin dividir 1.17, la envolvente
+de dlhm() 58.6, el modelo de Lopera entero 54.7. FUENTE = "pinhole" mete el
+Airy del pinhole de 5 um dentro de la ida (primer cero a 710 px del centro; el
+primer anillo es el 1.75 % del pico y no se ve en escala lineal, el disco si)
+y los dos motores dividen por su fondo, con PISO = 0.05 (un disco de 555 px
+de radio). Contra Rayleigh-Sommerfeld con la misma emision la ida da 1.1e-5 en
+el eje y 4.6e-6 fuera de el. Va apagada por defecto: la NA real del banco no
+esta medida.
+
+(2) La reconstruccion con un fondo imagen normaliza por AMPLITUD, no por
+|a_L|^2. En el USAF del BenchmarkTarget las dos empataban en correlacion con
+el objeto (0.7906 contra 0.7900; 0.7990 sin fuente), pero con |a_L|^2 SSIM
+elegia el plano a -0.035 mm: esa division deforma el termino lineal cuando la
+mancha de un detalle fino abarca pixeles de distinta iluminacion, y la
+deformacion cambia con z. Con amplitud el SSIM del exacto con fuente pasa de
+-0.035 mm (alt/riz 20.7) a +0.000 (54.9). El precio, medido: hacia el borde
+de la luz la imagen gemela se amplifica (ida y vuelta en 256 px con un
+pinhole de 20 um: centro del disco 0.888 con fuente contra 0.893 sin ella).
+
+(3) Carlos reconstruye su propio recorte CENTRADO, de lado CARLOS_RECORTE =
+1024, y mide en el ROI dentro de el; divide tambien por FONDO (releer con RUTA
+y FONDO da el mismo foco). Con el ROI del USAF, de 256 px, como recorte se
+iba +0.10 mm (Tamura) incluso sin fuente: un recorte chico no tiene NA. Con
+1024 acierta a 1 um en Tamura y Pearson.
+
+Con los valores por defecto (ROI = el USAF central, 256 px; CARLOS_RECORTE =
+1024; PISO = 0.05), el BenchmarkTarget simulado entero, grueso de 2.5 a 3.5
+mm con paso 0.01 mm y fino de 0.001 mm, en la GPU de desarrollo; error =
+foco - 3.000 en mm, FWHM del grueso:
+
+    motor     fuente     metrica     foco     error    FWHM    alt/riz
+    exacto    ninguna    tamura      3.0000   +0.000   0.0163    49.2
+    exacto    ninguna    pearson     3.0000   +0.000   0.0274    72.9
+    exacto    ninguna    ssim        3.0000   +0.000   0.0116    18.5
+    exacto    pinhole    tamura      3.0010   +0.001   0.0296    62.1
+    exacto    pinhole    pearson     3.0010   +0.001   0.0453    61.5
+    exacto    pinhole    ssim        3.0000   +0.000   0.1352    54.9
+    carlos    ninguna    tamura      3.0010   +0.001   0.0377    37.5
+    carlos    ninguna    pearson     3.0000   +0.000   0.0500    69.0
+    carlos    ninguna    ssim        2.5070   -0.493      nan     9.6
+    carlos    pinhole    tamura      3.0010   +0.001   0.0355    62.9
+    carlos    pinhole    pearson     3.0000   +0.000   0.0507    66.9
+    carlos    pinhole    ssim        3.0000   +0.000   0.1294    60.9
+
+Se exigia el exacto a medio paso grueso (0.005 mm) y Carlos a un paso grueso
+(0.01 mm): once de las doce celdas se cumplen, con el exacto a 1 um como mucho,
+y la doceava es el limite de abajo. Los tiempos: simular el holograma, 41-44
+s; el motor exacto, 12 s, y sus 122 planos, 13 s (96 ms/z); Carlos, malla
+remuestreada de hasta 2358x2358, 23-28 s por barrido (180 ms/z), y su
+reconstruir() contra la cadena intacta de dlhm.py da 5.4e-07. Con el pinhole,
+el holograma se ve como un disco brillante.
+
+UN LIMITE MEDIDO, NO UN FALLO: la celda de Carlos sin fuente y SSIM. En la
+ventana de 256 px del USAF, con el recorte de 1024, SSIM no tiene contraste de
+foco (alt/riz 9.6): 0.3688 en 3.000, solo 0.006 sobre la mediana de su curva
+lejos del foco (0.3626), y una joroba ancha de 0.4074 en 2.51 gana el maximo
+grueso -de ahi el error de -0.493 mm y la FWHM que no se define-. En esa misma
+corrida Tamura y Pearson enfocan a 1 um; con el pinhole (alt/riz 60.9) o con
+el motor exacto, SSIM tiene un pico limpio en 3.000. La primera vez, con una
+ventana de 1024 px igual a su recorte, SSIM de Carlos sin fuente enfocaba en
+3.000. Por eso el criterio de esa celda es Tamura + Pearson a 1 um; las otras
+once mantienen las tres metricas. La causa es una HIPOTESIS, NO esta medida:
+con el recorte de 1024 Carlos no resuelve las barras mas finas del USAF, y sin
+fuente las franjas de los targets vecinos llenan la ventana chica, mientras la
+fuente las oscurece fuera del disco. SSIM es la vara de medir de la
+simulacion, no algo que exista en el laboratorio, donde manda la Tamura.
+
+Queda abierto: la NA real del banco sin medir (por eso FUENTE va apagada) y la
+imagen gemela, que la division por amplitud amplifica hacia el borde de la
+luz.
 
 EL ~0.03 DE ANTES, EXPLICADO. Hasta el 2026-09-28 este script puntuaba cada z
 con una sola correlacion contra la referencia, y salia ~0.03 a cualquier

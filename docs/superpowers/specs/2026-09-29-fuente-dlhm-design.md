@@ -398,3 +398,105 @@ tiene que ser mayor que el ROI.
 - A escala real, las cuatro corridas (exacto y Carlos, sin y con fuente) con
   el ROI del USAF y `CARLOS_RECORTE = 1024`, con la tolerancia de siempre en
   las tres métricas.
+
+## Resultado de la verificación a escala real (2026-09-29)
+
+Las cuatro corridas de la Verificación 4 con el código de las Tasks 9 y 10
+(amplitud en la reconstrucción, recorte propio de Carlos): el BenchmarkTarget
+simulado entero (3000x4000, z = 3 mm, amplitud, intensidad), ROI = el USAF
+central (256 px), `CARLOS_RECORTE = 1024`, `PISO = 0.05`, grueso de 2.5 a
+3.5 mm con paso 0.01 y fino de 0.001, GPU de desarrollo (RTX 3050, 4 GB).
+Error = foco − 3.000 mm; FWHM del barrido grueso.
+
+| motor | fuente | métrica | foco | error | FWHM | alt/riz |
+|---|---|---|---|---|---|---|
+| exacto | ninguna | tamura | 3.0000 | +0.000 | 0.0163 | 49.2 |
+| exacto | ninguna | pearson | 3.0000 | +0.000 | 0.0274 | 72.9 |
+| exacto | ninguna | ssim | 3.0000 | +0.000 | 0.0116 | 18.5 |
+| exacto | pinhole | tamura | 3.0010 | +0.001 | 0.0296 | 62.1 |
+| exacto | pinhole | pearson | 3.0010 | +0.001 | 0.0453 | 61.5 |
+| exacto | pinhole | ssim | 3.0000 | +0.000 | 0.1352 | 54.9 |
+| carlos | ninguna | tamura | 3.0010 | +0.001 | 0.0377 | 37.5 |
+| carlos | ninguna | pearson | 3.0000 | +0.000 | 0.0500 | 69.0 |
+| carlos | ninguna | ssim | 2.5070 | **−0.493** | nan | 9.6 |
+| carlos | pinhole | tamura | 3.0010 | +0.001 | 0.0355 | 62.9 |
+| carlos | pinhole | pearson | 3.0000 | +0.000 | 0.0507 | 66.9 |
+| carlos | pinhole | ssim | 3.0000 | +0.000 | 0.1294 | 60.9 |
+
+Tiempos: simular el holograma 41–44 s; motor exacto 12 s de construcción y
+122 planos en 13 s (96 ms/z); Carlos, malla remuestreada de hasta 2358x2358,
+23–28 s por barrido (180 ms/z), con `reconstruir()` contra la cadena intacta de
+`dlhm.py` a 5.4e-07. Ninguna corrida imprimió AVISO.
+
+**Criterio.** Exacto a medio paso grueso (0.005 mm) y Carlos a un paso grueso
+(0.01 mm), en las tres métricas. Las doce celdas cumplen salvo una, **Carlos
+sin fuente, SSIM**, que el usuario acepta como un **límite medido, no un
+fallo**: para esa celda el criterio es Tamura + Pearson a 1 µm (+0.001 y
++0.000), y las otras once mantienen las tres métricas.
+
+**El límite.** Con el recorte de 1024 y sin fuente, SSIM en la ventana de 256
+px del USAF no tiene contraste de foco (alt/riz 9.6): 0.3688 en 3.000, solo
+0.006 sobre la mediana de la curva lejos del foco (0.3626), y una joroba ancha
+de 0.4074 en 2.51 gana el máximo grueso (error −0.493 mm; la FWHM no se
+define). Con la fuente (alt/riz 60.9) o con el motor exacto (18.5), SSIM tiene
+un pico limpio en 3.000. La primera vez, con una ventana de 1024 px igual al
+recorte de Carlos (Task 8, diagnóstico), SSIM enfocaba en 3.000 sin fuente.
+**Hipótesis, no medida:** con el recorte de 1024 Carlos no resuelve las barras
+más finas del USAF, y sin fuente las franjas de los targets vecinos llenan la
+ventana chica, mientras la fuente las oscurece fuera del disco. SSIM es la vara
+de medir de la simulación; en el laboratorio manda la Tamura.
+
+### Punto por punto
+
+Verificación:
+
+1. **Suite entera: cumple.** 602 passed, 4 skipped (77 s) en este commit;
+   `tests/test_dlhm.py` 51 passed, `tests/test_mi_prueba_dlhm_seleccion.py` 71
+   passed. Con `fuente=None` y `piso=0` nada cambia.
+2. **`tests/test_dlhm.py`: cumple.** La ida con fuente contra
+   Rayleigh-Sommerfeld: 1.1e-5 en el eje y 4.6e-6 en (0.7, 1.9) mm, con
+   tolerancia 1e-4. Ida y vuelta con el Airy en 256 px con un pinhole de 20 µm,
+   en el centro del disco (|a|² ≥ 0.5): 0.888 con fuente contra 0.893 sin ella
+   (diferencia 0.005, tolerancia 0.02). Las guardas de D3, el piso y la GPU
+   igual que la CPU pasan.
+3. **`tests/test_mi_prueba_dlhm_seleccion.py`: cumple.** 71 passed: ROI por
+   defecto con el USAF central y 48 px de margen, combinaciones de D5 que
+   abortan, sufijo `_pinhole5um` y `_fondo.npy`, aviso de D6, c = holo/fondo.
+4. **Escala real: cumple con un límite medido.** Once de las doce celdas
+   dentro de tolerancia (el exacto a 1 µm como mucho, Carlos a 1 µm); la
+   doceava, Carlos sin fuente con SSIM (−0.493 mm), documentada arriba. El
+   holograma con `FUENTE = "pinhole"`, en el motor exacto y en el de Carlos,
+   se ve como un disco brillante; los anillos de Airy (el primero, 1.75 % del
+   pico, primer cero a 710 px) no se distinguen en escala lineal.
+   El descentrado del ROI (D8) ya no cuenta: Carlos reconstruye su recorte
+   centrado (D9) y no hubo aviso.
+
+Revisión («Lo que falló»):
+
+- **Falló 1, el exacto con fuente y SSIM: resuelto.** De −0.035 mm (alt/riz
+  20.7) con la división por |a_L|² a +0.000 (54.9) con la amplitud (D4bis);
+  Tamura y Pearson, +0.001 y +0.001.
+- **Falló 2, Carlos con el ROI del USAF como recorte: resuelto.** Con el ROI de
+  256 px como recorte se iba +0.10 mm (Tamura) incluso sin fuente; con el
+  recorte propio de 1024 (D9), Tamura +0.001 y Pearson +0.000 con y sin
+  fuente.
+
+Revisión («Verificación, lo que cambia»):
+
+- **Ida y vuelta en el centro del disco: cumple.** 0.888 con fuente contra
+  0.893 sin ella, a 0.005 (≤ 0.02).
+- **Pruebas nuevas del Reconstructor: cumplen.** Incluidas en los 51 de
+  `tests/test_dlhm.py`.
+- **Pruebas de Carlos con recorte: cumplen.** Incluidas en los 71 de
+  `tests/test_mi_prueba_dlhm_seleccion.py`.
+- **Las cuatro corridas con `CARLOS_RECORTE = 1024`: cumplen con el límite
+  medido de arriba.**
+
+### Abierto
+
+- **La NA real del banco no está medida**, por eso `FUENTE` va apagada por
+  defecto.
+- **La imagen gemela**, que la división por amplitud amplifica hacia el borde
+  de la luz (en 256 px con un pinhole de 20 µm: 0.656 contra 0.817 en todo el
+  disco, |a|² ≥ 0.05).
+- **El límite de SSIM en Carlos sin fuente**, con su causa solo como hipótesis.
