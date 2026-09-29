@@ -396,6 +396,62 @@ def test_un_holograma_crudo_sin_fondo_aborta():
         dlhm.reconstruir(np.full((32, 32), 120.0), DELTA, LAMB, Z, L, device="cpu")
 
 
+def test_el_piso_anula_el_contraste_donde_el_fondo_es_oscuro():
+    """Bajo piso·max|fondo| no se divide: c - 1 = 0, 'sin información', como lo
+    que cae fuera del sensor. Un fondo con ceros no da NaN."""
+    fondo = np.ones((32, 32))
+    fondo[:, :8] = 1e-3
+    fondo[0, 0] = 0.0
+    c1 = dlhm._contraste(1.2 * fondo, fondo, piso=0.05)
+    assert np.isfinite(c1).all()
+    np.testing.assert_array_equal(c1[:, :8], 0.0)
+    np.testing.assert_allclose(c1[:, 8:], 0.2, rtol=1e-12)
+
+
+def test_sin_piso_el_contraste_es_el_de_siempre():
+    rng = np.random.default_rng(3)
+    fondo = 0.5 + rng.random((16, 16))
+    holo = 0.5 + rng.random((16, 16))
+    np.testing.assert_array_equal(dlhm._contraste(holo, fondo, piso=0.0), holo / fondo - 1)
+
+
+@pytest.mark.parametrize("fondo", [None, "media", 2.0])
+def test_el_piso_sin_imagen_de_fondo_aborta(fondo):
+    with pytest.raises(ValueError, match="piso"):
+        dlhm._contraste(np.ones((8, 8)), fondo, piso=0.05)
+
+
+@pytest.mark.parametrize("piso", [-0.1, 1.0])
+def test_un_piso_fuera_de_rango_aborta(piso):
+    with pytest.raises(ValueError, match="piso"):
+        dlhm._contraste(np.ones((8, 8)), np.ones((8, 8)), piso=piso)
+
+
+def test_ida_y_vuelta_con_el_airy_dentro_del_disco():
+    """Holograma de INTENSIDAD con la emisión del pinhole, reconstruido
+    dividiendo por iluminacion() con piso. Un pinhole de 20 um para que el
+    disco (|a|² >= 0.05, 138 px de radio) quepa en 256 px. Dentro del disco
+    rinde lo mismo que sin fuente; sin fondo o sin piso, no. Medido: 0.8193 con
+    fuente, 0.8165 sin fuente, 0.253 dividiendo por la media y 0.023 con el
+    fondo sin piso."""
+    n = 256
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.03, -0.02), (-0.025, 0.03), (0.02, 0.035)], 6e-3)
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    luz = fondo >= 0.05
+    sin = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, device="cpu"))
+    con = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+
+    def corr(holo, **kw):
+        tr = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, device="cpu", **kw))
+        return correlacion((tr - 1)[luz], (t - 1)[luz])
+
+    c_sin, c_con = corr(sin), corr(con, fondo=fondo, piso=0.05)
+    assert c_con >= c_sin - 0.02, (c_con, c_sin)
+    assert corr(con, fondo="media") < 0.5
+    assert corr(con, fondo=fondo) < 0.5
+
+
 # -------------------------------------------------------------------- guardas
 def test_una_ventana_que_no_cabe_en_el_periodo_aborta():
     _, c = _holograma_prueba(n=64)

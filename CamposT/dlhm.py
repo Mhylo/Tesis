@@ -87,6 +87,28 @@ VALIDADO (scripts/verif_dlhm_esferico.py):
       escalado el máximo se va al extremo del barrido, porque desenfoca
       tanto que no tiene pico en el foco.
 
+LA FUENTE. Por defecto la ida supone una fuente puntual ideal, isótropa, y
+devuelve I/I_ref: por el escalado de Fresnel eso es un holograma de Gabor de
+onda plana del objeto magnificado, sin firma global de la esférica (la caída
+|e^{ikR}/R|² de la esférica ideal es solo 1.17 del centro a la esquina del
+sensor de 3000x4000). El «patrón esférico» de un holograma de laboratorio es
+la EMISIÓN de la fuente: el pinhole de 5 um del banco da un Airy con el primer
+cero a sin(theta) = 0.1288, 710 px del centro del sensor a L = 10 mm. Con
+fuente = a(s) la ida la incluye por dentro, no multiplicando a la salida: el
+objeto se ilumina con a(s_z)·e^{ikr}/r y la referencia en el sensor es a(s_L),
+así que el holograma es |a_L + V|². Es exacto mientras la emisión sea ya su
+campo lejano en la muestra (el pinhole, a z = 3 mm: número de Fresnel 0.004).
+Para reconstruir basta dividir por iluminacion() = |a_L|²: c - 1 ≈ V/a_L +
+c.c., y como a_z ≈ a_L en la proyección de cada punto (el mismo rayo), el
+cociente deshace la envolvente en los dos planos. Falla cerca de los ceros de
+a; ahí el Reconstructor pone c - 1 = 0 bajo un piso. Medido en 256 px con un
+pinhole de 20 um: correlación con el objeto dentro del disco 0.819 con fuente
+y 0.817 sin ella; sin piso, 0.023; dividiendo por la media, 0.253. Dividir por
+amplitud -(I - fondo)/sqrt(fondo) en el sensor y la salida entre sqrt(fondo)
+proyectado- solo es exacto con campo complejo: con intensidad amplifica la
+gemela hacia el borde de la luz, y en el ROI del USAF del BenchmarkTarget
+entero empata (0.7906 frente a 0.7900 de esta división; 0.7990 sin fuente).
+
 UNIDADES: milímetros para todo, como en montaje.py. Convenio e^{+ikr}: la ida
 propaga +d y la vuelta -d. Los ejes van como en el resto del paquete: arrays
 (filas = y, columnas = x) con coordenadas (arange(n) - n/2)·paso + centro,
@@ -380,7 +402,7 @@ def memoria(forma_entrada, n_f, forma_salida, dtype=np.complex64):
 
 
 # ----------------------------------------------------------------- la vuelta
-def _contraste(holo, fondo):
+def _contraste(holo, fondo, piso=0.0):
     """c - 1, con c = holo/fondo.
 
     fondo = None     holo YA es de contraste: su media tiene que andar por 1,
@@ -393,11 +415,30 @@ def _contraste(holo, fondo):
                      iluminación (el cono del pinhole) dentro de c.
     fondo = array o escalar: divide por él (la imagen sin muestra).
 
+    piso > 0 (con un fondo que sea una imagen): donde |fondo| < piso·max|fondo|
+    no se divide y c - 1 = 0, como lo que cae fuera del sensor. Dividir ahí
+    explota en los ceros de la iluminación, y subir el fondo a un mínimo daría
+    c - 1 = -1: una zona opaca falsa cuyo borde difracta hacia dentro.
+
     Siempre en coma flotante: una imagen de 8 bits restada en enteros da la
     vuelta en los ceros.
     """
     holo = a_numpy(holo)
     holo = holo.astype(np.result_type(holo.dtype, np.float64), copy=False)
+    if not 0 <= piso < 1:
+        raise ValueError(f"piso = {piso!r}: va en [0, 1)")
+    if piso > 0:
+        if fondo is None or isinstance(fondo, str) or np.ndim(fondo) == 0:
+            raise ValueError(f"piso = {piso} necesita un fondo que sea una imagen, y "
+                             f"fondo = {fondo!r}")
+        f = a_numpy(fondo)
+        if f.shape != holo.shape:
+            raise ValueError(f"el fondo es {f.shape} y el holograma {holo.shape}")
+        vale = np.abs(f) >= piso * np.abs(f).max()
+        c1 = np.zeros(holo.shape, dtype=np.result_type(holo.dtype, f.dtype))
+        np.divide(holo, f, out=c1, where=vale)
+        c1[vale] -= 1
+        return c1
     if fondo is None:
         media = abs(holo.mean())
         if not 0.5 < media < 1.5:
@@ -433,6 +474,9 @@ class Reconstructor:
     fondo    None si holo ya es de contraste (I/I_ref, media ~1; si no lo es,
              aborta); la imagen sin muestra o un escalar por el que dividir;
              o 'media' para dividir por la media del propio holograma.
+    piso     con un fondo imagen: fracción de max|fondo| bajo la que c - 1 = 0
+             en vez de dividir (ver _contraste). Para la iluminación de una
+             fuente real (iluminacion()), que tiene ceros. 0: se divide todo.
     centro   (y, x) del píxel central del holograma respecto del eje óptico,
              en mm. (0, 0) si el sensor está centrado en la fuente.
     margen   factor sobre el periodo mínimo de la rejilla de frecuencias.
@@ -444,12 +488,12 @@ class Reconstructor:
     imponen la imagen gemela y la NA, al precio de doblar las frecuencias.
     """
 
-    def __init__(self, holo, delta, lamb, L, z, *, fondo=None, centro=(0.0, 0.0),
-                 margen=1.1, device="auto", dtype=None):
+    def __init__(self, holo, delta, lamb, L, z, *, fondo=None, piso=0.0,
+                 centro=(0.0, 0.0), margen=1.1, device="auto", dtype=None):
         self.xp, dev = get_xp(device)
         self.dtype = dtype or dtype_por_defecto(dev)
         xp, dtype = self.xp, self.dtype
-        c1 = _contraste(holo, fondo)
+        c1 = _contraste(holo, fondo, piso)
         if c1.ndim != 2:
             raise ValueError(f"el holograma tiene que ser 2-D, llegó {c1.shape}")
         self.forma = c1.shape
