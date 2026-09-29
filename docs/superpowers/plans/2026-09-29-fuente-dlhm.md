@@ -1293,3 +1293,639 @@ git commit -m "Cronograma y cabecera: la fuente en la ida DLHM, medida a escala 
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
+
+---
+
+## Apéndice (2026-09-29): división por amplitud y recorte propio de Carlos
+
+La primera corrida de la Task 8 se bloqueó (ver la spec, «Revisión tras la
+verificación a escala real»): con la D4 SSIM se va −0.035 mm, y Carlos con el
+ROI del USAF (256 px) no tiene NA. El usuario decidió: dividir por amplitud
+(D4bis, D5bis) y darle a Carlos su propio recorte centrado de 1024 px (D9).
+Las Tasks 1-7 siguen hechas; estas tres sustituyen a la Task 8.
+
+### Task 9: La reconstrucción divide por amplitud
+
+**Files:**
+- Modify: `CamposT/dlhm.py` (`__all__`, `contraste_amplitud` y `_bilineal` nuevas, `_contraste` sin piso, `Reconstructor.__init__`, `_raiz_proyectada` nueva, `campo`, docstrings)
+- Test: `tests/test_dlhm.py` (las pruebas del piso de la Task 3 se migran; nuevas)
+
+**Interfaces:**
+- Produces:
+  - `contraste_amplitud(holo, fondo, piso=0.0) -> (c1: ndarray, raiz: ndarray float64, raiz_min: float)`, pública.
+  - `_bilineal(A, Y, X, yq, xq) -> ndarray` (A en la malla uniforme Y, X; fuera, 0).
+  - `_contraste(holo, fondo)` — vuelve a no tener `piso`.
+  - `Reconstructor(holo, delta, lamb, L, z, *, fondo=None, piso=0.0, ...)`: con `fondo` imagen, normaliza por amplitud; `Reconstructor._raiz_proyectada(y, x, z) -> ndarray`.
+
+- [ ] **Step 1: Las pruebas**
+
+En `tests/test_dlhm.py`, reemplazar las cinco funciones de la Task 3 —desde `def test_el_piso_anula_el_contraste_donde_el_fondo_es_oscuro():` hasta el final de `test_ida_y_vuelta_con_el_airy_dentro_del_disco` (la línea `    assert corr(con, fondo=fondo) < 0.5`), con sus dos decoradores `@pytest.mark.parametrize`— por:
+
+```python
+def test_el_piso_anula_el_contraste_donde_el_fondo_es_oscuro():
+    """Bajo sqrt(piso·max|fondo|) no se divide: c1 = 0, 'sin información',
+    como lo que cae fuera del sensor. Un fondo con ceros no da NaN."""
+    fondo = np.ones((32, 32))
+    fondo[:, :8] = 1e-3
+    fondo[0, 0] = 0.0
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(1.2 * fondo, fondo, piso=0.05)
+    assert np.isfinite(c1).all()
+    np.testing.assert_array_equal(c1[:, :8], 0.0)
+    np.testing.assert_allclose(c1[:, 8:], 0.2, rtol=1e-12)
+    np.testing.assert_array_equal(raiz, np.sqrt(fondo))
+    assert raiz_min == pytest.approx(np.sqrt(0.05))
+
+
+def test_sin_piso_el_contraste_por_amplitud_es_holo_menos_fondo_entre_su_raiz():
+    rng = np.random.default_rng(3)
+    fondo = 0.5 + rng.random((16, 16))
+    holo = 0.5 + rng.random((16, 16))
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(holo, fondo, piso=0.0)
+    np.testing.assert_allclose(c1, (holo - fondo) / np.sqrt(fondo), rtol=1e-12)
+    assert raiz_min == 0.0
+
+
+@pytest.mark.parametrize("fondo", [None, "media", 2.0])
+def test_el_piso_sin_imagen_de_fondo_aborta(fondo):
+    with pytest.raises(ValueError, match="piso"):
+        dlhm.Reconstructor(np.ones((8, 8)), DELTA, LAMB, L, Z, fondo=fondo, piso=0.05,
+                           device="cpu")
+
+
+@pytest.mark.parametrize("piso", [-0.1, 1.0])
+def test_un_piso_fuera_de_rango_aborta(piso):
+    with pytest.raises(ValueError, match="piso"):
+        dlhm.contraste_amplitud(np.ones((8, 8)), np.ones((8, 8)), piso=piso)
+
+
+@pytest.mark.parametrize("holo, fondo, mensaje", [
+    (np.ones((8, 8)), np.zeros((8, 8)), "finito"),
+    (np.ones((8, 8)), np.full((8, 8), np.nan), "finito"),
+    (np.ones((8, 8)), np.ones((8, 6)), "fondo es"),
+    (np.ones((8, 8), complex), np.linspace(1, 2, 64).reshape(8, 8), "intensidad")])
+def test_un_fondo_imagen_mal_hecho_aborta(holo, fondo, mensaje):
+    with pytest.raises(ValueError, match=mensaje):
+        dlhm.contraste_amplitud(holo, fondo, piso=0.05)
+
+
+def test_con_fondo_imagen_la_salida_es_la_vuelta_de_c1_entre_la_raiz_proyectada():
+    """1 + B{c1}/sqrt(fondo) proyectado, con B la vuelta de siempre: se arma a
+    mano con un Reconstructor SIN fondo sobre 1 + c1. En la malla por defecto
+    la proyección es píxel a píxel."""
+    n = 64
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.01, -0.01)], 3e-3)
+    holo = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    R = dlhm.Reconstructor(holo, DELTA, LAMB, L, Z, fondo=fondo, piso=0.05, device="cpu")
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(holo, fondo, piso=0.05)
+    B = a_numpy(dlhm.Reconstructor(1 + c1, DELTA, LAMB, L, Z, device="cpu").campo(Z)) - 1
+    luz = raiz >= raiz_min
+    esperado = 1 + np.where(luz, B / np.where(luz, raiz, 1), 0)
+    np.testing.assert_allclose(a_numpy(R.campo(Z)), esperado, rtol=1e-10, atol=1e-12)
+
+
+def test_el_fondo_proyectado_es_la_amplitud_de_la_fuente_en_la_muestra():
+    """sqrt(iluminacion()) llevado a la muestra por (y, x)·L/z -el mismo rayo-
+    es |a(s_z)|: en la malla por defecto y en otra más fina y desplazada."""
+    n = 64
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    R = dlhm.Reconstructor(fondo.copy(), DELTA, LAMB, L, Z, fondo=fondo, device="cpu")
+    for paso, m, centro in ((DO, n, (0.0, 0.0)), (DO / 2, 48, (3 * DO, -5 * DO))):
+        y = dlhm.coordenadas(m, paso, centro[0])
+        x = dlhm.coordenadas(m, paso, centro[1])
+        rho = np.hypot(x[None, :], y[:, None])
+        esperado = np.abs(a(rho / np.sqrt(rho**2 + Z**2)))
+        np.testing.assert_allclose(R._raiz_proyectada(y, x, Z), esperado, rtol=1e-3)
+
+
+def test_bajo_el_piso_la_salida_vale_uno_y_un_fondo_con_ceros_no_da_nan():
+    """Fuera del disco, sin piso, la salida se multiplica por 1/sqrt de un fondo
+    casi nulo: medido |t - 1| hasta 288 (0.54 dentro). Con piso vale 1."""
+    n = 256
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.03, -0.02)], 6e-3)
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    fondo[:, :4] = 0.0
+    holo = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+    tr = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, fondo=fondo, piso=0.05,
+                                  device="cpu"))
+    assert np.isfinite(tr).all()
+    np.testing.assert_array_equal(tr[fondo < 0.05 * fondo.max()], 1.0)
+
+
+def test_ida_y_vuelta_con_el_airy_en_el_centro_del_disco():
+    """Holograma de INTENSIDAD con la emisión del pinhole, reconstruido
+    dividiendo por amplitud con piso. Pinhole de 20 um: el disco (|a|² >= 0.05,
+    138 px de radio) cubre la malla de 256 salvo las esquinas. En el centro del
+    disco (|a|² >= 0.5) rinde lo mismo que sin fuente; dividiendo por la
+    media, no. Medido: 0.888 con fuente, 0.893 sin fuente, 0.313 dividiendo
+    por la media. Hacia el borde de la luz la división de la salida amplifica
+    la gemela (0.656 en |a|² >= 0.05, contra 0.817 sin fuente): por eso se mide
+    en el centro."""
+    n = 256
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.03, -0.02), (-0.025, 0.03), (0.02, 0.035)], 6e-3)
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    centro = fondo >= 0.5
+    sin = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, device="cpu"))
+    con = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+
+    def corr(holo, **kw):
+        tr = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, device="cpu", **kw))
+        return correlacion((tr - 1)[centro], (t - 1)[centro])
+
+    c_sin, c_con = corr(sin), corr(con, fondo=fondo, piso=0.05)
+    assert c_con >= c_sin - 0.02, (c_con, c_sin)
+    assert corr(con, fondo="media") < 0.5
+```
+
+Y al final del archivo, después de `test_gpu_da_lo_mismo_que_cpu_con_fuente` y antes de `if __name__ == "__main__":`:
+
+```python
+@pytest.mark.gpu
+@pytest.mark.skipif(not gpu_disponible(), reason="sin GPU CUDA")
+def test_gpu_da_lo_mismo_que_cpu_con_fondo_imagen():
+    n = 64
+    a = dlhm.fuente_pinhole(20e-3, LAMB)
+    t = manchas(n, DO, [(0.0, 0.0), (0.01, -0.01)], 3e-3)
+    holo = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (n, n), DELTA, fuente=a, device="cpu"))
+    fondo = dlhm.iluminacion((n, n), DELTA, L, a)
+    kw = dict(fondo=fondo, piso=0.05)
+    cpu = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, device="cpu", **kw))
+    gpu = a_numpy(dlhm.reconstruir(holo, DELTA, LAMB, Z, L, device="gpu", **kw))
+    assert error_relativo(gpu - 1, cpu - 1) < 1e-4
+```
+
+- [ ] **Step 2: Rojo**
+
+Run: `Tesis_env/Scripts/python.exe -m pytest tests/test_dlhm.py -q -p no:cacheprovider -k "piso or amplitud or fondo_imagen or proyectado or airy"`
+Expected: FAIL con `AttributeError: module 'CamposT.dlhm' has no attribute 'contraste_amplitud'` y `'Reconstructor' object has no attribute '_raiz_proyectada'`.
+
+- [ ] **Step 3: La implementación**
+
+En `CamposT/dlhm.py`:
+
+1. En `__all__`, añadir `"contraste_amplitud"` después de `"iluminacion"`.
+
+2. `_contraste` vuelve a su forma sin piso: la firma pasa a `def _contraste(holo, fondo):`; en su docstring se quita el párrafo de cuatro líneas que empieza `    piso > 0 (con un fondo que sea una imagen):`; y en el cuerpo se quita el bloque que va desde `    if not 0 <= piso < 1:` hasta su `        return c1` (el `if piso > 0:` entero), de modo que `    if fondo is None:` quede justo después de las dos líneas de `holo = a_numpy(holo)`.
+
+3. Justo ANTES de `def _contraste(holo, fondo):`, insertar:
+
+```python
+def contraste_amplitud(holo, fondo, piso=0.0):
+    """-> (c1, raiz, raiz_min), con fondo la intensidad SIN muestra (una imagen).
+
+    c1 = (holo - fondo)/sqrt|fondo| donde sqrt|fondo| >= raiz_min (y > 0), y 0
+    fuera: es lo que se retropropaga. raiz = sqrt|fondo| es por lo que se divide
+    la salida, proyectada a la muestra; raiz_min = sqrt(piso·max|fondo|).
+
+    Por qué por amplitud y no c = holo/fondo: con la fuente, fondo = |a_L|² y
+    holo = |a_L + V|², así que la parte lineal de c1 es sgn(a_L)(V + V*), que
+    se retropropaga sin error a (t - 1)·|a_z|; dividir la salida por |a_z| la
+    deja en t - 1. Dividir el holograma por |a_L|² retropropaga V/a_L, que
+    deforma el término lineal donde la mancha de un detalle abarca píxeles con
+    distinta iluminación: en el USAF del BenchmarkTarget SSIM elegía el plano a
+    -0.035 mm del foco. Bajo el piso no se divide ni aquí ni a la salida: sin
+    piso, fuera del disco del pinhole |t - 1| llega a 288.
+
+    Con un fondo constante da lo mismo que dividir. Un holograma complejo con
+    un fondo que varía aborta: el fondo es una intensidad.
+    """
+    holo = a_numpy(holo)
+    holo = holo.astype(np.result_type(holo.dtype, np.float64), copy=False)
+    if not 0 <= piso < 1:
+        raise ValueError(f"piso = {piso!r}: va en [0, 1)")
+    f = np.asarray(a_numpy(fondo), dtype=np.float64)
+    if f.shape != holo.shape:
+        raise ValueError(f"el fondo es {f.shape} y el holograma {holo.shape}")
+    if not np.all(np.isfinite(f)) or not np.abs(f).max() > 0:
+        raise ValueError("el fondo tiene que ser finito y no todo cero")
+    if np.iscomplexobj(holo) and np.ptp(f) > 1e-12 * np.abs(f).max():
+        raise ValueError("un fondo que varía solo vale con un holograma de "
+                         "intensidad: el fondo es la intensidad sin muestra")
+    raiz = np.sqrt(np.abs(f))
+    raiz_min = float(np.sqrt(piso) * raiz.max())
+    luz = (raiz >= raiz_min) & (raiz > 0)
+    c1 = np.zeros(holo.shape, dtype=holo.dtype)
+    c1[luz] = (holo[luz] - f[luz]) / raiz[luz]
+    return c1, raiz, raiz_min
+
+
+def _bilineal(A, Y, X, yq, xq):
+    """A, dada sobre la malla uniforme (Y, X), en la malla producto (yq, xq),
+    interpolada bilineal por ejes. Fuera de la malla, 0."""
+    def pesos(g, q):
+        u = (np.asarray(q, dtype=np.float64) - g[0]) / (g[1] - g[0])
+        dentro = (u >= -1e-9) & (u <= g.size - 1 + 1e-9)
+        i0 = np.clip(np.floor(u).astype(np.int64), 0, g.size - 2)
+        return i0, np.clip(u - i0, 0, 1), dentro
+    iy, wy, dy = pesos(Y, yq)
+    ix, wx, dx = pesos(X, xq)
+    B = A[iy] * (1 - wy)[:, None] + A[iy + 1] * wy[:, None]
+    C = B[:, ix] * (1 - wx)[None, :] + B[:, ix + 1] * wx[None, :]
+    return C * (dy[:, None] & dx[None, :])
+```
+
+4. En `Reconstructor.__init__`, reemplazar la línea `        c1 = _contraste(holo, fondo, piso)` por:
+
+```python
+        if not 0 <= piso < 1:
+            raise ValueError(f"piso = {piso!r}: va en [0, 1)")
+        if fondo is None or isinstance(fondo, str) or np.ndim(fondo) == 0:
+            if piso > 0:
+                raise ValueError(f"piso = {piso} necesita un fondo que sea una imagen, y "
+                                 f"fondo = {fondo!r}")
+            c1 = _contraste(holo, fondo)
+            self._raiz = None
+        else:
+            c1, self._raiz, self._raiz_min = contraste_amplitud(holo, fondo, piso)
+```
+
+y en el docstring de la clase, los párrafos de `fondo` y `piso` pasan a:
+
+```
+    fondo    None si holo ya es de contraste (I/I_ref, media ~1; si no lo es,
+             aborta); un escalar por el que dividir; 'media' para dividir por
+             la media del propio holograma; o la IMAGEN sin muestra (la
+             intensidad, p. ej. iluminacion()): entonces se normaliza por
+             amplitud (contraste_amplitud) y la salida se divide por
+             sqrt(fondo) proyectado a la muestra.
+    piso     solo con fondo imagen: fracción de max|fondo| bajo la que no se
+             divide, ni en el sensor ni a la salida (ahí t = 1). 0: se divide
+             donde el fondo no es cero.
+```
+
+5. Justo ANTES de la línea `    @property` que precede a `def n_frecuencias`, añadir el método:
+
+```python
+    def _raiz_proyectada(self, y, x, z):
+        """sqrt|fondo| del sensor en la malla (y, x) del plano z: el punto (y, x)
+        cae en el sensor en (y, x)·L/z, por el mismo rayo, así que es |a_z|.
+        Bilineal sobre la malla del sensor; 0 fuera de ella. NumPy."""
+        return _bilineal(self._raiz, self.Y, self.X,
+                         np.asarray(y) * self.L / z, np.asarray(x) * self.L / z)
+
+```
+
+6. En `campo`, reemplazar la última línea
+
+```python
+        return 1 + U * esferica(y, x, z, lamb, self.xp, self.dtype, parte="inversa")
+```
+
+por
+
+```python
+        U *= esferica(y, x, z, lamb, self.xp, self.dtype, parte="inversa")
+        if self._raiz is not None:
+            r = self._raiz_proyectada(y, x, z)
+            luz = (r >= self._raiz_min) & (r > 0)
+            inv = np.zeros_like(r)
+            inv[luz] = 1 / r[luz]
+            U *= a_dispositivo(inv, self.xp, np.zeros(0, dtype=self.dtype).real.dtype)
+        return 1 + U
+```
+
+7. En el docstring del módulo, sección «LA FUENTE»: (a) `es solo 1.17 del centro a la esquina del` + `sensor de 3000x4000)` pasa a decir `es solo 1.17 centro/borde en media radial, 1.21 en la esquina del sensor de 3000x4000)` (reajusta el salto de línea); (b) todo lo que va desde `Para reconstruir basta dividir por iluminacion() = |a_L|²:` hasta el final de la sección (`entero empata (0.7906 frente a 0.7900 de esta división; 0.7990 sin fuente).`) se sustituye por:
+
+```
+Para reconstruir se normaliza por amplitud con el fondo iluminacion() =
+|a_L|²: c1 = (I - fondo)/sqrt(fondo) en el sensor, cuya parte lineal se
+retropropaga sin error a (t - 1)·|a_z|, y la salida se divide por sqrt(fondo)
+llevado a la muestra por el mismo rayo, que es |a_z|. Bajo un piso no se
+divide en ninguno de los dos planos: sin él, fuera del disco del pinhole la
+salida explota (|t - 1| hasta 288 en 256 px). Se midió contra dividir el
+holograma por |a_L|²: en el ROI del USAF del BenchmarkTarget entero, con la
+fuente del banco, la correlación con el objeto empata (0.7906 frente a
+0.7900; 0.7990 sin fuente), pero con esa división SSIM elige el plano a
+-0.035 mm del foco, y por amplitud a 0. El precio: hacia el borde de la luz
+se amplifica la imagen gemela (en 256 px, centro del disco 0.888 frente a
+0.893 sin fuente; disco entero 0.656 frente a 0.817).
+```
+
+- [ ] **Step 4: Verde**
+
+Run: `Tesis_env/Scripts/python.exe -m pytest tests/test_dlhm.py -q -p no:cacheprovider`
+Expected: PASS entero (incluida `test_fondo_divide_el_holograma`, que con un fondo constante da lo mismo por amplitud que dividiendo).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add CamposT/dlhm.py tests/test_dlhm.py
+git commit -m "dlhm: con un fondo imagen la vuelta normaliza por amplitud, y SSIM deja de irse del foco
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10: Carlos: recorte propio centrado y entrada por amplitud
+
+**Files:**
+- Modify: `scripts/mi_prueba_dlhm.py` (constante `CARLOS_RECORTE`, comentario de `PISO`, `MotorCarlos`, `main()`; se quita `contraste_enmascarado`)
+- Test: `tests/test_mi_prueba_dlhm_seleccion.py`
+
+**Interfaces:**
+- Consumes (Task 9): `dlhm_exacto.contraste_amplitud(holo, fondo, piso) -> (c1, raiz, raiz_min)`.
+- Produces: `MotorCarlos(holo, ventana, lamb, delta, L_fuente, xp=np, dtype=np.complex128, sobremuestreo=None, recorte=None, raiz=None, raiz_min=0.0)`; `CARLOS_RECORTE = 1024`.
+
+- [ ] **Step 1: Las pruebas**
+
+1. En la fixture `config`, añadir al dict `valores`, junto a `FUENTE=None, PISO=0.05,`, la entrada `CARLOS_RECORTE=96,` (en la malla de 128x160 el cuadrado centrado de 96 contiene el ROI (48, 32, 64, 64)).
+
+2. Borrar entera la prueba `test_contraste_enmascarado_divide_solo_donde_hay_luz` (la función se va del script).
+
+3. Al final del archivo añadir:
+
+```python
+# ── el recorte propio de Carlos (2026-09-29) ────────────────────────────────
+
+def test_carlos_con_recorte_mide_un_trozo_de_su_recorte():
+    """Spec D9: reconstruye el cuadrado centrado de `recorte` y las metricas
+    se miden en la ventana, dentro de el."""
+    _, c = holograma("amplitud", "intensidad")
+    m = mp.MotorCarlos(c, VENTANA, LAMB, DELTA, L, recorte=96)
+    assert m.ventana_maxima == (16, 32, 96, 96)
+    entera = m.campo(Z, m.ventana_maxima)
+    f0, c0, alto, ancho = VENTANA
+    np.testing.assert_array_equal(m.campo(Z, VENTANA),
+                                  entera[f0 - 16:f0 - 16 + alto, c0 - 32:c0 - 32 + ancho])
+
+
+@pytest.mark.parametrize("ventana, recorte", [((0, 0, 64, 64), 96), (VENTANA, 200)])
+def test_carlos_aborta_si_la_ventana_no_cabe_en_su_recorte(ventana, recorte):
+    _, c = holograma("amplitud", "intensidad")
+    with pytest.raises(SystemExit):
+        mp.MotorCarlos(c, ventana, LAMB, DELTA, L, recorte=recorte)
+
+
+def test_carlos_con_fondo_divide_su_salida_por_la_raiz():
+    """Spec D5bis: con raiz, la entrada 1 + c1 va sin normalizar y la salida
+    es 1 + (t - 1)/raiz en cada pixel del recorte, 1 bajo el piso."""
+    a = dlhm.fuente_pinhole(PINHOLE_PRUEBA, LAMB)
+    t = 1 - 0.8 * objeto_de_prueba()
+    h = mp.simular(t, LAMB, DELTA, L, Z, "intensidad", device="cpu", fuente=a)
+    fondo = dlhm.iluminacion(FORMA, DELTA, L, a)
+    c1, raiz, raiz_min = dlhm.contraste_amplitud(h, fondo, 0.05)
+    uno = mp.MotorCarlos(1 + c1, VENTANA, LAMB, DELTA, L, recorte=96,
+                         raiz=np.ones_like(raiz))
+    m = mp.MotorCarlos(1 + c1, VENTANA, LAMB, DELTA, L, recorte=96, raiz=raiz,
+                       raiz_min=raiz_min)
+    f0, c0, alto, ancho = VENTANA
+    r = raiz[f0:f0 + alto, c0:c0 + ancho]
+    luz = r >= raiz_min
+    base = uno.campo(Z, VENTANA)
+    esperado = 1 + np.where(luz, (base - 1) / np.where(luz, r, 1), 0)
+    np.testing.assert_allclose(m.campo(Z, VENTANA), esperado, rtol=1e-10, atol=1e-12)
+```
+
+(`PINHOLE_PRUEBA`, `holograma`, `objeto_de_prueba`, `VENTANA`, `FORMA` ya están definidos en el archivo.)
+
+- [ ] **Step 2: Rojo**
+
+Run: `Tesis_env/Scripts/python.exe -m pytest tests/test_mi_prueba_dlhm_seleccion.py -q -p no:cacheprovider -k "carlos_con_recorte or carlos_aborta or carlos_con_fondo"`
+Expected: FAIL con `TypeError: MotorCarlos.__init__() got an unexpected keyword argument 'recorte'`.
+
+- [ ] **Step 3: La implementación**
+
+En `scripts/mi_prueba_dlhm.py`:
+
+1. Justo ANTES de la línea `#: Solo MOTOR = "carlos". Presupuesto de memoria [GB] para la malla`, insertar:
+
+```python
+#: Solo MOTOR = "carlos". Lado del cuadrado CENTRADO en la malla que Carlos
+#: reconstruye; las metricas se miden solo en la region medida (ROI), dentro de
+#: el. Separado del ROI porque con un recorte chico Carlos no tiene NA: medido
+#: el 2026-09-29 sobre el BenchmarkTarget entero (z = 3 mm), con el ROI del USAF
+#: como recorte (256 px) la Tamura se iba +0.10 mm y SSIM -0.50 incluso sin
+#: fuente, y con 384 centrado igual; con 1024 centrado, a 2 um. Centrado, su
+#: fuente queda en el eje. Con FUENTE el recorte tiene que ser MAYOR que el ROI:
+#: dividir la salida por la raiz del fondo amplifica el borde del recorte (en
+#: 128x160 con recorte = ROI, la Tamura se iba -53 um; con recorte 96, a 1 um).
+#: None: el recorte es el ROI, como hasta el 2026-09-29 (cuadrado, y conviene
+#: centrado).
+CARLOS_RECORTE = 1024
+
+```
+
+2. En el comentario de `PISO`, las cuatro primeras líneas
+
+```
+#: Fraccion de max|fondo| bajo la que no se divide por el fondo: ahi c - 1 = 0
+#: en el motor exacto y c = 1 en el de Carlos, "sin informacion", como lo que
+#: cae fuera del sensor. Dividir en los ceros de Airy explota: medido en 256 px,
+#: sin piso la correlacion con el objeto cae de 0.82 a 0.02. Se usa con FUENTE
+```
+
+pasan a
+
+```
+#: Fraccion de max|fondo| bajo la que no se divide por el fondo, ni en el
+#: sensor ni a la salida: ahi t = 1, "sin informacion", como lo que cae fuera
+#: del sensor, en los dos motores. Dividir en los ceros de Airy explota: medido
+#: en 256 px, sin piso |t - 1| llega a 288 fuera del disco. Se usa con FUENTE
+```
+
+3. Borrar entera la función `contraste_enmascarado` (desde `def contraste_enmascarado(holo, fondo, piso):` hasta su `    return c`, y una de las líneas en blanco que la separan de `def zona_iluminada`).
+
+4. En el docstring de `MotorCarlos`, el punto 1 (desde `    1. EL RECORTE ES OBLIGADO, CENTRADO Y CUADRADO.` hasta `rectangular la esferica sale con otra curvatura en x que en y.`) pasa a:
+
+```
+    1. EL RECORTE ES OBLIGADO, CUADRADO Y, CON recorte, CENTRADO. Obligado por
+       memoria: con el sensor entero la malla remuestreada pide 15 GB por paso
+       (ver comprobar_memoria). Cuadrado porque reconstruir() usa el mismo
+       paso, delta*P/N, en los dos ejes. Con recorte (CARLOS_RECORTE) es el
+       cuadrado de ese lado centrado en la malla -la fuente en el eje- y la
+       ventana medida es un trozo de el; sin recorte, la ventana misma, y
+       reconstruir() pone la fuente en su centro (main() avisa si no lo esta).
+```
+
+y el párrafo final
+
+```
+    El holograma entra normalizado a [0, 1], como antes: una escala global no
+    cambia ninguna metrica.
+```
+
+pasa a
+
+```
+    El holograma entra normalizado a [0, 1], como antes: una escala global no
+    cambia ninguna metrica. Con raiz (un fondo imagen) entra el contraste por
+    amplitud 1 + c1 SIN normalizar -la cadena reconstruye L{1} = 1 exacto,
+    porque divide por la referencia propagada- y la salida se corrige como la
+    del exacto: t = 1 + (t - 1)/raiz en cada pixel, 1 bajo raiz_min.
+```
+
+5. `MotorCarlos.__init__` y `MotorCarlos.campo` se reemplazan enteros (`describir` no cambia) por:
+
+```python
+    def __init__(self, holo, ventana, lamb, delta, L_fuente, xp=np,
+                 dtype=np.complex128, sobremuestreo=None, recorte=None, raiz=None,
+                 raiz_min=0.0):
+        holo = np.asarray(holo)
+        M, N = holo.shape
+        f0, c0, alto, ancho = (int(v) for v in ventana)
+        if recorte is None:
+            if alto != ancho:
+                lado = min(alto, ancho)
+                raise SystemExit(
+                    f"El motor de Carlos necesita un ROI CUADRADO y la region medida "
+                    f"es de {alto}x{ancho} px (alto x ancho): reconstruir() usa el "
+                    f"mismo paso en los dos ejes, delta*P/N, y con un recorte "
+                    f"rectangular la esferica sale con otra curvatura en x que en y."
+                    f"\nUsa un ROI cuadrado y centrado, por ejemplo\n\n"
+                    f"    ROI = ({(N - lado) // 2}, {(M - lado) // 2}, {lado}, {lado})\n")
+            rf0, rc0, lado = f0, c0, alto
+        else:
+            lado = int(recorte)
+            if lado > min(M, N):
+                raise SystemExit(f"CARLOS_RECORTE = {lado} no cabe en la malla {M}x{N}: "
+                                 f"bajalo a {min(M, N)} como mucho.")
+            rf0, rc0 = (M - lado) // 2, (N - lado) // 2
+            if not (rf0 <= f0 and rc0 <= c0 and f0 + alto <= rf0 + lado
+                    and c0 + ancho <= rc0 + lado):
+                raise SystemExit(
+                    f"La region medida (fila {f0}, columna {c0}, {alto}x{ancho}) se "
+                    f"sale del recorte centrado de Carlos (fila {rf0}, columna {rc0}, "
+                    f"{lado}x{lado}). Sube CARLOS_RECORTE o mueve el ROI.")
+        h = holo[rf0:rf0 + lado, rc0:rc0 + lado]
+        if raiz is None:
+            self.h = h / np.abs(h).max()
+            self.raiz = None
+        else:
+            self.h = h
+            self.raiz = np.asarray(raiz, dtype=np.float64)[rf0:rf0 + lado, rc0:rc0 + lado]
+            self.raiz_min = float(raiz_min)
+        self.ventana = self.ventana_maxima = (rf0, rc0, lado, lado)
+        self.lamb, self.delta, self.L = float(lamb), float(delta), float(L_fuente)
+        self.xp, self.dtype, self.sobremuestreo = xp, dtype, sobremuestreo
+
+    def campo(self, z, ventana):
+        f0, c0, alto, ancho = (int(v) for v in ventana)
+        rf0, rc0, lado, _ = self.ventana
+        if not (rf0 <= f0 and rc0 <= c0 and f0 + alto <= rf0 + lado
+                and c0 + ancho <= rc0 + lado):
+            raise ValueError(f"el motor de Carlos solo reconstruye su recorte, "
+                             f"{self.ventana}; se pidio {tuple(ventana)}")
+        kw = dict(xp=self.xp, dtype=self.dtype, sobremuestreo=self.sobremuestreo)
+        Rec = reconstruir(self.h, z, self.lamb, self.delta, self.L, **kw)
+        U0 = onda_de_referencia(self.h.shape, z, self.lamb, self.delta, self.L, **kw)
+        Rec /= self.xp.abs(U0) ** 2
+        del U0
+        n = self.h.shape[0]
+        t = interpolar_centrado(Rec, self.delta * n / Rec.shape[0], (n, n),
+                                self.delta * z / self.L, self.xp)
+        if self.raiz is not None:
+            r = self.xp.asarray(self.raiz)
+            luz = (r >= self.raiz_min) & (r > 0)
+            t = 1 + self.xp.where(luz, (t - 1) / self.xp.where(luz, r, 1), 0)
+        i, j = f0 - rf0, c0 - rc0
+        return t[i:i + alto, j:j + ancho]
+```
+
+6. En `main()`, la rama del motor de Carlos: desde la línea `    else:` que sigue al bloque del `MotorExacto(...)` hasta la línea `        motor = MotorCarlos(h_carlos, ventana, LAMB, DELTA, L, xp_, dtype, SOBREMUESTREO)` incluida, se reemplaza por:
+
+```python
+    else:
+        if CARLOS_RECORTE is None and (abs(f0 + alto / 2 - M / 2) > 1
+                                       or abs(c0 + ancho / 2 - N / 2) > 1):
+            print(f"AVISO: el ROI no esta centrado en la malla {M}x{N}. El motor de "
+                  f"Carlos pone la fuente en el centro\n  del recorte: su fisica ya no "
+                  f"es la del banco.")
+        if isinstance(fondo, np.ndarray):
+            # con una imagen de fondo -la simulada o FONDO- el contraste por
+            # amplitud, sin normalizar, y la salida entre la raiz del fondo, como
+            # el exacto: releer con RUTA y FONDO da lo mismo que simular
+            c1, raiz, raiz_min = dlhm_exacto.contraste_amplitud(holo, fondo, piso)
+            motor = MotorCarlos(1 + c1, ventana, LAMB, DELTA, L, xp_, dtype,
+                                SOBREMUESTREO, recorte=CARLOS_RECORTE, raiz=raiz,
+                                raiz_min=raiz_min)
+        else:
+            motor = MotorCarlos(holo, ventana, LAMB, DELTA, L, xp_, dtype, SOBREMUESTREO,
+                                recorte=CARLOS_RECORTE)
+```
+
+(las líneas que siguen, `comprobar_memoria(motor.h, ...)` y los `print` de `describir` y de `comprobar_equivalencia`, no cambian).
+
+- [ ] **Step 4: Verde**
+
+Run: `Tesis_env/Scripts/python.exe -m pytest tests/test_mi_prueba_dlhm_seleccion.py -q -p no:cacheprovider`
+Expected: PASS entero. Medido con un prototipo en esta malla, con el recorte de 96: Carlos sin fuente a 1.0 um y con fuente a 1.0 um (desfase 0); 1.3 um (desfase 0.0023). Si una prueba de punta a punta con Carlos falla la tolerancia, NO se toca: se informa con los números.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/mi_prueba_dlhm.py tests/test_mi_prueba_dlhm_seleccion.py
+git commit -m "mi_prueba_dlhm: Carlos reconstruye su propio recorte centrado y normaliza por amplitud
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 11: A escala real otra vez, y dejarlo escrito
+
+Sustituye a la Task 8: mismos archivos y mismo cierre, con el código de las Tasks 9 y 10.
+
+**Files:**
+- Modify: `scripts/mi_prueba_dlhm.py` (solo la cabecera)
+- Modify: `docs/superpowers/specs/2026-09-29-fuente-dlhm-design.md` (sección final de resultado)
+- Modify: `docs/Cronograma_TG_DLHM.xlsx` (tarea 80, fila 83)
+
+- [ ] **Step 1: Las cuatro corridas**
+
+Una por una desde la raíz, en Git Bash (cada una simula ~40 s en la GPU y barre 2.5-3.5 mm), con los valores por defecto: ROI = el USAF central, `CARLOS_RECORTE = 1024`, `PISO = 0.05`.
+
+```bash
+MPLBACKEND=Agg Tesis_env/Scripts/python.exe -c "import scripts.mi_prueba_dlhm as mp; mp.MOSTRAR = False; mp.main()"
+```
+
+```bash
+MPLBACKEND=Agg Tesis_env/Scripts/python.exe -c "import scripts.mi_prueba_dlhm as mp; mp.MOSTRAR = False; mp.FUENTE = 'pinhole'; mp.main()"
+```
+
+```bash
+MPLBACKEND=Agg Tesis_env/Scripts/python.exe -c "import scripts.mi_prueba_dlhm as mp; mp.MOSTRAR = False; mp.MOTOR = 'carlos'; mp.main()"
+```
+
+```bash
+MPLBACKEND=Agg Tesis_env/Scripts/python.exe -c "import scripts.mi_prueba_dlhm as mp; mp.MOSTRAR = False; mp.MOTOR = 'carlos'; mp.FUENTE = 'pinhole'; mp.main()"
+```
+
+Expected: las tres métricas a menos de medio paso grueso (0.005 mm) de 3.000 con el exacto, y a menos de un paso grueso (0.01 mm) con Carlos. Se anota de cada una la tabla de focos (foco, error, FWHM, alt/riz) y los tiempos. En `campos.png` de las dos corridas con fuente, el holograma tiene que mostrar el disco brillante (los anillos de Airy son del 1.75 % del pico: no se ven en escala lineal, y así se dice). Si algo falla, NO se toca ningún umbral ni código: se informa BLOCKED con los números.
+
+- [ ] **Step 2: La cabecera de mi_prueba_dlhm.py**
+
+Justo ANTES del párrafo que empieza `EL ~0.03 DE ANTES, EXPLICADO.`, una sección nueva en ASCII, en prosa densa como el resto de la cabecera, titulada `LA FUENTE (FUENTE, PISO) Y EL RECORTE DE CARLOS, 2026-09-29.`, que diga: (1) la ida exacta supone una fuente ideal y da I/I_ref, y el aspecto de los hologramas de Lopera y Carlos es la emisión de la fuente (media radial centro/borde: exacto 0.98, esférica ideal sin dividir 1.17, envolvente de dlhm() 58.6, su modelo 54.7); `FUENTE = "pinhole"` mete el Airy del pinhole de 5 um en la ida (primer cero a 710 px); (2) la reconstrucción normaliza por amplitud: dividir por |a_L|^2 empataba en correlación (USAF: 0.7900 contra 0.7906, 0.7990 sin fuente) pero SSIM elegía el plano a -0.035 mm; (3) Carlos reconstruye su propio recorte centrado (`CARLOS_RECORTE = 1024`): con el ROI del USAF como recorte se iba +0.10 mm (Tamura) incluso sin fuente. Y a continuación la tabla del Step 1, con este formato:
+
+```
+    motor     fuente     metrica     foco     error    FWHM   alt/riz
+    exacto    ninguna    tamura      3.0000   +0.000   ...    ...
+```
+
+En la misma cabecera, la frase del cuarto central que dice `Queda por defecto porque da el pico la mitad de ancho` se corrige para decir que eso vale con `ROI = None` (el defecto ahora es el USAF).
+
+- [ ] **Step 3: La spec**
+
+Al final de `docs/superpowers/specs/2026-09-29-fuente-dlhm-design.md`, una sección `## Resultado de la verificación a escala real (2026-09-29)` con la tabla del Step 1 y una línea por cada punto de la Verificación (y de la sección de revisión) con su número.
+
+- [ ] **Step 4: El cronograma**
+
+La tarea 80 en la fila 83 de la hoja `Tareas`, con el script del Step 4 de la Task 8 (copia el estilo de la fila 82, comprueba que los IDs 1..79 no tienen huecos, pone el autofiltro en A3:I83). Las notas, en ASCII puro (sin tildes ni ñ) y densas: el diagnóstico (no era regresión: HEAD regenera el holograma del 28/09 a 1.8e-4; la envolvente de Lopera/Carlos es la emisión de la fuente, 0.98 contra 58.6 centro/borde), RS con fuente 1.1e-5 y 4.6e-6, la ida y vuelta en el centro del disco 0.888/0.893, las dos decisiones del usuario (amplitud en vez de |a_L|^2 por el SSIM a -0.035; recorte propio de Carlos de 1024, que con 256 se iba +0.10 mm), la tabla del Step 1, los hashes de los commits de la rama (`git log --oneline 56f3694..HEAD`) y lo abierto: la NA real del banco sin medir (FUENTE apagada por defecto) y la gemela amplificada hacia el borde de la luz.
+
+Run después: `Tesis_env/Scripts/python.exe -c "import openpyxl; ws = openpyxl.load_workbook('docs/Cronograma_TG_DLHM.xlsx')['Tareas']; print([ws.cell(83, c).value for c in range(1, 8)], ws.auto_filter.ref)"`
+Expected: la fila 80 con `Hecho` y el autofiltro `A3:I83`.
+
+- [ ] **Step 5: Verde y commit**
+
+Run: `Tesis_env/Scripts/python.exe -m pytest tests/test_mi_prueba_dlhm_seleccion.py -q -p no:cacheprovider` (la cabecera es un docstring).
+
+```bash
+git add scripts/mi_prueba_dlhm.py docs/superpowers/specs/2026-09-29-fuente-dlhm-design.md docs/Cronograma_TG_DLHM.xlsx
+git commit -m "Cronograma y cabecera: la fuente en la ida DLHM, medida a escala real
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```

@@ -115,6 +115,10 @@ suavidad (D1).
 
 ### D4 — El fondo simulado y el piso del Reconstructor
 
+> **Sustituida la división por |a_L|² por la división por amplitud:** ver
+> «Revisión tras la verificación a escala real», D4bis. `iluminacion()` y el
+> piso siguen; cambia cómo se usa el fondo.
+
 `iluminacion(forma, delta, L, fuente, centro=(0, 0))` devuelve |a_L|² en el
 sensor: la imagen sin muestra en la misma normalización que el holograma
 (dividida por |S_L|²). Con `fuente=None` son unos. No lleva `lamb`: la
@@ -302,3 +306,95 @@ ROI = (1884, 1306, 256, 256)   # el grupo USAF central del BenchmarkTarget (D8)
   el punto 4 de la Verificación.
 - Una tarea nueva en `docs/Cronograma_TG_DLHM.xlsx`, con la convención de
   siempre: retroactiva, notas con los números medidos, en ASCII.
+
+## Revisión tras la verificación a escala real (2026-09-29)
+
+La primera corrida de la Verificación 4 (Task 8) se bloqueó con dos fallos
+reales. Los dos se midieron y el usuario decidió cómo resolverlos.
+
+### Lo que falló
+
+1. **Motor exacto con fuente: SSIM se va −0.035 mm.** Tamura y Pearson
+   enfocan en 3.000. La causa, medida con los mismos hologramas cambiando solo
+   la normalización (ROI del USAF, barrido de 2.90 a 3.10 mm):
+
+   | normalización | foco Tamura | foco Pearson | foco SSIM | SSIM en 3.000 / máximo |
+   |---|---|---|---|---|
+   | sin fuente | 3.000 | 3.000 | 3.000 | 0.394 / 0.394 |
+   | D4, \|a_L\|² | 3.000 | 3.000 | 2.965 | 0.517 / 0.612 |
+   | amplitud | 3.000 | 3.000 | 3.000 | 0.609 / 0.609 |
+
+   La D4 retropropaga V/a_L, que deforma el término lineal cuando la mancha de
+   un detalle fino abarca píxeles con distinta iluminación. La deformación
+   cambia con z y SSIM la premia a ±35 µm. La comparación de la D4 medía solo
+   correlación y Pearson, que no la ven.
+2. **Motor de Carlos con el ROI del USAF (256 px): falla incluso sin
+   fuente** (Tamura +0.10 mm, SSIM −0.50 mm; con 384 centrado, igual). El
+   recorte chico no tiene NA. Con un recorte centrado de 1024 px acierta a
+   2 µm con y sin fuente, igual que el 2026-09-28. El riesgo que la D8
+   anticipaba, el descentrado, era el menor.
+
+### D4bis — La reconstrucción divide por amplitud
+
+Con un fondo que es una imagen (`fondo` array 2-D, simulado o medido):
+
+- **En el sensor:** c1 = (holo − fondo)/√|fondo| donde √|fondo| ≥ √(piso·max|fondo|)
+  y √|fondo| > 0; 0 donde no. La parte lineal es sgn(a_L)(V + V*), que se
+  retropropaga sin error a (t − 1)·|a_z| dentro del lóbulo.
+- **En la muestra:** la salida se divide por √|fondo| proyectado: el punto
+  (y, x) del plano z cae en el sensor en (y, x)·L/z, el mismo rayo, así que
+  √fondo ahí es |a_z|. Se interpola bilineal sobre la malla del sensor (en la
+  malla por defecto es píxel a píxel). Donde el proyectado cae bajo el piso, o
+  fuera del sensor, t = 1.
+- Con `fondo` None, `'media'` o escalar, todo sigue como hoy (`_contraste`
+  sin piso). `piso > 0` sin fondo imagen aborta. Con un fondo constante da lo
+  mismo que dividir. Un holograma complejo con un fondo que varía aborta: el
+  fondo es una intensidad.
+- El precio, medido: hacia el borde de la luz amplifica la gemela por 1/|a_z|.
+  En 256 px con un pinhole de 20 µm la correlación con el objeto en el centro
+  del disco (|a|² ≥ 0.5) queda en 0.888 contra 0.893 sin fuente, y en todo el
+  disco (|a|² ≥ 0.05) cae a 0.656 contra 0.817. Por eso la prueba de la ida y
+  vuelta mide en el centro.
+
+`contraste_amplitud(holo, fondo, piso=0.0) -> (c1, raiz, raiz_min)` es
+pública en `CamposT.dlhm`, porque el motor de Carlos la usa igual.
+
+### D5bis — El motor de Carlos, igual
+
+Con un fondo imagen, Carlos recibe h = 1 + c1 **sin normalizar** (su cadena
+reconstruye L{1} = 1 exactamente, porque divide por la referencia propagada),
+y su salida t se corrige como la del exacto: t = 1 + (t − 1)/√fondo en cada
+píxel del recorte (su salida va en la malla del sensor proyectada, píxel a
+píxel), t = 1 bajo el piso. Sin fondo imagen, como hoy: el holograma
+normalizado a [0, 1]. `mi_prueba_dlhm.contraste_enmascarado()` desaparece.
+
+### D9 — Carlos reconstruye su propio recorte centrado
+
+Se separa el recorte de Carlos de la región medida. `CARLOS_RECORTE = 1024`:
+Carlos reconstruye el cuadrado de ese lado CENTRADO en la malla —así su fuente
+está en el eje y el aviso de descentrado sobra— y las métricas se miden solo
+en la ventana del ROI, dentro de él. La ventana tiene que caber en el recorte,
+y el recorte en la malla; si no, aborta y dice qué cambiar. Con
+`CARLOS_RECORTE = None`, el recorte es el ROI, como hasta ahora (tiene que ser
+cuadrado, y conviene centrado).
+
+Medido en la malla de las pruebas (128x160, ROI de 64): con recorte = ROI,
+sin fuente −2.0/−2.7 µm y con fuente y amplitud la Tamura se va −53 µm (la
+división de la salida amplifica el borde del recorte, que cae en la ventana);
+con un recorte de 96, 1.0/1.3 µm con y sin fuente. Con la fuente, el recorte
+tiene que ser mayor que el ROI.
+
+### Verificación, lo que cambia
+
+- La ida y vuelta de la Task 3 mide en el centro del disco (|a|² ≥ 0.5):
+  con fuente a 0.02 o menos de sin fuente; dividiendo por la media, < 0.5.
+- Pruebas nuevas: la salida del Reconstructor con fondo imagen es
+  1 + B{c1}/√fondo proyectado, byte a byte con una construcción a mano; el
+  √fondo proyectado coincide con |a(s_z)| en la malla por defecto y en otra
+  (más fina y desplazada); bajo el piso la salida vale 1 y un fondo con ceros
+  no da NaN; un holograma complejo con un fondo que varía aborta.
+- Carlos: con recorte, `campo(z, ventana)` es el trozo de `campo(z, recorte)`;
+  una ventana fuera del recorte, o un recorte mayor que la malla, abortan.
+- A escala real, las cuatro corridas (exacto y Carlos, sin y con fuente) con
+  el ROI del USAF y `CARLOS_RECORTE = 1024`, con la tolerancia de siempre en
+  las tres métricas.
