@@ -42,10 +42,11 @@ def manchas(n, paso, centros, sigma):
     return 1 - 0.5 * a
 
 
-def rs_directo(t, paso, centro_obj, Ys, Xs, zm=Z, Lm=L):
+def rs_directo(t, paso, centro_obj, Ys, Xs, zm=Z, Lm=L, emision=None):
     """Rayleigh-Sommerfeld I directo (Lopera, Ec. 1), campo de t - 1 sobre la
     malla (Ys, Xs) del sensor, dividido por la esférica en el sensor. zm y Lm,
-    los del montaje salvo que se pidan otros."""
+    los del montaje salvo que se pidan otros. emision = a(sin theta): pesa cada
+    punto del objeto con la amplitud que la fuente le manda."""
     n = t.shape[0]
     g = (np.arange(n) - n / 2) * paso
     xs = (g + centro_obj[1])[None, :].repeat(n, 0).ravel()
@@ -55,6 +56,8 @@ def rs_directo(t, paso, centro_obj, Ys, Xs, zm=Z, Lm=L):
     xs, ys, fuente = xs[m], ys[m], fuente[m]
     rho = np.sqrt(xs**2 + ys**2 + zm**2)
     fuente = fuente * np.exp(1j * K * rho) / rho * paso**2
+    if emision is not None:
+        fuente = fuente * emision(np.hypot(xs, ys) / rho)
     XX, YY = np.meshgrid(Xs, Ys)
     U = np.zeros(XX.size, complex)
     dm = Lm - zm
@@ -223,6 +226,59 @@ def test_holograma_de_contraste_es_el_modulo_de_uno_mas_V():
     np.testing.assert_allclose(c, np.abs(1 + V) ** 2, rtol=1e-12)
 
 
+@pytest.mark.parametrize("X0", [(0.0, 0.0), (0.7, 1.9)])
+def test_la_ida_con_fuente_coincide_con_rayleigh_sommerfeld(X0):
+    """El Airy del pinhole de 5 um dentro de la ida, contra RS directo con la
+    misma emisión. Fuera del eje el objeto cae a sin(theta) = 0.199, pasado el
+    primer cero (0.1288): a vale -0.099 y un signo o una coordenada mal
+    puestos no pasan (la ida SIN fuente contra esta RS da 11.1, medido).
+    Medido con la implementación: 1.1e-5 en el eje y 4.6e-6 fuera."""
+    a = dlhm.fuente_pinhole(5e-3, LAMB)
+    centro_obj = (X0[0] / M, X0[1] / M)
+    t = manchas(40, DO, [(0.0, -3e-3), (4e-3, 4e-3), (-4e-3, 2e-3)], 1e-3)
+    n_s = 24
+    V = dlhm.holograma(t, DO, LAMB, Z, L, (n_s, n_s), 4 * DELTA, centro_objeto=centro_obj,
+                       centro=X0, complejo=True, fuente=a, device="cpu")
+    Ys = (np.arange(n_s) - n_s / 2) * 4 * DELTA + X0[0]
+    Xs = (np.arange(n_s) - n_s / 2) * 4 * DELTA + X0[1]
+    ref = rs_directo(t, DO, centro_obj, Ys, Xs, emision=a)
+    assert error_relativo(a_numpy(V), ref) < 1e-4
+
+
+def test_con_fuente_la_intensidad_es_el_modulo_de_a_mas_V():
+    """La referencia en el sensor ya no es 1 sino a_L: I/|S_L|² = |a_L + V|².
+    Y sin objeto (t = 1, V = 0) lo que queda es exactamente iluminacion()."""
+    a = dlhm.fuente_pinhole(5e-3, LAMB)
+    X0 = (0.7, 1.9)
+    t = manchas(32, DO, [(0.0, 0.0)], 3e-3)
+    kw = dict(centro_objeto=(X0[0] / M, X0[1] / M), centro=X0, fuente=a, device="cpu")
+    V = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (32, 32), DELTA, complejo=True, **kw))
+    c = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (32, 32), DELTA, **kw))
+    Ys = (np.arange(32) - 16) * DELTA + X0[0]
+    Xs = (np.arange(32) - 16) * DELTA + X0[1]
+    rho = np.hypot(Xs[None, :], Ys[:, None])
+    a_L = a(rho / np.sqrt(rho**2 + L**2))
+    np.testing.assert_allclose(c, np.abs(a_L + V) ** 2, rtol=1e-12)
+    vacio = a_numpy(dlhm.holograma(np.ones((32, 32)), DO, LAMB, Z, L, (32, 32), DELTA, **kw))
+    np.testing.assert_allclose(vacio, dlhm.iluminacion((32, 32), DELTA, L, a, centro=X0),
+                               rtol=1e-12)
+
+
+def test_una_fuente_constante_da_lo_mismo_que_ninguna():
+    t = manchas(32, DO, [(0.0, 0.0)], 3e-3)
+    uno = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (32, 32), DELTA,
+                                 fuente=lambda s: np.ones_like(s), device="cpu"))
+    nada = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (32, 32), DELTA, device="cpu"))
+    np.testing.assert_allclose(uno, nada, rtol=1e-12)
+
+
+def test_la_ida_con_una_fuente_mal_hecha_aborta():
+    t = manchas(16, DO, [(0.0, 0.0)], 3e-3)
+    with pytest.raises(ValueError, match=r"a\(0\) = 1"):
+        dlhm.holograma(t, DO, LAMB, Z, L, (16, 16), DELTA,
+                       fuente=lambda s: 2 * np.ones_like(s), device="cpu")
+
+
 # ----------------------------------------------------------------- la vuelta
 def _holograma_prueba(n=256, centro=(0.0, 0.0), centros=((0.0, 0.0),), sigma=12e-3):
     """Holograma complejo (sin gemela) de un objeto grueso, que cabe entero en
@@ -380,6 +436,21 @@ def test_gpu_da_lo_mismo_que_cpu():
     Vc = dlhm.holograma(t, DO, LAMB, Z, L, (128, 128), DELTA, complejo=True, device="cpu")
     Vg = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (128, 128), DELTA, complejo=True, device="gpu"))
     assert error_relativo(Vg, Vc) < 1e-4
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not gpu_disponible(), reason="sin GPU CUDA")
+def test_gpu_da_lo_mismo_que_cpu_con_fuente():
+    """La fuente se evalúa en la CPU en float64 y sube ya evaluada: en la GPU
+    solo cambia la mantisa. Medido: 1.6e-6."""
+    a = dlhm.fuente_pinhole(5e-3, LAMB)
+    X0 = (0.7, 1.9)
+    t = manchas(64, DO, [(0.0, 0.0), (0.01, -0.01)], 3e-3)
+    kw = dict(centro_objeto=(X0[0] / M, X0[1] / M), centro=X0, fuente=a)
+    cpu = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (64, 64), DELTA, device="cpu", **kw))
+    gpu = a_numpy(dlhm.holograma(t, DO, LAMB, Z, L, (64, 64), DELTA, device="gpu", **kw))
+    fondo = dlhm.iluminacion((64, 64), DELTA, L, a, centro=X0)
+    assert error_relativo(gpu - fondo, cpu - fondo) < 1e-4
 
 
 if __name__ == "__main__":
