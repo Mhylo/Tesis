@@ -18,9 +18,18 @@ métodos aplicados al mismo dato.}
 %       campos.py; scripts/mpasm_minimo.py; código de referencia
 %       en referencia/ y el parche de scripts/parchar_referencias.py.
 
-\pendiente{arquitectura del paquete y la interfaz común de los tres
-propagadores; soporte de GPU; cómo se reprodujo primero el código de
-referencia \cite{zhao2020code}.}
+Los tres métodos se implementaron en Python dentro de un mismo paquete,
+\texttt{CamposT}, a partir del código publicado del MPASM~\cite{zhao2020code}.
+FFT-ASM, BLAS y MPASM comparten una sola interfaz: reciben el campo de
+entrada, el paso de muestreo, la longitud de onda y la distancia de
+propagación, y devuelven el campo propagado; el MPASM añade como argumentos
+opcionales sus coeficientes de control ($s$, $K_f$ y el muestreo de salida
+$r$). Una función común despacha al método pedido con el mismo relleno de
+ceros y el mismo recorte, de modo que todos se aplican al mismo dato en las
+mismas condiciones. El cálculo corre en CPU (NumPy) o en GPU (CuPy) con un
+único cuerpo de código, que solo cambia el módulo de arreglos, así que las
+diferencias de tiempo entre dispositivos miden el hardware y no dos
+implementaciones distintas.
 
 \subsection{Verificación}
 \label{sec:verificacion}
