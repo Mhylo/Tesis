@@ -143,6 +143,61 @@ def test_fuente_pinhole_rechaza_un_diametro_no_positivo():
         dlhm.fuente_pinhole(0.0, LAMB)
 
 
+def _envolvente_de_su_dlhm(forma, paso, na):
+    """La envolvente PS de dlhm() de Lopera et al. 2024, escrita como en su
+    código pero sobre la malla del paquete: exp(-2r/(L tan(asin NA))) con r la
+    distancia de la fuente al píxel, menos su mínimo y entre su máximo."""
+    Ys = dlhm.coordenadas(forma[0], paso)
+    Xs = dlhm.coordenadas(forma[1], paso)
+    u, v = np.meshgrid(Xs, Ys)
+    r = np.sqrt(u**2 + v**2 + L**2)
+    PS = np.exp(-2 * r / (L * np.tan(np.arcsin(na))))
+    PS = PS - np.min(PS)
+    return PS / np.max(PS)
+
+
+def test_fuente_lopera_es_la_envolvente_de_su_dlhm():
+    """|a|² en el sensor es su PS, en el sensor del banco (3000x4000 px de
+    1.83 um) muestreado cada 100 px: con s_max, la esquina más lejana, sale su
+    resta del mínimo; L se cancela."""
+    forma, paso = (30, 40), 100 * DELTA
+    rho = np.hypot(forma[0] / 2 * paso, forma[1] / 2 * paso)
+    s_max = rho / np.hypot(rho, L)
+    assert s_max == pytest.approx(0.416, abs=1e-3)
+    a = dlhm.fuente_lopera(0.1, s_max)
+    np.testing.assert_allclose(dlhm.iluminacion(forma, paso, L, a),
+                               _envolvente_de_su_dlhm(forma, paso, 0.1), rtol=0, atol=1e-12)
+
+
+def test_fuente_lopera_sin_s_max_es_la_exponencial_pura():
+    """Sin la resta del mínimo: a(0) = 1, cae a 1/e² en intensidad donde
+    sec(theta) - 1 = tan(asin NA) -sin(theta) = 0.4175 con NA = 0.1, no en
+    0.1: la NA de su fórmula no es el semiángulo del cono- y no llega a cero."""
+    a = dlhm.fuente_lopera(0.1)
+    assert a(np.zeros(1))[0] == 1.0
+    cos = 1 / (1 + np.tan(np.arcsin(0.1)))
+    s = np.sqrt(1 - cos**2)
+    assert s == pytest.approx(0.4175, abs=1e-4)
+    assert a(np.array([s]))[0] ** 2 == pytest.approx(np.exp(-2), rel=1e-12)
+    assert a(np.array([0.9]))[0] > 0
+
+
+def test_fuente_lopera_con_s_max_llega_a_cero_y_no_pasa():
+    a = dlhm.fuente_lopera(0.1, 0.416)
+    assert a(np.zeros(1))[0] == 1.0
+    assert abs(a(np.array([0.416]))[0]) < 1e-12
+    np.testing.assert_array_equal(a(np.array([0.45, 0.8])), 0.0)
+    s = np.linspace(0, 0.416, 200)
+    assert np.all(np.diff(a(s)) < 0)
+
+
+@pytest.mark.parametrize("na, s_max", [(0.0, None), (1.0, None), (-0.1, None),
+                                       (0.1, 0.0), (0.1, 1.0)])
+def test_fuente_lopera_rechaza_na_o_s_max_fuera_de_0_1(na, s_max):
+    with pytest.raises(ValueError):
+        dlhm.fuente_lopera(na, s_max)
+
+
 def test_iluminacion_es_el_modulo_al_cuadrado_de_a_en_el_sensor():
     a = dlhm.fuente_pinhole(5e-3, LAMB)
     X0 = (0.7, 1.9)
