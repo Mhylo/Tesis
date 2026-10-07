@@ -579,6 +579,51 @@ def test_fuente_de_y_su_sufijo():
     assert mp.sufijo_fuente(f, 5e-3) == "_fuente"
 
 
+def test_fuente_lopera_pide_una_na_de_verdad():
+    """FUENTE = "lopera" usa NA_FUENTE en (0, 1); su simulador acepta tambien 0
+    (su codigo usa entonces exp(-r)), pero ninguno un texto."""
+    kw = dict(metricas=("tamura",), formato="png", objeto="amplitud", motor="exacto",
+              campo="intensidad", ruta=None, referencia="objeto.png", z_real=3.0,
+              piso=0.05)
+    mp.comprobar_configuracion(fuente="lopera", na_fuente=0.1, **kw)
+    for na in (0.0, 1.0, "lopera", None):
+        with pytest.raises(SystemExit):
+            mp.comprobar_configuracion(fuente="lopera", na_fuente=na, **kw)
+    mp.comprobar_configuracion(simulador="lopera", na_fuente=0.0, **kw)
+    with pytest.raises(SystemExit):
+        mp.comprobar_configuracion(simulador="lopera", na_fuente="lopera", **kw)
+
+
+def test_seno_esquina_es_el_del_pixel_mas_lejano():
+    """El sensor del banco, 3000x4000 px de 1.83 um a L = 10 mm: 0.416."""
+    assert mp.seno_esquina((3000, 4000), 1.83e-3, 10.0) == pytest.approx(0.41603, abs=1e-5)
+
+
+def test_fuente_de_lopera_y_su_sufijo():
+    a = mp.fuente_de("lopera", 5e-3, LAMB, na_fuente=0.1, s_max=0.3)
+    s = np.array([0.0, 0.1, 0.25, 0.35])
+    np.testing.assert_array_equal(a(s), dlhm.fuente_lopera(0.1, 0.3)(s))
+    assert mp.sufijo_fuente("lopera", 5e-3, na_fuente=0.1) == "_loperaNA0.1"
+
+
+def test_main_con_la_fuente_de_lopera(config, monkeypatch):
+    """FUENTE = "lopera": la envolvente de su dlhm() dentro de la ida exacta. El
+    holograma sale brillante en el centro y oscuro hacia la esquina, el fondo
+    guardado es su envolvente y el foco cae a medio paso, como sin fuente."""
+    monkeypatch.setattr(mp, "FUENTE", "lopera")
+    z_foco = mp.main()
+    nombre = "sim_objeto_z0.24mm_intensidad_loperaNA0.1"
+    carpeta = config.parent / config.name.replace("_intensidad_", "_intensidad_loperaNA0.1_")
+    holo = np.load(carpeta / f"{nombre}.npy")
+    fondo = np.load(carpeta / f"{nombre}_fondo.npy")
+    a = dlhm.fuente_lopera(0.1, mp.seno_esquina(FORMA, DELTA, L))
+    np.testing.assert_allclose(fondo, dlhm.iluminacion(FORMA, DELTA, L, a), rtol=1e-12)
+    assert fondo.max() == pytest.approx(1.0) and fondo.min() < 1e-12
+    M, N = FORMA
+    assert holo[M // 2 - 5:M // 2 + 5, N // 2 - 5:N // 2 + 5].mean() > 3 * holo[:10, :10].mean()
+    assert all(abs(z - Z) < PASO / 2 for z in z_foco.values()), z_foco
+
+
 def test_la_carpeta_de_un_simulado_con_fuente_lleva_su_sufijo():
     carpeta, nombre = mp.carpeta_de_salida("raiz", None, "dir/BenchmarkTarget.png", 3.0,
                                            "intensidad", "exacto", "amplitud", None,

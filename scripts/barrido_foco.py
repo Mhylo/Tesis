@@ -239,7 +239,7 @@ RAIZ = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 # solo la formula del cono, z*tan(asin(lambda/(2 delta)))/delta en pixeles: es
 # la que dice cuanto borde contamina la metrica, y ya vive ahi
-from CamposT.roi import radio_del_cono
+from CamposT.roi import Roi, elegir, radio_del_cono
 
 # ════════════════════════════════════════════════════════════════════════════
 #  PARAMETROS FISICOS
@@ -259,7 +259,7 @@ Z_REAL = 60.0        # mm, a la que se genera el holograma. El barrido NO la usa
 #: Con S = 1 cae en 56.4 mm, 3.6 mm antes de Z_REAL, y Kfy llega a 1.1159 en
 #: Z_MAX mientras Kfx sigue clavado en 1.0000: los dos ejes en regimenes
 #: distintos dentro de una misma curva.
-S = 2
+S = 1
 GPU = cp is not None   # True/False para forzar; con True y sin CuPy aborta
 xp = cp if GPU else np
 
@@ -333,6 +333,35 @@ PASOS_FINO = 21                            # barrido fino, +-1 paso grueso alred
 #: el fondo de las curvas no es comparable con el de una corrida con None.
 BORDE_PX = 1000
 
+#: Region donde miden las metricas. Sirve para enfocar una seccion concreta.
+#: Los mismos valores que los ROI de mi_prueba_*, con la Roi de CamposT.roi:
+#:
+#:     None                    el centro menos BORDE_PX por lado, como siempre.
+#:     True                    la arrastras con el raton sobre |U0|^2 y
+#:                             cierras la figura. Imprime la tupla que la repite.
+#:     (X0, Y0, ANCHO, ALTO)   ventana fija, en px de la malla M x N: X0 la
+#:                             columna y Y0 la fila de la esquina superior
+#:                             izquierda.
+#:
+#: Con un ROI, BORDE_PX no se usa.
+#:
+#: NO ES EL RECORTE DE mi_prueba_*. Alli Roi.recortar() corta el holograma y se
+#: propaga solo el trozo: recorte seco, pierde los angulos altos de los puntos
+#: del ROI -a 60 mm el cono son ~1600 px por lado-, mete los anillos del corte
+#: en la region medida y baja el umbral de Kf, que va con M y N. Aqui el
+#: holograma entra ENTERO y mpasm(ventana=...) solo evalua la salida en las
+#: coordenadas del ROI: la fisica no cambia, solo se calcula menos.
+#:
+#: Lo que NO arregla: el espectro sM x sN se arma entero en cada z, asi que el
+#: pico de memoria es el mismo. Lo que se ahorra son los dos productos de
+#: salida, en proporcion al tamano del ROI.
+#:
+#: Un ROI pegado al borde de la malla trae los anillos del borde: el script
+#: imprime hasta que z los cubre el margen que le queda.
+ROI = True
+
+#: con ROI se le anade _roi<X0>-<Y0>-<ANCHO>x<ALTO> una vez resuelto: con True
+#: la ventana no se conoce hasta que la arrastras
 SALIDA_DIR = RAIZ / "resultados" / "barrido_foco" / f"{RUTA.stem}_z{Z_REAL:g}mm_{CAMPO}_s{S}"
 
 
@@ -347,11 +376,11 @@ SALIDA_DIR = RAIZ / "resultados" / "barrido_foco" / f"{RUTA.stem}_z{Z_REAL:g}mm_
 # Todas trabajan en float64: son sumas sobre millones de pixeles y en float32 el
 # error acumulado se come la diferencia entre pasos vecinos del barrido.
 
-def amplitud(U, borde):
-    """|U| en float64, sin `borde` px por lado. La entrada de toda metrica."""
+def amplitud(U, recorte=None):
+    """|U| en float64, recortado a `recorte` (dos slices). La entrada de toda metrica."""
     A = xp.abs(U).astype(np.float64)
-    if borde:
-        A = A[borde:-borde, borde:-borde]
+    if recorte is not None:
+        A = A[recorte]
     return A
 
 
@@ -532,8 +561,10 @@ def barrido(H, zs, carpeta):
             RELOJ[n] += time.perf_counter() - t
 
     for i, z in enumerate(zs):
-        U = mpasm(H, DELTA, LAMB, -z, s=S, gpu=GPU)   # LANZA, no bloquea
-        A = amplitud(U, BORDE)                        # LANZA, no bloquea
+        # LANZAN, no bloquean. Sin guardar solo se calcula la region medida;
+        # guardando, el campo entero, porque las imagenes salen enteras
+        U = mpasm(H, DELTA, LAMB, -z, s=S, gpu=GPU, ventana=VENTANA)
+        A = amplitud(U, None if VENTANA else RECORTE)
 
         # La GPU esta ocupada con lo de arriba. Aprovechar para cerrar el paso
         # anterior en la CPU, que es lo unico que no depende de este z.
@@ -586,23 +617,61 @@ img = img / img.max()
 U0 = (1 - img if INVERTIR else img).astype(complex)
 M, N = U0.shape
 
-BORDE = (int(np.ceil(radio_del_cono(Z_MAX, LAMB, DELTA))) if BORDE_PX is None
-         else int(BORDE_PX))
-if min(M, N) - 2 * BORDE < 64:
-    # medir con el borde dentro no es una version peor del barrido: es otro
-    # barrido, que elige la z mas lejana en vez del foco
-    raise SystemExit(
-        f"El margen de {BORDE} px por lado (cono a Z_MAX = {Z_MAX:g} mm) no "
-        f"deja nada de una malla {M}x{N}.\nBaja Z_MAX, o fija BORDE_PX sabiendo "
-        f"que los anillos del borde entran en la metrica.")
+if ROI is None:
+    BORDE = (int(np.ceil(radio_del_cono(Z_MAX, LAMB, DELTA))) if BORDE_PX is None
+             else int(BORDE_PX))
+    if min(M, N) - 2 * BORDE < 64:
+        # medir con el borde dentro no es una version peor del barrido: es otro
+        # barrido, que elige la z mas lejana en vez del foco
+        raise SystemExit(
+            f"El margen de {BORDE} px por lado (cono a Z_MAX = {Z_MAX:g} mm) no "
+            f"deja nada de una malla {M}x{N}.\nBaja Z_MAX, o fija BORDE_PX sabiendo "
+            f"que los anillos del borde entran en la metrica.")
+    ROI_EF = (BORDE, BORDE, M - 2 * BORDE, N - 2 * BORDE)
+else:
+    if ROI is True:
+        # se arrastra sobre el OBJETO, que es donde se va a medir: el holograma
+        # a 60 mm no deja ver que hay en cada sitio
+        I0 = np.abs(U0) ** 2
+        roi = elegir(I0 / I0.max(), "|U0|^2: arrastra la region donde enfocar")
+    else:
+        # solo la forma se mira aqui: los enteros y los negativos los vigila Roi
+        # con sus propios mensajes, que dicen como corregirlo
+        if not (isinstance(ROI, (tuple, list)) and len(ROI) == 4):
+            raise SystemExit(
+                f"ROI = {ROI!r} no es ninguno de los valores validos:\n\n"
+                f"    None                    el centro menos BORDE_PX\n"
+                f"    True                    la arrastras con el raton\n"
+                f"    (X0, Y0, ANCHO, ALTO)   ventana fija\n")
+        roi = Roi(*ROI)
+    if roi.x0 + roi.ancho > N or roi.y0 + roi.alto > M:
+        raise SystemExit(f"ROI {roi} se sale de la malla {M}x{N}.")
+    if min(roi.ancho, roi.alto) < 64:
+        raise SystemExit(f"ROI {roi}: menos de 64 px de lado no da para medir contraste.")
+    print(f"ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})   # repite esta ventana")
+    # mpasm(ventana=...) va en el orden de las filas: (fila, columna, alto, ancho)
+    ROI_EF = (roi.y0, roi.x0, roi.alto, roi.ancho)
+    SALIDA_DIR = SALIDA_DIR.with_name(
+        f"{SALIDA_DIR.name}_roi{roi.x0}-{roi.y0}-{roi.ancho}x{roi.alto}")
 
-# la referencia: la MISMA amplitud de partida, recortada con el MISMO margen
-REF = amplitud(xp.asarray(U0), BORDE)
+f0, c0, alto, ancho = ROI_EF
+RECORTE = (slice(f0, f0 + alto), slice(c0, c0 + ancho))
+VENTANA = None if GUARDAR_BARRIDO else ROI_EF
+# el cono crece lineal con z: la z hasta la que el margen tapa los anillos
+margen = min(f0, c0, M - f0 - alto, N - c0 - ancho)
+z_cubre = margen / radio_del_cono(1.0, LAMB, DELTA)
+
+# la referencia: la MISMA amplitud de partida, recortada con el MISMO ROI
+REF = amplitud(xp.asarray(U0), RECORTE)
 REF_CPU = a_cpu(REF)
 REF_RANGO = float(REF_CPU.max() - REF_CPU.min())
 
-print(f"metricas: {', '.join(METRICAS)} sobre {M - 2 * BORDE}x{N - 2 * BORDE} px "
-      f"de {M}x{N} (margen {BORDE} px por lado, cono a {Z_MAX:g} mm)")
+print(f"metricas: {', '.join(METRICAS)} sobre {alto}x{ancho} px de {M}x{N} "
+      f"(x {c0}-{c0 + ancho}, y {f0}-{f0 + alto} px; margen minimo "
+      f"{margen} px, tapa los anillos hasta z = {z_cubre:.1f} mm)")
+if z_cubre < Z_MAX:
+    print(f"AVISO: de {z_cubre:.1f} a {Z_MAX:g} mm los anillos del borde entran "
+          f"en la metrica.")
 
 # ---- propagacion: el holograma ---------------------------------------------
 U = mpasm(U0, DELTA, LAMB, Z_REAL, s=S, gpu=GPU)
@@ -740,10 +809,14 @@ fig1.tight_layout()
 # ════════════════════════════════════════════════════════════════════════════
 
 ext = [-N / 2 * DELTA, N / 2 * DELTA, -M / 2 * DELTA, M / 2 * DELTA]
-fila0, col0 = (M - ZOOM_PX) // 2, (N - ZOOM_PX) // 2
+# centrado en la region medida: con ROI = None es el centro de la malla
+fila0 = min(max(f0 + alto // 2 - ZOOM_PX // 2, 0), M - ZOOM_PX)
+col0 = min(max(c0 + ancho // 2 - ZOOM_PX // 2, 0), N - ZOOM_PX)
 rec = (slice(fila0, fila0 + ZOOM_PX), slice(col0, col0 + ZOOM_PX))
+# con `ext` la fila 0 queda arriba, en y = +M/2*delta: la fila f esta en
+# y = (M/2 - f)*delta, y el zoom y el recuadro del ROI siguen ese mismo convenio
 ext_z = [(col0 - N / 2) * DELTA, (col0 + ZOOM_PX - N / 2) * DELTA,
-         (fila0 + ZOOM_PX - M / 2) * DELTA, (fila0 - M / 2) * DELTA]
+         (M / 2 - fila0 - ZOOM_PX) * DELTA, (M / 2 - fila0) * DELTA]
 
 paneles = [(np.abs(U0) ** 2, "referencia |U0|^2  (objeto a z = 0)"),
            (np.abs(H) ** 2, f"holograma |H|^2 a {Z_REAL:g} mm  ({CAMPO})")]
@@ -759,7 +832,12 @@ for k, (I, titulo) in enumerate(paneles):
     ejes[0][k].set_title(titulo, fontsize=10)
     ejes[0][k].set_xlabel("x [mm]")
     ejes[1][k].imshow(I[rec], extent=ext_z, cmap="gray", vmin=0, vmax=1)
-    ejes[1][k].set_title(f"zoom central {ZOOM_PX}x{ZOOM_PX} px", fontsize=9)
+    if ROI is not None:
+        ejes[0][k].add_patch(plt.Rectangle(
+            ((c0 - N / 2) * DELTA, (M / 2 - f0 - alto) * DELTA), ancho * DELTA, alto * DELTA,
+            fill=False, ec="tab:red", lw=1))
+    ejes[1][k].set_title(f"zoom {'central' if ROI is None else 'en el ROI'} "
+                         f"{ZOOM_PX}x{ZOOM_PX} px", fontsize=9)
     ejes[1][k].set_xlabel("x [mm]")
 ejes[0][0].set_ylabel("y [mm]")
 ejes[1][0].set_ylabel("y [mm]")

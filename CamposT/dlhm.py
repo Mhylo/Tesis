@@ -98,7 +98,9 @@ del sensor a L = 10 mm. Con fuente = a(s) la ida la incluye por dentro, no
 multiplicando a la salida: el objeto se ilumina con a(s_z)·e^{ikr}/r y la
 referencia en el sensor es a(s_L), así que el holograma es |a_L + V|². Es
 exacto mientras la emisión sea ya su campo lejano en la muestra (el pinhole,
-a z = 3 mm: número de Fresnel 0.004).
+a z = 3 mm: número de Fresnel 0.004). fuente_lopera() da la otra emisión: la
+envolvente heurística del modelo de Lopera et al. 2024, la caída ancha de sus
+hologramas; en el sensor del banco es su PS píxel a píxel.
 Para reconstruir se normaliza por amplitud con el fondo iluminacion() =
 |a_L|²: c1 = (I - fondo)/sqrt(fondo) en el sensor, cuya parte lineal se
 retropropaga sin error a (t - 1)·|a_z|, y la salida se divide por sqrt(fondo)
@@ -132,7 +134,7 @@ from CamposT.backend import (a_dispositivo, a_numpy, bloques, comprobar_memoria,
 from CamposT.propagadores import mpasm, transfer_function
 
 __all__ = ["magnificacion", "distancia_equivalente", "coordenadas", "esferica",
-           "fuente_pinhole", "iluminacion", "contraste_amplitud", "ventana_chirp",
+           "fuente_pinhole", "fuente_lopera", "iluminacion", "contraste_amplitud", "ventana_chirp",
            "holograma", "Reconstructor", "reconstruir", "reconstruir_escalado",
            "memoria", "memoria_holograma"]
 
@@ -216,6 +218,39 @@ def fuente_pinhole(diametro, lamb):
         m = np.abs(x) > 1e-8                  # por debajo, 1 - x²/8 = 1 en float64
         out[m] = 2 * j1(x[m]) / x[m]
         return out
+    return a
+
+
+def fuente_lopera(na, s_max=None):
+    """La envolvente de la fuente del modelo de Lopera et al. 2024 (su dlhm(),
+    NA_s), como emisión: |a(s)|² = exp(-2R/(L·tan(asin na))), con R = L/cos(theta)
+    la distancia de la fuente al punto del sensor, normalizada a a(0) = 1. L se
+    cancela: solo depende de s = sin(theta).
+
+    Es HEURÍSTICA, no la difracción de una apertura: va en R y no en el ángulo,
+    así que na no es el semiángulo del cono. Con na = 0.1 la intensidad cae a
+    1/e² en sin(theta) = 0.4175, no en 0.1. Su código además le resta el
+    mínimo sobre el sensor, y eso la lleva a cero justo en la esquina más
+    lejana: s_max es el sin(theta) de esa esquina (0.416 en el sensor de
+    3000x4000 px a L = 10 mm), y más allá a = 0. Con s_max = None no se resta:
+    la exponencial pura, que en esa esquina vale 0.14 en intensidad.
+
+    a = sqrt(intensidad) >= 0: una AMPLITUD, como la de fuente_pinhole().
+    """
+    if not 0 < na < 1:
+        raise ValueError(f"na = {na!r}: va en (0, 1). Con 0 su código usa exp(-r), "
+                         f"que depende de las unidades")
+    if s_max is not None and not 0 < s_max < 1:
+        raise ValueError(f"s_max = {s_max!r}: es un sin(theta), va en (0, 1)")
+    tan_na = np.tan(np.arcsin(na))
+
+    def e(s):
+        s = np.asarray(s, dtype=np.float64)
+        return np.exp(-2 * (1 / np.sqrt(1 - s * s) - 1) / tan_na)
+    e_min = 0.0 if s_max is None else float(e(s_max))
+
+    def a(s):
+        return np.sqrt(np.clip((e(s) - e_min) / (1 - e_min), 0, None))
     return a
 
 
@@ -754,7 +789,7 @@ def holograma(t, paso, lamb, z, L, forma, delta, *, centro_objeto=(0.0, 0.0),
     fuente   None: fuente puntual ideal, isótropa (lo de siempre). O una
              función a(s), s = sin(theta), con a(0) = 1: la AMPLITUD que la
              fuente emite en cada dirección (fuente_pinhole() da el Airy de
-             un pinhole). Apodiza la ida por dentro: el objeto se ilumina con
+             un pinhole; fuente_lopera(), la envolvente de Lopera). Apodiza la ida por dentro: el objeto se ilumina con
              a(s_z)·e^{ikr}/r y la referencia en el sensor es a(s_L)·S_L, así
              que complejo=False da |a_L + V|² (= I/|S_L|²) y complejo=True da V.
              iluminacion() es |a_L|², el fondo. Supone que a varía despacio

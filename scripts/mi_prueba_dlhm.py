@@ -165,8 +165,8 @@ Airy del pinhole de 5 um dentro de la ida (primer cero a 710 px del centro; el
 primer anillo es el 1.75 % del pico y no se ve en escala lineal, el disco si)
 y los dos motores dividen por su fondo, con PISO = 0.05 (un disco de 555 px
 de radio). Contra Rayleigh-Sommerfeld con la misma emision la ida da 1.1e-5 en
-el eje y 4.6e-6 fuera de el. Va apagada por defecto: la NA real del banco no
-esta medida.
+el eje y 4.6e-6 fuera de el. La NA real del banco no esta medida; ver (4) para
+la fuente que va por defecto.
 
 (2) La reconstruccion con un fondo imagen normaliza por AMPLITUD, no por
 |a_L|^2. En el USAF del BenchmarkTarget las dos empataban en correlacion con
@@ -186,10 +186,32 @@ y FONDO da el mismo foco). Con el ROI del USAF, de 256 px, como recorte se
 iba +0.10 mm (Tamura) incluso sin fuente: un recorte chico no tiene NA. Con
 1024 acierta a 1 um en Tamura y Pearson.
 
+(4) LA FUENTE POR DEFECTO ES LA DE LOPERA (FUENTE = "lopera"), desde el
+2026-09-29: su envolvente (CamposT.dlhm.fuente_lopera, NA_FUENTE = 0.1) como
+emision dentro de la ida exacta. El pinhole daba un disco de 710 px, mucho mas
+estrecho que la caida ancha de los hologramas de referencia -el de Lopera, el
+Simulated_hologram.png de Carlos, holo_fringes/ref_fringes de pyLHM-; la de
+Lopera la reproduce. Medido en el BenchmarkTarget (z = 3 mm), media radial en
+diez anillos, normalizada al centro:
+
+    holograma                 anillo 1   5       8       10     centro/borde
+    exacto sin fuente         1.048    1.008   1.074   1.125      0.9
+    exacto + fuente lopera    1.036    0.608   0.230   0.052     20.0
+    modelo de Lopera entero   1.036    0.608   0.230   0.051     20.1
+
+Su fondo es su PS pixel a pixel: 6.2e-4 como mucho contra su formula en su
+linspace, que esta medio pixel corrido de la malla de aqui. Con PISO = 0.05 se
+divide en el 98.8 % del sensor (radio 2314 px); solo las esquinas quedan en
+t = 1. OJO, es HEURISTICA: va en la distancia fuente -> pixel y no en el
+angulo, y con NA 0.1 la intensidad cae a 1/e^2 en sin(theta) = 0.42, no en
+0.1; su resta del minimo la deja en cero justo en la esquina del sensor. Lo
+fisico que falta sigue siendo la NA del banco.
+
 Con los valores por defecto (ROI = el USAF central, 256 px; CARLOS_RECORTE =
 1024; PISO = 0.05), el BenchmarkTarget simulado entero, grueso de 2.5 a 3.5
 mm con paso 0.01 mm y fino de 0.001 mm, en la GPU de desarrollo; error =
-foco - 3.000 en mm, FWHM del grueso:
+foco - 3.000 en mm, FWHM del grueso (las filas "lopera", el 2026-09-29 con
+FUENTE = "lopera"; Carlos, releyendo el simulado con RUTA y FONDO):
 
     motor     fuente     metrica     foco     error    FWHM    alt/riz
     exacto    ninguna    tamura      3.0000   +0.000   0.0163    49.2
@@ -204,14 +226,21 @@ foco - 3.000 en mm, FWHM del grueso:
     carlos    pinhole    tamura      3.0010   +0.001   0.0355    62.9
     carlos    pinhole    pearson     3.0000   +0.000   0.0507    66.9
     carlos    pinhole    ssim        3.0000   +0.000   0.1294    60.9
+    exacto    lopera     tamura      3.0000   +0.000   0.0165    52.1
+    exacto    lopera     pearson     3.0000   +0.000   0.0274    72.8
+    exacto    lopera     ssim        3.0000   +0.000   0.0133    22.7
+    carlos    lopera     tamura      3.0010   +0.001   0.0376    39.4
+    carlos    lopera     pearson     3.0000   +0.000   0.0500    69.3
+    carlos    lopera     ssim        2.5070   -0.493      nan     8.6
 
 Se exigia el exacto a medio paso grueso (0.005 mm) y Carlos a un paso grueso
-(0.01 mm): once de las doce celdas se cumplen, con el exacto a 1 um como mucho,
-y la doceava es el limite de abajo. Los tiempos: simular el holograma, 41-44
+(0.01 mm): dieciseis de las dieciocho celdas se cumplen, con el exacto a 1 um
+como mucho, y las otras dos son el limite de abajo, Carlos con SSIM sin fuente
+y con la de Lopera. Los tiempos: simular el holograma, 41-44
 s; el motor exacto, 12 s, y sus 122 planos, 13 s (107 ms/z en total); Carlos,
 malla remuestreada de hasta 2358x2358, 23-28 s por barrido (190-230 ms/z), y su
 reconstruir() contra la cadena intacta de dlhm.py da 5.4e-07. Con el pinhole,
-el holograma se ve como un disco brillante.
+el holograma se ve como un disco brillante; con la de Lopera, como el suyo.
 
 UN LIMITE MEDIDO, NO UN FALLO: la celda de Carlos sin fuente y SSIM. En la
 ventana de 256 px del USAF, con el recorte de 1024, SSIM no tiene contraste de
@@ -228,9 +257,16 @@ fuente las franjas de los targets vecinos llenan la ventana chica, mientras la
 fuente las oscurece fuera del disco. SSIM es la vara de medir de la
 simulacion, no algo que exista en el laboratorio, donde manda la Tamura.
 
-Queda abierto: la NA real del banco sin medir (por eso FUENTE va apagada) y la
-imagen gemela, que la division por amplitud amplifica hacia el borde de la
-luz.
+Con la fuente de Lopera la celda repite el limite (alt/riz 8.6, el mismo
+-0.493 mm), y eso cuadra con la hipotesis sin probarla: su envolvente apenas
+cambia dentro del recorte de 1024 (min/max 0.815; en el ROI, 0.978), asi que
+los vecinos siguen iluminados como sin fuente, mientras el pinhole deja a
+oscuras el 12 % del recorte. El mismo criterio para esa celda: Tamura (+1 um)
+y Pearson (0) enfocan.
+
+Queda abierto: la NA real del banco sin medir (la de Lopera va por defecto por
+el aspecto, no porque sea la del banco) y la imagen gemela, que la division
+por amplitud amplifica hacia el borde de la luz.
 
 EL ~0.03 DE ANTES, EXPLICADO. Hasta el 2026-09-28 este script puntuaba cada z
 con una sola correlacion contra la referencia, y salia ~0.03 a cualquier
@@ -439,7 +475,7 @@ FASE_MAX = np.pi / 2
 
 #: mm. Con RUTA = None, la z a la que se simula. Con RUTA, la verdad si se sabe
 #: -la tabla da el error del foco contra ella- o None.
-Z_REAL = 3.0
+Z_REAL = 7.0
 
 #: Con que se simula, si RUTA = None:
 #:   "exacto"  la ida de CamposT.dlhm: la onda esferica e^{ikr}/r sobre la
@@ -457,26 +493,38 @@ SIMULADOR = "exacto"
 #: El modelo de Lopera da siempre intensidad.
 CAMPO = "intensidad"
 
-#: Solo con SIMULADOR = "lopera": la NA de la fuente, que fija su envolvente
-#: exp(-2r/(L tan(asin(NA)))). 0.1 es la de su main_dlhm.py. Con 0 su codigo
-#: usa exp(-r), que depende de las unidades.
+#: Con SIMULADOR = "lopera" o FUENTE = "lopera": la NA de la fuente, que fija
+#: su envolvente exp(-2r/(L tan(asin(NA)))), r la distancia fuente -> pixel.
+#: 0.1 es la de su main_dlhm.py. Es un NUMERO: el nombre del modelo va en
+#: FUENTE. OJO, no es el semiangulo del cono: con 0.1 la intensidad cae a 1/e^2
+#: en sin(theta) = 0.42 (ver CamposT.dlhm.fuente_lopera). Con 0 su codigo usa
+#: exp(-r), que depende de las unidades: FUENTE = "lopera" no lo acepta.
 NA_FUENTE = 0.1
 
 #: La EMISION de la fuente, solo al simular con SIMULADOR = "exacto" y CAMPO =
 #: "intensidad":
 #:   None       fuente puntual ideal, isotropa: ilumina el sensor entero por
 #:              igual. Lo de siempre.
+#:   "lopera"   la envolvente de dlhm() de Lopera et al. 2024, con NA_FUENTE,
+#:              como emision de la fuente: la caida ancha de su holograma
+#:              -brillante en el centro, a cero en la esquina mas lejana del
+#:              sensor-, pero dentro de la ida exacta: ilumina la muestra y el
+#:              sensor, y la propagacion sigue siendo la esferica exacta. En el
+#:              sensor del banco es SU envolvente, pixel a pixel.
 #:   "pinhole"  el Airy del pinhole de MONTAJE.pinhole (5 um): primer cero a
 #:              sin(theta) = 0.1288, 710 px del centro del sensor a L = 10 mm.
-#:              Es el disco brillante con anillos de un holograma de
-#:              laboratorio, el "patron esferico" de los de Lopera y Carlos.
+#:              Un disco brillante con anillos, mucho mas estrecho que el
+#:              sensor: la emision de ese pinhole si lo iluminase uniforme.
 #:   a(s)       cualquier funcion de s = sin(theta) con a(0) = 1: AMPLITUD, no
 #:              intensidad.
-#: Apagada por defecto: la NA real no esta medida (MONTAJE.NA), y la puede fijar
-#: el objetivo que enfoca el laser en vez del pinhole. Con fuente el holograma
-#: se guarda junto a su fondo, <nombre>_fondo.npy, y los dos motores lo dividen
-#: por el (ver PISO).
-FUENTE = None
+#: Ninguna esta medida en el banco (MONTAJE.NA): la NA real la puede fijar el
+#: objetivo que enfoca el laser en vez del pinhole. "lopera" va por defecto
+#: porque da el aspecto de los hologramas de referencia (el de Lopera, el de
+#: Carlos y los de pyLHM, todos oscureciendo hacia el borde) con la fisica exacta de
+#: la propagacion. Con fuente el holograma se guarda junto a su fondo,
+#: <nombre>_fondo.npy, y los dos motores lo dividen por el (ver PISO): la
+#: reconstruccion sale ya sin la envolvente.
+FUENTE = "lopera"
 
 #: Fraccion de max|fondo| bajo la que no se divide por el fondo, ni en el
 #: sensor ni a la salida: ahi t = 1, "sin informacion", como lo que cae fuera
@@ -494,7 +542,7 @@ LAMB, DELTA, L = MONTAJE.lamb, MONTAJE.delta_x, MONTAJE.L
 
 #: Grueso, en mm: paso 0.01 mm. Mover z mueve el foco Y la escala a la vez
 #: (M = L/z), pero en la malla proyectada un detalle no cambia de pixel.
-Z_MIN, Z_MAX, PASOS = 2.5, 3.5, 101
+Z_MIN, Z_MAX, PASOS = 0, Z_REAL + 0.5, 101
 #: Barrido fino: +-1 paso grueso alrededor de cada pico distinto.
 PASOS_FINO = 21
 
@@ -517,7 +565,8 @@ PASOS_FINO = 21
 #: y columnas 1932-2091 de la imagen (pixeles > 0.5), y este cuadrado de 256
 #: px le deja 48-51 px por lado para sus franjas sin tocar otro grupo. Su
 #: esquina mas lejana queda a 239 px del centro del sensor: dentro de la luz del
-#: pinhole con FUENTE = "pinhole" (disco de 555 px con PISO = 0.05). NO esta
+#: pinhole con FUENTE = "pinhole" (disco de 555 px con PISO = 0.05), y con la
+#: de Lopera en el 97.8 % de su maximo (su luz llega a 2314 px). NO esta
 #: centrado -65.5 px arriba y 11.5 a la derecha del centro-: el motor exacto no
 #: lo nota, y el de Carlos tampoco mientras CARLOS_RECORTE traiga un lado: su
 #: recorte es el centrado y el ROI cabe dentro, sin AVISO. Con CARLOS_RECORTE =
@@ -1711,8 +1760,10 @@ def enfocar(motor, ventana, zs, pasos_fino, metricas, objeto, en_cpu=(),
 
 def comprobar_configuracion(metricas, formato, objeto, motor, campo, ruta,
                             referencia, z_real, simulador="exacto", fuente=None,
-                            piso=0.0):
+                            piso=0.0, na_fuente=0.1):
     """Aborta ANTES de leer ni reconstruir nada si la combinacion no tiene sentido."""
+    def es_numero(v):
+        return isinstance(v, (int, float, np.floating)) and not isinstance(v, bool)
     if formato not in ("png", "npy", "ambos"):
         raise SystemExit(f'FORMATO_BARRIDO = {formato!r}: usa "png", "npy" o "ambos".')
     if not metricas:
@@ -1727,10 +1778,14 @@ def comprobar_configuracion(metricas, formato, objeto, motor, campo, ruta,
     if not 0 <= piso < 1:
         raise SystemExit(f"PISO = {piso!r}: va en [0, 1).")
     if fuente is not None:
-        if (isinstance(fuente, str) and fuente != "pinhole") or not (
+        if (isinstance(fuente, str) and fuente not in ("lopera", "pinhole")) or not (
                 isinstance(fuente, str) or callable(fuente)):
-            raise SystemExit(f'FUENTE = {fuente!r}: usa None, "pinhole" o una funcion '
-                             f'a(s) con a(0) = 1.')
+            raise SystemExit(f'FUENTE = {fuente!r}: usa None, "lopera", "pinhole" o una '
+                             f'funcion a(s) con a(0) = 1.')
+        if fuente == "lopera" and not (es_numero(na_fuente) and 0 < na_fuente < 1):
+            raise SystemExit(f'FUENTE = "lopera" toma su envolvente de NA_FUENTE, y '
+                             f'NA_FUENTE = {na_fuente!r}: tiene que ser un numero en '
+                             f'(0, 1), 0.1 como en su main_dlhm.py.')
         if ruta is not None:
             raise SystemExit("FUENTE solo vale al simular (RUTA = None): un holograma "
                              "grabado ya trae su fuente. Pasa su imagen sin muestra en "
@@ -1751,6 +1806,9 @@ def comprobar_configuracion(metricas, formato, objeto, motor, campo, ruta,
                              "None: di a que z esta la muestra.")
         if simulador not in ("exacto", "lopera"):
             raise SystemExit(f'SIMULADOR = {simulador!r}: usa "exacto" o "lopera".')
+        if simulador == "lopera" and not (es_numero(na_fuente) and 0 <= na_fuente < 1):
+            raise SystemExit(f"NA_FUENTE = {na_fuente!r}: su modelo pide un numero en "
+                             f"[0, 1), 0.1 como en su main_dlhm.py.")
         if simulador == "exacto" and campo not in ("intensidad", "complejo"):
             raise SystemExit(f'CAMPO = {campo!r}: usa "intensidad" o "complejo".')
     con_referencia = [n for n in metricas if n != "tamura"]
@@ -1856,19 +1914,34 @@ def fondo_de(img):
     return float(np.median(np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]])))
 
 
-def fuente_de(valor, pinhole, lamb):
-    """FUENTE -> la funcion a(s) de CamposT.dlhm, o None."""
+def seno_esquina(forma, delta, L_fuente):
+    """sin(theta) del pixel del sensor mas lejano del eje: donde la envolvente
+    de Lopera, con su resta del minimo, llega a cero. La malla va de -n/2 a
+    n/2 - 1 pixeles, asi que ese pixel es la esquina (-n/2, -m/2), a la misma
+    distancia que la esquina del linspace de su dlhm()."""
+    rho = np.hypot(forma[0] / 2 * delta, forma[1] / 2 * delta)
+    return float(rho / np.hypot(rho, L_fuente))
+
+
+def fuente_de(valor, pinhole, lamb, na_fuente=None, s_max=None):
+    """FUENTE -> la funcion a(s) de CamposT.dlhm, o None. "lopera" necesita
+    na_fuente y s_max (seno_esquina del sensor)."""
     if valor is None:
         return None
+    if valor == "lopera":
+        return dlhm_exacto.fuente_lopera(na_fuente, s_max)
     if isinstance(valor, str):
         return dlhm_exacto.fuente_pinhole(pinhole, lamb)
     return valor
 
 
-def sufijo_fuente(valor, pinhole):
-    """Lo que FUENTE anade al nombre del simulado: '', _pinhole<d>um o _fuente."""
+def sufijo_fuente(valor, pinhole, na_fuente=None):
+    """Lo que FUENTE anade al nombre del simulado: '', _loperaNA<na>,
+    _pinhole<d>um o _fuente."""
     if valor is None:
         return ""
+    if valor == "lopera":
+        return f"_loperaNA{na_fuente:g}"
     if isinstance(valor, str):
         return f"_pinhole{pinhole * 1e3:g}um"
     return "_fuente"
@@ -2103,17 +2176,19 @@ def figura_campos(paneles, forma, ventana, zoom_px, con_roi, titulo=""):
 def main():
     """Conecta las constantes con las funciones. Devuelve {metrica: z de foco}."""
     comprobar_configuracion(METRICAS, FORMATO_BARRIDO, OBJETO, MOTOR, CAMPO, RUTA,
-                            REFERENCIA, Z_REAL, SIMULADOR, FUENTE, PISO)
-    fuente = fuente_de(FUENTE, MONTAJE.pinhole, LAMB)
+                            REFERENCIA, Z_REAL, SIMULADOR, FUENTE, PISO, NA_FUENTE)
     xp_, dev = elegir_dispositivo(DISPOSITIVO)
     dtype = DTYPE or (np.complex64 if dev == "gpu" else np.complex128)
     zs, paso, z_rango = rango_del_barrido(Z_MIN, Z_MAX, PASOS, L)
 
     # --- el objeto y el holograma -------------------------------------------
-    t_ref = None
+    t_ref = fuente = None
     if REFERENCIA is not None:
         img = leer_imagen(REFERENCIA)
         t_ref = objeto_de(img, OBJETO, INVERTIR, FASE_MAX)
+        # la fuente solo se usa al simular, en un sensor de la forma del objeto
+        fuente = fuente_de(FUENTE, MONTAJE.pinhole, LAMB, NA_FUENTE,
+                           seno_esquina(t_ref.shape, DELTA, L))
         g_fondo = 1 - fondo_de(img) if INVERTIR else fondo_de(img)
         if RUTA is None and OBJETO == "fase" and abs(g_fondo) > 0.1:
             print(f"AVISO: el fondo del objeto vale g = {g_fondo:.2f}, o sea fase "
@@ -2172,7 +2247,7 @@ def main():
         print(f"ROI = ({roi.x0}, {roi.y0}, {roi.ancho}, {roi.alto})   # repite esta ventana")
     salida, nombre = carpeta_de_salida(RESULTADOS, RUTA, REFERENCIA, Z_REAL, tipo,
                                        MOTOR, OBJETO, roi,
-                                       sufijo_fuente(FUENTE, MONTAJE.pinhole))
+                                       sufijo_fuente(FUENTE, MONTAJE.pinhole, NA_FUENTE))
     salida.mkdir(parents=True, exist_ok=True)
     if RUTA is None:
         np.save(salida / f"{nombre}.npy", holo)
