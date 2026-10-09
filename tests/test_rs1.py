@@ -8,7 +8,7 @@ Qué significa esa reducción
 ---------------------------
 La R-S I completa, sin aproximaciones,
 
-    U(P) = -(1/2π) ∬ U₀(Q) · (ik + 1/r) · (e^{ikr}/r) · (z/r) dS
+    U(P) = -(1/2π) ∬ U₀(Q) · (ik − 1/r) · (e^{ikr}/r) · (z/r) dS
 
 cuesta O(N⁴): para cada punto del plano de salida hay que integrar sobre todo
 el plano de entrada. Medido sobre rayleigh1Free de pyLHM, la malla 512×512 de
@@ -18,7 +18,7 @@ Si el campo de entrada tiene simetría circular —el gaussiano de la Tabla 1 la
 tiene— el integrando sólo depende de ρ, ρ' y del ángulo entre ellos, así que
 en polares la integral se reduce a
 
-    U(ρ) = -(1/2π) ∫ U₀(ρ') ρ' [ ∫₀^{2π} (ik + 1/r)(e^{ikr}/r)(z/r) dφ ] dρ'
+    U(ρ) = -(1/2π) ∫ U₀(ρ') ρ' [ ∫₀^{2π} (ik − 1/r)(e^{ikr}/r)(z/r) dφ ] dρ'
     r = √(ρ² + ρ'² − 2ρρ'·cos φ + z²)
 
 y cuesta O(N_ρ·N_ρ'·N_φ). No es una aproximación: es la misma integral escrita
@@ -243,7 +243,7 @@ def test_cpu_y_gpu_dan_el_mismo_campo():
 
 # --------------------------------------------------------- el núcleo, aparte
 def test_el_nucleo_tiende_a_su_forma_de_campo_lejano_cuando_kr_es_grande():
-    """El término 1/r de (ik + 1/r) pesa 1/(kr) frente a ik.
+    """El término 1/r de (ik − 1/r) pesa 1/(kr) frente a ik.
 
     Se prueba aquí y no a través de la cuadratura porque en el único régimen
     donde el término es apreciable —r del orden de λ— el error de
@@ -257,6 +257,70 @@ def test_el_nucleo_tiende_a_su_forma_de_campo_lejano_cuando_kr_es_grande():
         completo = nucleo_rs1(np.array([r]), k, r)
         lejano = 1j * k * np.exp(1j * k * r) * (r / r**2)
         assert abs(completo[0] - lejano) / abs(lejano) < cota * 1.01
+
+
+def test_el_nucleo_es_la_derivada_en_z_de_la_onda_esferica():
+    """nucleo_rs1 tiene que ser d/dz (e^{ikr}/r), con r = sqrt(rho^2 + z^2):
+    la RS-I es U = -(1/2pi) integral U0 · d/dz(e^{ikr}/r) dS.
+
+    Las dos pruebas de arriba comparan MAGNITUDES y son ciegas al signo del
+    término 1/r. Hasta el 2026-10-07 el núcleo llevaba (ik + 1/r) en vez de
+    (ik - 1/r), y las dos pasaban. Lo destapó el barrido del objetivo 2: un
+    piso de error igual a 2/(kr) en todos los propagadores (8.06e-5 en el
+    banco, z_eq = 2.1 mm), y contra el ASM a z = 2 um, 7.7e-2 con el signo
+    viejo frente a 1.9e-3 con el bueno. A las distancias de la Tabla 1
+    (z >= 500 mm) el error era de 4e-7: la Figura 4 no cambia.
+    """
+    from CamposT.referencias import nucleo_rs1
+    k = 2 * np.pi / LAMB
+    esferica = lambda rho, z: np.exp(1j * k * np.hypot(rho, z)) / np.hypot(rho, z)
+    for rho, z in ((0.0, 2 * LAMB), (1.5 * LAMB, LAMB), (3 * LAMB, 10 * LAMB)):
+        h = 1e-6 * LAMB
+        derivada = (esferica(rho, z + h) - esferica(rho, z - h)) / (2 * h)
+        r = np.array([np.hypot(rho, z)])
+        assert abs(nucleo_rs1(r, k, z)[0] - derivada) / abs(derivada) < 1e-6
+
+
+def _fuente_compleja(rho, z, b, k):
+    """e^{ikR}/R con R = sqrt(rho^2 + (z - ib)^2), dividido por e^{kb}.
+
+    Es la fuente puntual en una posición compleja (Deschamps): una solución
+    EXACTA de Helmholtz para z > 0, saliente, con forma de haz gaussiano de
+    rango de Rayleigh b. Ninguna aproximación paraxial: su valor en el plano
+    z0 + d es lo que tiene que dar cualquier propagador exacto desde el plano
+    z0. El argumento de la raíz tiene parte imaginaria -2bz < 0 fija, así que
+    la rama principal es continua en rho.
+    """
+    R = np.sqrt(rho**2 + (z - 1j * b) ** 2)
+    return np.exp(1j * k * R - k * b) / R
+
+
+def test_rs1_perfil_propaga_exacta_la_fuente_compleja():
+    """rs1_perfil, con su perfil analítico, contra una solución exacta en
+    campo cercano (d = 3 lambda, haz de cintura ~2.5 lambda): ahí 2/(kd) vale
+    0.1, así que el signo del término 1/r no puede esconderse.
+
+    Medido: el error converge como h^2, el del punto medio -8.2e-6, 2.0e-6 y
+    5.1e-7 con 2048, 4096 y 8192 nodos radiales-, sin depender de n_phi a
+    partir de 1024. Con el signo viejo del núcleo, (ik + 1/r), da 0.104.
+    """
+    from CamposT.backend import a_numpy
+    from CamposT.referencias import rs1_perfil
+    k = 2 * np.pi / LAMB
+    b, z0, d = 20 * LAMB, 5 * LAMB, 3 * LAMB
+    rho_out = np.linspace(0, 10 * LAMB, 21)
+    U = a_numpy(rs1_perfil(lambda r: _fuente_compleja(r, z0, b, k), 18 * LAMB, rho_out,
+                           LAMB, d, n_rho_in=4096, n_phi=1024, device="cpu"))
+    exacto = _fuente_compleja(rho_out, z0 + d, b, k)
+    assert np.linalg.norm(U - exacto) / np.linalg.norm(exacto) < 5e-6
+
+
+def test_n_phi_soporte_con_radios_iguales_es_n_phi_auto():
+    from CamposT.referencias import n_phi_auto, n_phi_soporte
+    for rho, z in ((1.1, 2.1), (0.05, 500.0)):
+        assert n_phi_soporte(rho, rho, LAMB, z) == n_phi_auto(rho, LAMB, z)
+    # un objeto pequeño en una salida grande pide muchos menos nodos
+    assert n_phi_soporte(1.1, 0.013, 528e-6, 2.1) < n_phi_auto(1.1, 528e-6, 2.1) / 50
 
 
 def test_el_termino_1_sobre_r_del_nucleo_cuenta_cuando_r_es_como_lambda():
