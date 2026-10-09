@@ -33,11 +33,119 @@ implementaciones distintas.
 
 \subsection{Verificación}
 \label{sec:verificacion}
-% Repo: CamposT/referencias.py, metricas.py; scripts/exactitud.py;
+% Repo: CamposT/referencias.py, metricas.py; scripts/exactitud.py,
+%       contraste_referencias.py, retro_mpasm.py, comparacion.py;
 %       tests/test_rs1.py, test_propagadores.py.
 
-\pendiente{referencia de Rayleigh--Sommerfeld en 1D; haz gaussiano analítico;
-métrica SAM \cite{zhao2020}; pruebas automáticas.}
+La verificación tuvo un objetivo concreto: comprobar que cada propagador
+calcula lo que su formulación dice que calcula. Se hizo en el mismo escenario
+con el que se presentó el MPASM~\cite{zhao2020}, para poder comparar con un
+resultado publicado, y contra referencias que no comparten código con los
+propagadores.
+
+\paragraph{Escenario.} Un haz gaussiano colimado con los parámetros de la
+Tabla~1 de~\cite{zhao2020}: longitud de onda $\lambda = \SI{632.8}{nm}$, radio
+de cintura $w_0 = \SI{1}{mm}$ y una ventana de \SI{5}{mm} muestreada con
+$N = 512$ puntos por lado ($\delta = \SI{9.78}{\micro\metre}$). Se propagó a 30
+distancias entre \SI{0.5}{m} y \SI{200}{m}: las siete de la tabla del artículo
+y una rejilla logarítmica entre ellas. El intervalo está elegido para cruzar
+el punto en que el haz deja de caber en la ventana, porque ahí es donde un
+propagador con el muestreo fijado por la FFT tiene que fallar.
+
+\paragraph{Referencias.} Se usaron dos, independientes entre sí. La primera es
+la solución analítica del haz gaussiano,
+\begin{equation}
+  w(z) = w_0\sqrt{1 + \left(z/z_R\right)^2}, \qquad z_R = \frac{\pi w_0^2}{\lambda},
+  \label{eq:gauss}
+\end{equation}
+exacta dentro de la aproximación paraxial. La segunda es la integral de
+Rayleigh--Sommerfeld~I, que no aproxima el ángulo de
+propagación~\cite{goodman2005}:
+\begin{equation}
+  U(x, y; z) = -\frac{1}{2\pi} \iint U_0(x', y')\,
+  \frac{\partial}{\partial z}\!\left(\frac{e^{ikr}}{r}\right) \mathrm{d}x'\,\mathrm{d}y',
+  \qquad
+  \frac{\partial}{\partial z}\!\left(\frac{e^{ikr}}{r}\right)
+  = \left(ik - \frac{1}{r}\right) \frac{e^{ikr}}{r}\,\frac{z}{r},
+  \label{eq:rs1}
+\end{equation}
+con $r$ la distancia entre el punto de entrada y el de salida. Evaluada
+directamente en 2-D cuesta $\mathcal{O}(N^4)$ operaciones: con la malla de la
+Tabla~1, la implementación por fuerza bruta de pyLHM~\cite{pylhm} tardaría
+entre una y dos horas por distancia. Zhao et al. indican que reducen el cálculo
+a una dimensión, sin decir cómo~\cite{zhao2020}. Aquí la reducción se hizo
+reescribiendo la Ec.~\eqref{eq:rs1} en coordenadas polares: para un campo con
+simetría de revolución el integrando depende solo de los radios $\rho$ y
+$\rho'$ y del ángulo entre ellos, y la integral angular puede resolverse
+aparte. No es una aproximación ---es la misma integral en las coordenadas que
+respetan la simetría del problema--- y cuesta $\mathcal{O}(N_\rho^2 N_\phi)$.
+Ambas integrales se resolvieron con la regla del punto medio, con el número de
+nodos fijado por la fase del núcleo.
+
+Una referencia solo sirve si está verificada por su cuenta. La Ec.~\eqref{eq:rs1}
+reducida se contrastó de tres formas: contra la fuerza bruta de pyLHM, que no
+comparte una línea de código con ella; refinando la cuadratura hasta que el
+resultado dejó de cambiar; y contra una solución exacta y no paraxial de la
+ecuación de Helmholtz, el campo de una fuente puntual en una posición
+compleja~\cite{deschamps1971}, propagado a una distancia de $3\lambda$, donde el
+término $1/r$ de la Ec.~\eqref{eq:rs1} pesa un 5\,\%. Donde las dos
+referencias valen, coinciden; donde dejan de coincidir, lo que se mide es el
+alcance de la aproximación paraxial. En el escenario de la Tabla~1 los ángulos
+de propagación son del orden de $\lambda/(\pi w_0) \approx \SI{2e-4}{rad}$, así
+que la solución analítica vale en todo el intervalo y es la que se usó para
+medir la exactitud de los propagadores.
+
+\paragraph{Métrica.} Se usó la métrica de exactitud del artículo original,
+SAM~\cite{zhao2020}, que compara la intensidad calculada $I$ con la de
+referencia $I_\mathrm{ref}$:
+\begin{equation}
+  \mathrm{SAM} = 10\log_{10}\frac{\iint I\,\mathrm{d}x\,\mathrm{d}y}
+  {\iint \left|I - \alpha I_\mathrm{ref}\right| \mathrm{d}x\,\mathrm{d}y},
+  \qquad
+  \alpha = \frac{\iint I\, I_\mathrm{ref}\,\mathrm{d}x\,\mathrm{d}y}
+  {\iint I_\mathrm{ref}^2\,\mathrm{d}x\,\mathrm{d}y}.
+  \label{eq:sam}
+\end{equation}
+Se expresa en decibelios y es mayor cuanto mejor es el acuerdo. El factor
+$\alpha$ es el ajuste de escala por mínimos cuadrados entre las dos
+intensidades. Su denominador no es el que aparece impreso
+en~\cite{zhao2020}, que es $\iint I_\mathrm{ref}$: con ese, $\alpha$ tendría
+unidades de intensidad y un campo idéntico a su referencia no daría
+$\alpha = 1$ (la consecuencia se discute en la
+Sección~\ref{sec:res-obj1}). Por construcción, el SAM mide la forma de la
+intensidad: es ciego a un error de escala global y a la fase. Donde la fase
+importa, los campos se compararon como complejos.
+
+\paragraph{Contraste con implementaciones de terceros.} Cada propagador se
+contrastó también con una implementación ajena: FFT-ASM con la de
+pyDHM~\cite{castaneda2022}, y MPASM, término a término, con el código publicado
+por sus autores~\cite{zhao2020code}. Ninguno de esos códigos se modificó en su
+física: la DFT matricial de Zhao et al.\ se copió tal cual, y su propagador se
+transcribió sin tocar el cálculo, porque el original exige una GPU solo para
+cargarse; pyLHM necesitó un único cambio de compatibilidad con la versión
+actual de NumPy.
+
+\paragraph{Pruebas automáticas.} Las propiedades que un propagador correcto
+tiene que cumplir quedaron escritas como pruebas automáticas que se ejecutan
+con cada cambio del código: propagar a $z = 0$ devuelve el campo de entrada; la
+energía se conserva; propagar a $z$ y luego a $-z$ recupera el campo; CPU y GPU
+dan el mismo resultado; y los coeficientes de control cumplen sus
+restricciones. Para comprobar que las pruebas detectan lo que dicen detectar,
+se usó prueba por mutación: se introdujeron errores a propósito en el código y
+se verificó que cada uno hiciera fallar al menos una prueba.
+
+\paragraph{Costo de cómputo.} El tiempo de cada propagador se midió en función
+del tamaño de la malla $N$ y del sobremuestreo $s$, en CPU (Intel Core
+i5-11300H, NumPy) y en GPU (NVIDIA GeForce RTX 3050 de \SI{4}{GB}, CuPy). Se
+midieron las cuatro combinaciones de dispositivo y precisión (complex64 y
+complex128), porque pasar de CPU en doble precisión a GPU en simple mezcla dos
+efectos: el del dispositivo y el de la precisión. Los tiempos se tomaron con
+sincronización explícita del dispositivo, descartando una ejecución de
+calentamiento, y separando el cálculo de la transferencia de datos entre la
+memoria del sistema y la de la GPU.
+
+\pendiente{confirmar con Carlos cómo se cita pyLHM: su repositorio no trae
+referencia publicada.}
 
 % ------------------------------------------------------------
 \section{Calibración numérica (Fase 2)}
