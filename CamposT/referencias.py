@@ -60,7 +60,26 @@ def n_phi_auto(rho_max, lamb, z, muestras_por_ciclo=16, minimo=256):
     esta fijado es que el valor por defecto da un resultado convergido, que es
     la propiedad que importa (test_converge_al_refinar_la_cuadratura_angular).
     """
-    ciclos = (np.sqrt(4 * rho_max**2 + z**2) - abs(z)) / lamb
+    return n_phi_soporte(rho_max, rho_max, lamb, z, muestras_por_ciclo, minimo)
+
+
+def n_phi_soporte(rho_max_salida, rho_max_entrada, lamb, z, muestras_por_ciclo=16,
+                  minimo=256):
+    """n_phi_auto para un campo de entrada con soporte acotado.
+
+    La excursión de r sobre phi entre un punto de salida a rho y uno de
+    entrada a rho' es
+
+        sqrt((rho + rho')^2 + z^2) - sqrt((rho - rho')^2 + z^2)
+
+    y crece con los dos radios, así que el máximo va en los dos extremos. Con
+    rho = rho' = rho_max es la de n_phi_auto(). La diferencia importa cuando
+    el objeto ocupa una fracción mínima de la ventana: un objeto de 13 um en
+    una salida de 1.1 mm a z = 2.1 mm pide 11 ciclos, no los 1771 que pide
+    suponer que el objeto llena la ventana.
+    """
+    a, b = rho_max_salida, rho_max_entrada
+    ciclos = (np.sqrt((a + b)**2 + z**2) - np.sqrt((a - b)**2 + z**2)) / lamb
     return int(max(minimo, np.ceil(ciclos * muestras_por_ciclo)))
 
 
@@ -130,10 +149,19 @@ def _perfil_radial(U0, delta, tol_simetria):
 
 
 def nucleo_rs1(r, k, z, dtype=np.complex128, xp=np):
-    """Nucleo de la Rayleigh-Sommerfeld I:  (ik + 1/r) e^{ikr} (z/r^2).
+    """Nucleo de la Rayleigh-Sommerfeld I:  (ik - 1/r) e^{ikr} (z/r^2).
 
-    El factor (ik + 1/r) sale de derivar la funcion de Green; z/r es el factor
-    de oblicuidad y el 1/r restante, la caida de la onda esferica.
+    Es d/dz (e^{ikr}/r): el factor (ik - 1/r) sale de derivar la funcion de
+    Green, z/r es el factor de oblicuidad y el 1/r restante, la caida de la
+    onda esferica. Con el -1/(2pi) de delante es la forma de Goodman,
+    (z/2pi r^2)(1/r - ik) e^{ikr}, la misma que usan las RS directas de la
+    parte DLHM (verif_dlhm_esferico.py, test_dlhm.py).
+
+    HASTA EL 2026-10-07 LLEVABA (ik + 1/r), el signo del 1/r al reves. Las
+    pruebas comparaban magnitudes y no lo veian; lo destapo el barrido del
+    objetivo 2, como un piso de error de 2/(kr) en todos los propagadores
+    (8.06e-5 en el banco). A las distancias de la Tabla 1 era de 4e-7. Ver
+    test_el_nucleo_es_la_derivada_en_z_de_la_onda_esferica.
 
     El termino 1/r es lo que separa la R-S exacta de su forma de campo lejano
     (ik e^{ikr} z/r^2): pesa 1/(kr) frente a ik, o sea que solo cuenta cuando
@@ -144,20 +172,20 @@ def nucleo_rs1(r, k, z, dtype=np.complex128, xp=np):
     La fase kr llega a ~1e9 rad, asi que se evalua en float64 y solo el fasor
     ya acotado baja al dtype de trabajo (ver backend.fase_a_complejo).
     """
-    return (1j * k + 1 / r) * fase_a_complejo(k * r, dtype, xp) * (z / r**2)
+    return (1j * k - 1 / r) * fase_a_complejo(k * r, dtype, xp) * (z / r**2)
 
 
 def rs1_radial(U0, delta, lamb, z, n_phi=None, n_rho=None, n_rho_in=None,
                tol_simetria=1e-6, device="auto", dtype=None):
     """Rayleigh-Sommerfeld I exacta, reducida a 1-D por simetria circular.
 
-        U(P) = -(1/2pi) * integral U0(Q) (ik + 1/r) (e^{ikr}/r) (z/r) dS
+        U(P) = -(1/2pi) * integral U0(Q) (ik - 1/r) (e^{ikr}/r) (z/r) dS
 
     escrita en polares. Para un campo con simetria de revolucion el integrando
     solo depende de rho, rho' y del angulo entre ellos, asi que
 
         U(rho) = -(1/2pi) integral U0(rho') rho' F(rho,rho') drho'
-        F      = integral_0^{2pi} (ik + 1/r)(e^{ikr}/r)(z/r) dphi
+        F      = integral_0^{2pi} (ik - 1/r)(e^{ikr}/r)(z/r) dphi
         r      = sqrt(rho^2 + rho'^2 - 2 rho rho' cos phi + z^2)
 
     Cuesta O(N_rho^2 N_phi) en vez de los O(N^4) de la integral 2-D directa.
@@ -186,37 +214,22 @@ def rs1_radial(U0, delta, lamb, z, n_phi=None, n_rho=None, n_rho_in=None,
     N = U0.shape[0]
     R_pix, U_pix = _perfil_radial(U0, delta, tol_simetria)
 
+    def perfil(rho):
+        return (np.interp(rho, R_pix, U_pix.real)
+                + 1j * np.interp(rho, R_pix, U_pix.imag))
+
     # --- malla de cuadratura en el plano de entrada (disco inscrito) ---------
     rho_max_entrada = (N // 2) * delta
     n_in = n_rho_in or n_rho_auto(rho_max_entrada, delta, lamb, z)
-    d_rho = rho_max_entrada / n_in
-    rho_in = (np.arange(n_in) + 0.5) * d_rho          # regla del punto medio
-    perfil = (np.interp(rho_in, R_pix, U_pix.real)
-              + 1j * np.interp(rho_in, R_pix, U_pix.imag))
+    ultimo_nodo = (n_in - 0.5) * (rho_max_entrada / n_in)
 
     # --- malla radial de salida: hasta la esquina de la ventana --------------
     rho_max_salida = float(np.hypot(*((np.array([N / 2, N / 2])) * delta)))
-    n_rho = n_rho or 2 * N
-    rho_out = np.linspace(0.0, rho_max_salida, n_rho)
+    rho_out = np.linspace(0.0, rho_max_salida, n_rho or 2 * N)
 
-    # --- cuadratura angular --------------------------------------------------
-    # cos(phi) es par respecto a pi, asi que basta integrar en [0, pi] y doblar
-    n_phi = n_phi or n_phi_auto(max(rho_max_salida, rho_in[-1]), lamb, z)
-    phi = (np.arange(n_phi) + 0.5) * (np.pi / n_phi)
-    d_phi = np.pi / n_phi
-
-    k = 2 * np.pi / lamb
-    cos_phi = xp.asarray(np.cos(phi), dtype=np.float64)[None, None, :]
-    rho_i = xp.asarray(rho_in, dtype=np.float64)[None, :, None]
-    pesos = xp.asarray(perfil * rho_in * d_rho, dtype=dtype)[None, :]
-
-    salida = xp.empty(n_rho, dtype=dtype)
-    for i0, i1 in bloques(n_rho, n_in * n_phi):
-        rho_o = xp.asarray(rho_out[i0:i1], dtype=np.float64)[:, None, None]
-        r = xp.sqrt(rho_o**2 + rho_i**2 - 2 * rho_o * rho_i * cos_phi + z**2)
-        G = nucleo_rs1(r, k, z, dtype, xp)
-        salida[i0:i1] = xp.sum(pesos * (2 * d_phi) * xp.sum(G, axis=2), axis=1)
-    salida *= -1 / (2 * np.pi)
+    n_phi = n_phi or n_phi_auto(max(rho_max_salida, ultimo_nodo), lamb, z)
+    salida = rs1_perfil(perfil, rho_max_entrada, rho_out, lamb, z, n_rho_in=n_in,
+                        n_phi=n_phi, device=dev, dtype=dtype)
 
     # --- del perfil radial de vuelta al plano ---------------------------------
     x = (np.arange(N) - N / 2) * delta
@@ -226,6 +239,72 @@ def rs1_radial(U0, delta, lamb, z, n_phi=None, n_rho=None, n_rho_in=None,
     U = (np.interp(R, rho_out, s_cpu.real)
          + 1j * np.interp(R, rho_out, s_cpu.imag))
     return a_dispositivo(U, xp, dtype)
+
+
+def n_rho_soporte(rho_max_salida, rho_max_entrada, lamb, z, paso_fase=0.5, minimo=256):
+    """Nodos radiales de rs1_perfil en [0, rho_max_entrada].
+
+    El paso de fase del núcleo entre nodos vale k·|dr/drho'|·drho', y
+    |dr/drho'| <= u/sqrt(u^2 + z^2) con u = rho_max_salida + rho_max_entrada.
+    No sabe nada del perfil: si tiene detalle fino, el que llama pone el
+    suelo (minimo) a la altura de ese detalle.
+    """
+    u = rho_max_salida + rho_max_entrada
+    d_fase = paso_fase / ((2 * np.pi / lamb) * u / np.sqrt(u**2 + z**2))
+    return int(max(minimo, np.ceil(rho_max_entrada / d_fase)))
+
+
+def rs1_perfil(perfil, rho_max_entrada, rho_out, lamb, z, n_rho_in=None, n_phi=None,
+               paso_fase=0.5, device="auto", dtype=None):
+    """La cuadratura de rs1_radial con el perfil de entrada dado como función.
+
+    perfil(rho) da el campo de entrada a los radios rho (array NumPy), y se
+    integra en [0, rho_max_entrada]: fuera de ahí se supone nulo. Devuelve el
+    campo a los radios rho_out, como array 1-D en el dispositivo.
+
+    rs1_radial() la llama con el perfil interpolado de los píxeles. Llamarla
+    con un perfil ANALÍTICO evita esa interpolación, que entre los radios de
+    píxel cercanos al centro (0, 1, sqrt(2), 2...) es lineal: con un objeto
+    del tamaño de dos píxeles se come varios por ciento.
+
+    Los nodos por defecto salen del soporte y no de la ventana:
+    n_phi_soporte() para el ángulo, y para el radio el paso de fase del
+    núcleo. Ese paso, k·|dr/drho'|·drho', está acotado porque
+    |dr/drho'| <= u/sqrt(u^2 + z^2) con u = max(rho_out) + rho_max_entrada.
+    Ninguna de las dos reglas sabe si el PERFIL tiene detalle fino: si lo
+    tiene, se pasan n_rho_in y n_phi a mano y se comprueba que convergen.
+    """
+    if z <= 0:
+        raise ValueError(f"rs1_perfil necesita z > 0 (el nucleo diverge en 0); "
+                         f"se pidio z={z}")
+    xp, dev = get_xp(device)
+    dtype = dtype or dtype_por_defecto(dev)
+    rho_out = np.asarray(rho_out, dtype=np.float64)
+    rho_o_max = float(rho_out.max())
+    k = 2 * np.pi / lamb
+
+    n_rho_in = n_rho_in or n_rho_soporte(rho_o_max, rho_max_entrada, lamb, z, paso_fase)
+    d_rho = rho_max_entrada / n_rho_in
+    rho_in = (np.arange(n_rho_in) + 0.5) * d_rho      # regla del punto medio
+
+    # cos(phi) es par respecto a pi, asi que basta integrar en [0, pi] y doblar
+    n_phi = n_phi or n_phi_soporte(rho_o_max, rho_in[-1], lamb, z)
+    phi = (np.arange(n_phi) + 0.5) * (np.pi / n_phi)
+    d_phi = np.pi / n_phi
+
+    cos_phi = xp.asarray(np.cos(phi), dtype=np.float64)[None, None, :]
+    rho_i = xp.asarray(rho_in, dtype=np.float64)[None, :, None]
+    pesos = xp.asarray(np.asarray(perfil(rho_in)) * rho_in * d_rho, dtype=dtype)[None, :]
+
+    n_out = rho_out.size
+    salida = xp.empty(n_out, dtype=dtype)
+    for i0, i1 in bloques(n_out, n_rho_in * n_phi):
+        rho_o = xp.asarray(rho_out[i0:i1], dtype=np.float64)[:, None, None]
+        r = xp.sqrt(rho_o**2 + rho_i**2 - 2 * rho_o * rho_i * cos_phi + z**2)
+        G = nucleo_rs1(r, k, z, dtype, xp)
+        salida[i0:i1] = xp.sum(pesos * (2 * d_phi) * xp.sum(G, axis=2), axis=1)
+    salida *= -1 / (2 * np.pi)
+    return salida
 
 
 def gauss_analytic(X, Y, w0, lamb, z):
