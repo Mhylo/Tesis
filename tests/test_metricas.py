@@ -17,8 +17,8 @@ ERRATA EN LA EC. (16). El denominador impreso es ∫I_ref; tiene que ser
   tiene unidades de intensidad. Con ∫I_ref² sí es adimensional.
 - Caso trivial: con la fórmula impresa, un campo idéntico a la referencia da
   α = 0.081 y SAM = 0.365 dB en vez de α = 1 y SAM = ∞.
-- Poder de discriminación: la impresa deja el SAM clavado bajo 2.5 dB para
-  todos los métodos y todas las distancias, así que no podría producir la
+- Poder de discriminación: la impresa deja el SAM bajo 3 dB (2.97 a
+  z = 500 mm) y no separa los métodos, así que no podría producir la
   Figura 4 del propio paper. La corregida separa MPASM de FFT-ASM por 27 dB
   a z = 12000 mm.
 

@@ -73,8 +73,9 @@ def alfa_sam(U, ref, formula="corregida"):
     2. Caso trivial. Un campo idéntico a la referencia debe dar α = 1. Con
        la impresa da el valor medio de la intensidad (0.081 en el gaussiano
        de la Tabla 1 a z = 12000 mm), y de ahí SAM = 0.365 dB en vez de ∞.
-    3. Poder de discriminación. Con la impresa el SAM queda por debajo de
-       2.5 dB para todos los métodos y todas las distancias, así que no
+    3. Poder de discriminación. Con la impresa el SAM no pasa de 3 dB
+       (2.97 a z = 500 mm) y a cada distancia de la tabla los tres métodos
+       quedan a menos de 0.06 dB entre sí (medido el 2026-10-08), así que no
        podría generar la Figura 4 del propio paper; con la corregida separa
        MPASM de FFT-ASM en 27 dB a z = 12000 mm.
 
