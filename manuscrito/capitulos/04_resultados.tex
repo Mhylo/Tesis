@@ -11,9 +11,154 @@
 \section{Verificación de la implementación (objetivo 1)}
 \label{sec:res-obj1}
 
-\pendiente{reproducción del código de referencia; error frente a RS y al haz
-gaussiano; tiempos en CPU y GPU (resultados/tiempos.png,
-resultados/aceleracion.png).}
+% Repo: scripts/exactitud.py (Figura y SAM), contraste_referencias.py
+%       (pyDHM), comparacion.py (Tabla), tests/test_rs1.py (RS). Números
+%       medidos el 2026-10-08 con el código del commit de esta sección.
+
+Los tres propagadores quedaron implementados en un mismo paquete y verificados
+contra dos referencias independientes; el MPASM reproduce la Figura~4 de Zhao
+et al.~\cite{zhao2020} y, en el camino, aparecieron dos erratas del artículo
+original. Esta sección presenta la evidencia en ese orden.
+
+\subsection{Acuerdo con las implementaciones de terceros}
+
+El FFT-ASM propio y el de pyDHM~\cite{castaneda2022} dan el mismo campo
+complejo: entre \SI{0.5}{m} y \SI{30}{m}, su diferencia relativa máxima es
+de $1.9\times10^{-8}$. El MPASM propio y el código publicado por sus
+autores~\cite{zhao2020code}, con el mismo $K_f$ fijado a mano, coinciden a
+precisión de máquina: la diferencia relativa máxima es de
+$4\times10^{-16}$. La única diferencia entre las dos implementaciones del
+MPASM está en cómo se calcula $K_f$, y se discute más abajo.
+
+La reducción radial de la integral de Rayleigh--Sommerfeld se separa un
+$3.1\times10^{-2}$ de la fuerza bruta de pyLHM~\cite{pylhm}. Esa discrepancia
+es la de pyLHM: medidas las dos contra la solución analítica del haz gaussiano
+en la misma malla ($64\times64$, $z = \SI{4}{m}$), pyLHM se aparta
+$1.9\times10^{-2}$ y la reducción radial $1.0\times10^{-3}$, diecinueve veces
+menos. pyLHM usa los píxeles de entrada como nodos de la cuadratura y no puede
+refinarse; la reducción radial sí. Frente a la solución exacta de la fuente
+puntual compleja~\cite{deschamps1971}, a $3\lambda$ de distancia, la reducción
+radial da un error de $2.0\times10^{-6}$, que baja como el cuadrado del paso de
+la cuadratura.
+
+\subsection{Exactitud en el escenario de la Tabla~1}
+
+La Figura~\ref{fig:sam-vs-z} reproduce la Figura~4 de~\cite{zhao2020}: el SAM
+de cada propagador frente a la solución analítica, a lo largo de casi tres
+órdenes de magnitud en distancia.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{obj1_sam_vs_z.pdf}
+  \caption{Exactitud de los tres propagadores frente a la solución analítica
+  del haz gaussiano, en el escenario de la Tabla~1 de~\cite{zhao2020}
+  ($\lambda = \SI{632.8}{nm}$, $w_0 = \SI{1}{mm}$, $N = 512$, ventana de
+  \SI{5}{mm}). SAM según la Ec.~\eqref{eq:sam}; más alto es mejor. Los
+  marcadores señalan las siete distancias de la tabla del artículo. La línea
+  vertical marca la distancia a la que el radio $w(z)$ del haz alcanza el
+  borde de la ventana.}
+  \label{fig:sam-vs-z}
+\end{figure}
+
+A distancias cortas los tres métodos son exactos, y el FFT-ASM y el BLAS lo
+son algo más que el MPASM: \SI{40.5}{dB} frente a \SI{35.4}{dB} a
+\SI{0.5}{m}. Ahí la malla de la FFT ya muestrea bien la función de
+transferencia y el control del MPASM no tiene nada que aportar ---su $K_f$
+automático vale 1---. A partir de unos \SI{2}{m} el orden se invierte, y la
+distancia entre las curvas crece con $z$. El FFT-ASM cae por debajo de
+\SI{5}{dB} a \SI{12}{m}, y más allá de \SI{35}{m} oscila entre \SI{-1.9}{dB}
+y \SI{2.8}{dB}: el error es del orden de la señal. El punto de quiebre es el que marca la
+línea vertical, \SI{11.4}{m}, donde el haz deja de caber en la ventana. El
+campo que calcula el FFT-ASM es periódico con el periodo de la ventana, y a
+partir de ahí sus réplicas se superponen. El BLAS sigue al FFT-ASM hasta
+\SI{12}{m} (\SI{3.1}{dB}) y luego se recupera hasta \SI{25.7}{dB} a
+\SI{200}{m}: descartar las frecuencias que no puede muestrear evita las
+réplicas, a costa de la parte del campo que esas frecuencias llevaban.
+
+El MPASM se mantiene entre \SI{31.1}{dB} y \SI{48.5}{dB} en todo el
+intervalo, con un $K_f$ automático que pasa de 1 a \SI{0.5}{m} a 16.1 a
+\SI{200}{m}. La compresión del intervalo espectral mantiene muestreada la
+función de transferencia justo donde la malla de la FFT ya no puede. Ese es
+el régimen en que el control del muestreo rinde: cuando el campo propagado
+desborda la ventana. La misma condición reaparece en DLHM
+(Sección~\ref{sec:res-obj2}).
+
+Bajar a precisión simple no cambia nada medible: con el MPASM en GPU, el SAM
+en complex64 y en complex128 coincide hasta \SI{0.06}{dB} en las siete
+distancias de la tabla. Por eso el resto del trabajo se calculó en precisión
+simple en GPU.
+
+\subsection{Dos erratas del artículo original}
+
+\paragraph{La Ec.~(14), en el código publicado.} El artículo calcula $K_f$ con
+una expresión de la forma $\sqrt{A^2 + B}$; el código publicado por los
+autores calcula $\sqrt{A^2 B}$~\cite{zhao2020code}. La versión del código no es
+dimensionalmente consistente: a distancias largas, el cociente entre los $K_f$
+que dan las dos tiende a $1/(sN\lambda)$, que tiene unidades de inverso de
+longitud, de modo que su efecto cambia con las unidades en que se escriba el
+problema. En el escenario
+de la Tabla~1, con $s = 10$, el $K_f$ del código es 0.31 veces el del artículo
+a distancias largas (3.1 frente a 10.2 a \SI{80}{m}), y la exactitud del MPASM
+cae en consecuencia: de \SI{48.5}{dB} a \SI{33.3}{dB} a \SI{200}{m}. En este
+trabajo se usó la expresión del artículo.
+
+\paragraph{La Ec.~(16), impresa.} El denominador de $\alpha$ en la métrica SAM
+aparece impreso como $\iint I_\mathrm{ref}$ en lugar de
+$\iint I_\mathrm{ref}^2$ (Ec.~\eqref{eq:sam}). Con la versión impresa, un campo
+idéntico a su referencia da $\alpha = 0.081$ y un SAM de \SI{0.37}{dB}, en
+lugar de $\alpha = 1$ y un SAM infinito. Además, la métrica deja de
+discriminar: en las siete distancias de la tabla el SAM no pasa de
+\SI{3}{dB} y los tres métodos no se separan más de \SI{0.06}{dB} entre sí. Con
+esa métrica no podría haberse obtenido la Figura~4 del propio artículo. Con la
+corregida, el MPASM y el FFT-ASM se separan \SI{26.5}{dB} a \SI{12}{m}.
+
+\subsection{Costo de cómputo}
+
+La Tabla~\ref{tab:tiempos} resume el tiempo de una propagación en CPU, en
+doble precisión, y en GPU, en precisión simple.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Tiempo de una propagación en CPU (Intel Core i5-11300H, complex128)
+  y en GPU (NVIDIA RTX 3050, complex64), en milisegundos, para una malla de
+  $N\times N$ con $s = 1$. Tiempos sincronizados, sin la ejecución de
+  calentamiento. La aceleración es el cociente entre los dos.}
+  \label{tab:tiempos}
+  \begin{tabular}{lrrrr}
+    \toprule
+    Método & $N$ & CPU (ms) & GPU (ms) & Aceleración \\
+    \midrule
+    FFT-ASM & 512  & 33.4  & 1.69  & 19.8 \\
+            & 1024 & 171   & 2.67  & 64.1 \\
+            & 2048 & 692   & 9.68  & 71.5 \\
+    \midrule
+    BLAS    & 512  & 33.8  & 1.08  & 31.3 \\
+            & 1024 & 178   & 2.74  & 65.2 \\
+            & 2048 & 728   & 9.35  & 77.9 \\
+    \midrule
+    MPASM   & 512  & 85.0  & 2.79  & 30.5 \\
+            & 1024 & 438   & 13.7  & 32.0 \\
+            & 2048 & 2836  & 89.2  & 31.8 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+La GPU acelera los tres métodos entre 20 y 78 veces. Parte de esa ganancia es
+el cambio de precisión: a igual precisión (complex64 en los dos dispositivos)
+la aceleración queda entre 20 y 84 veces para el FFT-ASM y el BLAS, y entre 19
+y 25 para el MPASM. El control del muestreo tiene un precio: con $s = 1$ el
+MPASM cuesta entre 1.6 y 9.2 veces lo que el FFT-ASM en GPU, según $N$, y el
+costo crece con el sobremuestreo, unas 25 veces de $s = 1$ a $s = 8$ con
+$N = 512$ (de \SI{2.8}{ms} a \SI{70}{ms}). En el escenario de la Tabla~1, con
+$s = 10$, una propagación del MPASM toma \SI{118}{ms} en GPU, frente a
+\SI{2}{ms} del FFT-ASM.
+
+Con esto el objetivo~1 queda cumplido: los tres métodos están implementados
+bajo una misma interfaz, cada uno coincide con una implementación
+independiente, y su exactitud está medida contra dos referencias verificadas
+por su cuenta. La comparación deja además una primera respuesta a la pregunta
+de investigación: el control del muestreo del MPASM gana cuando el campo
+desborda la ventana, y en ese régimen su costo adicional se justifica.
 
 % ------------------------------------------------------------
 \section{Validez bajo el muestreo de DLHM (objetivo 2)}

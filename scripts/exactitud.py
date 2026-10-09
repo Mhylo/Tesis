@@ -124,12 +124,15 @@ def guardar_csv(filas, path):
     print(f"  -> {path}")
 
 
-def figura_sam(filas, path):
+def figura_sam(filas, path, tesis=False):
     """La curva de la Figura 4: SAM contra z, un trazo por método.
 
     Los marcadores no van en todos los puntos, sólo en las siete distancias de
     la tabla del paper: son los valores contrastables, y el resto de la rejilla
     está para que la curva sea una curva.
+
+    tesis=True es la versión del manuscrito: sin título ni pie, que en la tesis
+    los pone el caption de LaTeX, y con z en metros, que es como la cita el texto.
     """
     plt.rcParams.update({
         "font.family": "DejaVu Sans", "font.size": 9,
@@ -137,7 +140,8 @@ def figura_sam(filas, path):
         "xtick.color": SUAVE, "ytick.color": SUAVE,
         "axes.linewidth": 0.8, "figure.facecolor": "white",
     })
-    z = [f["z_mm"] for f in filas]
+    escala = 1e-3 if tesis else 1.0          # mm -> m en la tesis
+    z = [f["z_mm"] * escala for f in filas]
     marcas = [i for i, f in enumerate(filas) if f["en_tabla"]]
 
     fig, ax = plt.subplots(figsize=(6.4, 4.4))
@@ -149,7 +153,7 @@ def figura_sam(filas, path):
 
     # Contexto antes que datos: las dos referencias van detrás y en gris.
     ax.axhline(0, color=SUAVE, lw=0.8, zorder=1)
-    z_v = z_llena_la_ventana()
+    z_v = z_llena_la_ventana() * escala
     if np.isfinite(z_v):
         ax.axvline(z_v, color=SUAVE, lw=0.9, ls=(0, (4, 3)), zorder=1)
 
@@ -158,12 +162,13 @@ def figura_sam(filas, path):
                 ls=ls, lw=1.8, marker=marca, ms=4.5, markevery=marcas,
                 markeredgecolor="white", markeredgewidth=0.6, zorder=3)
 
-    ax.set_xlabel("z [mm]")
+    ax.set_xlabel("z [m]" if tesis else "z [mm]")
     ax.set_ylabel("SAM [dB]   (más alto, mejor)")
-    ax.set_title("Exactitud contra el gaussiano analítico, Tabla 1 del paper",
-                 fontsize=10.5, color=TINTA, pad=10)
+    if not tesis:
+        ax.set_title("Exactitud contra el gaussiano analítico, Tabla 1 del paper",
+                     fontsize=10.5, color=TINTA, pad=10)
     if np.isfinite(z_v):
-        ax.annotate(f"el haz 1/e llena\nla ventana ({z_v/1000:.1f} m)",
+        ax.annotate(f"el haz 1/e llena\nla ventana ({z_v / escala / 1000:.1f} m)",
                     xy=(z_v, ax.get_ylim()[1]), xytext=(4, -12),
                     textcoords="offset points", fontsize=8, color=SUAVE,
                     va="top")
@@ -174,9 +179,10 @@ def figura_sam(filas, path):
     # no pisa el rótulo de los 0 dB, que vive pegado a su propia línea
     ax.legend(frameon=False, loc="upper left", fontsize=9,
               labelcolor=TINTA, handlelength=2.6)
-    fig.text(0.5, -0.02, f"N = {N}, δ = {DELTA*1e3:.2f} µm, λ = {LAMB*1e6:.1f} nm, "
-             f"w₀ = {W0:.0f} mm · CPU, complex128 · Ec. (16) corregida",
-             ha="center", fontsize=8, color=SUAVE)
+    if not tesis:
+        fig.text(0.5, -0.02, f"N = {N}, δ = {DELTA*1e3:.2f} µm, λ = {LAMB*1e6:.1f} nm, "
+                 f"w₀ = {W0:.0f} mm · CPU, complex128 · Ec. (16) corregida",
+                 ha="center", fontsize=8, color=SUAVE)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=200, bbox_inches="tight")
@@ -212,6 +218,7 @@ def main():
     print()
     guardar_csv(filas, salida / "sam_vs_z.csv")
     figura_sam(filas, salida / "sam_vs_z.png")
+    figura_sam(filas, RAIZ / "manuscrito" / "figuras" / "obj1_sam_vs_z.pdf", tesis=True)
 
     # --- coste de la precisión simple en GPU ----------------------------------
     if gpu_disponible():
