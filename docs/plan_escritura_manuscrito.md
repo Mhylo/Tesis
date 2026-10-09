@@ -52,52 +52,54 @@ reproduzca.**
 
 ---
 
-## Dos frentes en paralelo
+## Decisión del 08/10: la investigación está cerrada
 
-El texto no es el único cuello de botella: el objetivo 2 (barrido, tareas
-29-30) y el objetivo 3 (hologramas experimentales, tareas 39-42) aún no tienen
-resultados. El plan intercala ~4 días técnicos, y mientras corren los cálculos
-en GPU se escribe lo que ya está cerrado.
+En las distancias del banco, aumentar s no cambia nada significativo, y
+ajustar K_f tampoco. El barrido de la tarea 30 lo respalda: en el banco,
+FFT-ASM con relleno ×2 da 2.2·10⁻⁶ y MPASM con s = 2 o 3 da ~3·10⁻⁶. MPASM
+solo marca diferencia donde el campo difractado se sale de la ventana (NA ≤
+0.06 con z corta; más de 11.4 m en la Figura 4 de Zhao). **La tesis concluye
+que el control de muestreo es útil a distancias mayores, como en DHM.**
 
-### Recortes de alcance que propongo (decidir con Carlos esta semana)
+Consecuencias para la escritura:
 
-- **Barrido del objetivo 2 con malla reducida:** λ = 528 nm, δ = 1.83 µm, el
-  sensor del banco, z en el recorrido de la platina, s ∈ {1, 2, 3} y Kf
-  automático. La NA sale del tamaño del sensor (px_x, px_y), que se lee en los
-  propios archivos de los hologramas de Carlos.
-- **CZT:** si el 14/10 no está el contraste término a término, se queda en la
-  relación teórica (sección 2.4.1) más el contraste contra el `bluestein` de
-  pyDHM que ya está medido (tarea 32).
-- **Muestra biológica (tarea 36): fuera.** El objetivo 3 pide "muestras de
-  resolución conocida", y el USAF basta.
-- **Métricas del objetivo 3:** resolución sobre el USAF, contraste y tiempo.
-  La SNR solo si sale gratis.
+- **CZT:** solo teoría, en la §2.4.1, más el contraste ya medido contra
+  pyDHM (tarea 32).
+- **Objetivo 3:** se escribe con las reconstrucciones del BenchmarkTarget
+  simulado (`mi_prueba_dlhm`). La retropropagación de los hologramas
+  experimentales de Carlos se hará después y se incorporará cuando esté
+  (tareas 39-41).
+- **Muestra biológica (tarea 36):** descartada.
+- La discusión responde la pregunta de investigación con un resultado
+  acotado, no con un resultado fallido.
 
 ---
 
 ## Calendario
 
-### Semana 12 (7-11 oct): lo que ya está cerrado
+Al 08/10 vamos un día adelantados: el barrido estaba previsto para el viernes
+9 y terminó el 7.
 
-| Día | Escritura | Técnico |
-|---|---|---|
-| Mié 7 | Revisión, cronograma y este plan | Commit del árbol del 29/09. Pedir a Carlos: los archivos, **el fondo sin muestra de cada captura**, z y L de cada una y el modelo del sensor |
-| Jue 8 | **Cap. 3 §3.1** marco computacional y verificación (tarea 15) | Subir los hologramas de Carlos a `datos/` con metadatos (tarea 38) |
-| Vie 9 | **Cap. 4 §4.1** resultados del objetivo 1: Fig. 4 de Zhao, SAM vs z, error vs gaussiano, CPU/GPU | Lanzar de noche el barrido del objetivo 2 (tareas 29-30) |
-| Sáb 10 | **Cap. 2 §2.1-2.3:** difracción, ASM-FFT y sus límites, BLAS/WWASM/NUFFT | — |
-| Dom 11 | **Cap. 2 §2.4-2.5:** MPASM y CZT, DLHM | (holgura) |
+### Semana 12 (8-11 oct)
 
-### Semana 13 (12-18 oct): lo nuevo y lo experimental
+| Día | Escritura |
+|---|---|
+| Jue 8 | ~~§3.1~~ (párrafo, hecho el 7). **§3.1.1 verificación** (hecha). **§4.1** resultados del objetivo 1 |
+| Vie 9 | **§3.2** calibración e iluminación esférica (tareas 28 y 33). **§4.2** resultados del objetivo 2: mapas, conclusión sobre s y K_f, límite del escalado de Fresnel |
+| Sáb 10 | **Cap. 2 §2.1-2.3:** difracción, ASM-FFT y sus límites, BLAS/WWASM/NUFFT |
+| Dom 11 | **Cap. 2 §2.4-2.5:** MPASM y la relación con la CZT, DLHM |
 
-| Día | Escritura | Técnico |
-|---|---|---|
-| Lun 12 | **Cap. 3 §3.2:** calibración e iluminación esférica (tareas 28 y 33) | Revisar el barrido |
-| Mar 13 | **Cap. 4 §4.2:** mapas de error, criterio de s y Kf, límite del escalado de Fresnel, CZT | Criterio de s y Kf (tarea 31) |
-| Mié 14 | (técnico) | **Reconstruir los hologramas experimentales** con los propagadores y la línea base de Carlos, y medir (tareas 39-41). Decidir el recorte de la CZT |
-| Jue 15 | **Cap. 3 §3.3-3.4:** datos experimentales, normalización y selección de foco. **Cap. 4 §4.3:** tabla y figuras (tareas 42-43) | — |
-| Vie 16 | **Cap. 4 §4.4:** discusión (tarea 45). Diapositivas del avance 2 (tarea 47), sacadas de los capítulos | — |
-| Sáb 17 | **Cap. 5** (tarea 50). Introducción: alcance, estructura y tiempos verbales | — |
-| Dom 18 | Ensayo del avance 2 | (holgura) |
+### Semana 13 (12-18 oct)
+
+| Día | Escritura |
+|---|---|
+| Lun 12 | **§3.3-3.4:** el modelo del holograma, la fuente, la normalización por amplitud y la selección de foco |
+| Mar 13 | **§4.3:** reconstrucciones del BenchmarkTarget, motor exacto frente al de Carlos (tareas 42-43) |
+| Mié 14 | **§4.4:** discusión (tarea 45). Responde la pregunta de investigación |
+| Jue 15 | **Cap. 5** (tarea 50). Introducción: alcance, estructura y tiempos verbales |
+| Vie 16 | Diapositivas del avance 2 (tarea 47), sacadas de los capítulos |
+| Sáb 17 | Holgura. Si ya está la retropropagación experimental, se incorpora a la §4.3 |
+| Dom 18 | Ensayo del avance 2 |
 
 ### Semana 14 (19-21 oct): cierre del borrador
 
