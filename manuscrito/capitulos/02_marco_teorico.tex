@@ -42,9 +42,10 @@ La primera es la integral de Rayleigh--Sommerfeld~I~\cite{goodman2005},
 que expresa el campo en cada punto de salida como la superposición de ondas
 esféricas emitidas por cada punto del plano de entrada, ponderadas por el
 factor de oblicuidad $z/r$. El término $i/(kr)$ solo pesa cuando $r$ es del
-orden de la longitud de onda; a las distancias de este trabajo es entre cuatro
-y nueve órdenes de magnitud menor que la unidad, pero se conserva porque hace
-exacta la expresión.
+orden de la longitud de onda; a las distancias de los cálculos de este trabajo
+es entre cuatro y nueve órdenes de magnitud menor que la unidad, pero se
+conserva porque hace exacta la expresión, y en la prueba de la
+Sección~\ref{sec:verificacion}, a tres longitudes de onda, sí pesa.
 
 La segunda es el espectro angular. El campo de entrada se descompone en ondas
 planas mediante la transformada de Fourier,
@@ -204,7 +205,7 @@ En el MPASM,
 de modo que el intervalo espectral es $\pm 1/(2\delta K_f)$ y el paso en
 frecuencia $\Delta f = 1/(sN\delta K_f)$. El campo propagado se obtiene
 multiplicando el espectro por $H$ y aplicando una DFT inversa escrita del mismo
-modo, con vectores de salida $\mathbf{x}'$ de $rN$ puntos y paso $\delta'$,
+modo, con el signo de la exponencial cambiado y vectores de salida $\mathbf{x}'$ de $rN$ puntos y paso $\delta'$,
 elegidos también libremente:
 \begin{equation}
   U(\mathbf{x}', \mathbf{y}') = \mathbf{M}_{y',f_y}
@@ -232,8 +233,12 @@ queda bien muestreada~\cite{zhao2020}:
   \label{eq:fmax-mpasm}
 \end{equation}
 y eligen el factor de compresión para que el intervalo espectral cubra
-exactamente esa banda, $K_f = \max\{1,\ (1/2\delta)/f_\mathrm{max}^\mathrm{MPASM}\}$.
-A distancias largas, el ancho de banda efectivo resultante es mucho mayor que
+exactamente esa banda,
+\begin{equation}
+  K_f = \max\left\{1,\ \frac{1/(2\delta)}{f_\mathrm{max}^\mathrm{MPASM}}\right\},
+  \label{eq:kf-auto}
+\end{equation}
+que en adelante se llama el $K_f$ automático. A distancias largas, el ancho de banda efectivo resultante es mucho mayor que
 el del BLAS, y crece aproximadamente como $\sqrt{s}$~\cite{zhao2020}. La
 compresión tiene un límite que no aparece en las definiciones por separado: un
 espectro muestreado con paso $\Delta f$ describe un campo periódico de periodo
@@ -272,17 +277,17 @@ tiene además una ventaja estructural: admite cualquier matriz, no solo la de
 una DFT con muestreo uniforme. La formulación del MPASM con iluminación
 esférica de la Sección~\ref{sec:mpasm-esferico} la aprovecha: sus matrices
 incluyen una ventana dada por integrales de Fresnel que no es un \emph{chirp},
-y por tanto no tiene la estructura que la factorización de Bluestein
-aprovecha; con el producto matricial basta con escribir la matriz.
+y por tanto no tiene, en general, la estructura que la factorización de
+Bluestein aprovecha; con el producto matricial basta con escribir la matriz.
 
 En DLHM, el algoritmo de Bluestein aparece en la transformada de
 Fresnel--Bluestein, con la que se han modelado hologramas de alta apertura
 numérica~\cite{restrepo2011}: incorpora el frente esférico con una
 discretización no lineal que resuelve el problema de muestreo. Como se apoya
 en la aproximación de Fresnel, falla a magnificaciones bajas y para aperturas
-numéricas mayores que 0.58~\cite{lopera2024}. La librería pyDHM
-incluye también un propagador basado en la CZT~\cite{castaneda2022}, igualmente
-paraxial.
+numéricas mayores que 0.58~\cite{restrepo2011, lopera2024}. La librería pyDHM
+incluye una implementación de la transformada de
+Fresnel--Bluestein~\cite{castaneda2022}, igualmente paraxial.
 
 % ------------------------------------------------------------
 \section{Microscopía holográfica digital sin lentes}
@@ -327,8 +332,16 @@ El término $R^*O$ contiene el objeto; $R\,O^*$ es su conjugado, que al
 reconstruir produce la imagen gemela característica de la holografía en
 línea~\cite{gabor1948, latychevskaia2015}. Restar al holograma la intensidad
 de la referencia, registrada sin muestra, elimina el término $|R|^2$ y deja el
-holograma de contraste~\cite{garcia2006}; en este trabajo se divide por ella,
-lo que además normaliza la envolvente de la iluminación
+holograma de contraste~\cite{garcia2006}. En este trabajo se normaliza además
+por la referencia, lo que compensa la envolvente de la iluminación. Con una
+fuente ideal se usa el cociente
+\begin{equation}
+  c = \frac{I}{|R|^2},
+  \label{eq:contraste}
+\end{equation}
+de modo que $c - 1$ es el holograma de contraste dividido por $|R|^2$. Cuando
+la referencia se conoce como imagen ---registrada sin muestra, o simulada con
+la emisión de la fuente---, la división se hace por su amplitud $|R|$
 (Sección~\ref{sec:metricas}).
 
 Lopera et al.~\cite{lopera2024} modelan la formación del holograma separando

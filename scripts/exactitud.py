@@ -5,7 +5,7 @@ mide SAM [dB] de cada método contra el gaussiano analítico. Más alto es mejor
 
 Es donde se ve el argumento del Objetivo 1: MPASM se mantiene entre 31 y 48 dB
 en todo el rango, FFT-ASM se desploma a números negativos en cuanto el haz deja
-de caber en la ventana, y BL-ASM se degrada y luego se recupera cuando su
+de caber en la ventana, y BLAS se degrada y luego se recupera cuando su
 máscara de banda empieza a actuar. A z corto los tres empatan, o FFT-ASM gana:
 cada método tiene su régimen, y ése es el resultado.
 
@@ -59,7 +59,7 @@ TINTA, SUAVE = "#1a1a1a", "#8a8a8a"
 METODOS = (
     ("MPASM",   "sam_mpasm_dB", "#1f4e79", "-",  "o"),
     ("FFT-ASM", "sam_fft_dB",   "#c1543a", "--", "s"),
-    ("BL-ASM",  "sam_blas_dB",  "#2a9d8f", "-.", "^"),
+    ("BLAS",  "sam_blas_dB",  "#2a9d8f", "-.", "^"),
 )
 COLUMNAS = ("z_mm", "Kf", "sam_mpasm_dB", "sam_fft_dB", "sam_blas_dB")
 
@@ -209,7 +209,7 @@ def main():
 
     print("\nExactitud: SAM [dB] contra el gaussiano analítico, CPU complex128.")
     print("Más alto es mejor. Ec. (15) con la (16) corregida; ver alfa_sam().")
-    print(f"{'z [mm]':>8} {'Kf':>7} {'MPASM':>9} {'FFT-ASM':>9} {'BL-ASM':>9}")
+    print(f"{'z [mm]':>8} {'Kf':>7} {'MPASM':>9} {'FFT-ASM':>9} {'BLAS':>9}")
     for f in filas:
         if f["en_tabla"]:
             print(f"{f['z_mm']:8.0f} {f['Kf']:7.2f} {f['sam_mpasm_dB']:9.2f} "
@@ -237,7 +237,7 @@ def main():
         z = 12000
         print(f"\nTiempos a z = {z} mm, N = {N}, s = 10 (con sincronización):")
         print(f"{'método':>16} {'CPU c128 [s]':>13} {'GPU c64 [s]':>12} {'x':>7}")
-        for nombre, fn in (("MPASM", mpasm), ("FFT-ASM", fft_asm), ("BL-ASM", blas)):
+        for nombre, fn in (("MPASM", mpasm), ("FFT-ASM", fft_asm), ("BLAS", blas)):
             _, t_cpu = cronometrar(fn, U0_cpu, DELTA, LAMB, z, device="cpu")
             _, t_gpu = cronometrar(fn, U0_cpu, DELTA, LAMB, z, device="gpu",
                                    dtype=np.complex64)
