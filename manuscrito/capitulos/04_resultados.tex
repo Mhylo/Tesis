@@ -17,9 +17,9 @@
 %       medidos el 2026-10-08 con el código del commit de esta sección.
 
 Los tres propagadores quedaron implementados en un mismo paquete y verificados
-contra dos referencias independientes; el MPASM reproduce el comportamiento de
-la Figura~4 de Zhao et al.~\cite{zhao2020} y, en el camino, aparecieron dos
-erratas del artículo
+contra la solución analítica, que una segunda referencia independiente
+confirma; el MPASM reproduce el comportamiento de la Figura~4 de Zhao et
+al.~\cite{zhao2020} y, en el camino, aparecieron dos erratas del artículo
 original. Esta sección presenta la evidencia en ese orden.
 
 \subsection{Acuerdo con las implementaciones de terceros}
@@ -45,9 +45,10 @@ la cuadratura.
 
 \subsection{Exactitud en el escenario de la Tabla~1}
 
-La Figura~\ref{fig:sam-vs-z} es el equivalente de la Figura~4
+La Figura~\ref{fig:sam-vs-z} cumple el papel de la Figura~4
 de~\cite{zhao2020} en el escenario descrito en la
-Sección~\ref{sec:verificacion}: el SAM de cada propagador frente a la solución
+Sección~\ref{sec:verificacion} (sin la lente, contra la solución analítica, con
+$s = 10$ y hasta \SI{200}{m}): el SAM de cada propagador frente a la solución
 analítica, a lo largo de casi tres órdenes de magnitud en distancia.
 
 \begin{figure}[htbp]
@@ -56,8 +57,9 @@ analítica, a lo largo de casi tres órdenes de magnitud en distancia.
   \caption{Exactitud de los tres propagadores frente a la solución analítica
   del haz gaussiano, en el escenario de la Tabla~1 de~\cite{zhao2020}
   ($\lambda = \SI{632.8}{nm}$, $w_0 = \SI{1}{mm}$, $N = 512$, ventana de
-  \SI{5}{mm}). SAM según la Ec.~\eqref{eq:sam}; más alto es mejor. Los
-  marcadores señalan las siete distancias de la tabla del artículo. La línea
+  \SI{5}{mm}). SAM según la Ec.~\eqref{eq:sam}; más alto es mejor. El MPASM
+  usa $s = 10$ y el $K_f$ automático; el FFT-ASM y el BLAS, sin relleno de
+  ceros. Los marcadores señalan las siete distancias de control. La línea
   vertical marca la distancia a la que el radio $w(z)$ del haz alcanza el
   borde de la ventana.}
   \label{fig:sam-vs-z}
@@ -68,12 +70,15 @@ son algo más que el MPASM: \SI{40.5}{dB} frente a \SI{35.4}{dB} a
 \SI{0.5}{m}. Ahí la malla de la FFT ya muestrea bien la función de
 transferencia y el control del MPASM no tiene nada que aportar ---su $K_f$
 automático vale 1---. A partir de unos \SI{2}{m} el orden se invierte, y la
-distancia entre las curvas crece con $z$. El FFT-ASM cae por debajo de
-\SI{5}{dB} a \SI{12}{m}, y más allá de \SI{35}{m} oscila entre \SI{-1.9}{dB}
-y \SI{2.8}{dB}: el error es del orden de la señal. El punto de quiebre es el que marca la
-línea vertical, \SI{11.4}{m}, donde el haz deja de caber en la ventana. El
-campo que calcula el FFT-ASM es periódico con el periodo de la ventana, y a
-partir de ahí sus réplicas se superponen. El BLAS sigue al FFT-ASM hasta
+distancia entre las curvas crece con $z$. El FFT-ASM se desploma desde unos
+\SI{4}{m}: el haz gaussiano no tiene un borde nítido, y sus colas salen de la
+ventana antes que su radio $w(z)$, que alcanza el borde en la línea vertical,
+\SI{11.4}{m}. El campo
+que calcula el FFT-ASM es periódico con el periodo de la ventana, así que lo
+que sale por un borde vuelve por el opuesto y se superpone al haz. A
+\SI{12}{m} el FFT-ASM está ya por debajo de \SI{5}{dB}, y más allá de
+\SI{35}{m} oscila entre \SI{-1.8}{dB} y \SI{2.8}{dB}: el error es del orden de
+la señal. El BLAS sigue al FFT-ASM hasta
 \SI{12}{m} (\SI{3.1}{dB}) y luego se recupera hasta \SI{25.7}{dB} a
 \SI{200}{m}: descartar las frecuencias que no puede muestrear evita las
 réplicas, a costa de la parte del campo que esas frecuencias llevaban.
@@ -99,17 +104,18 @@ autores calcula $\sqrt{A^2 B}$~\cite{zhao2020code}. La versión del código no e
 dimensionalmente consistente: a distancias largas, el cociente entre los $K_f$
 que dan las dos tiende a $1/(sN\lambda)$, que tiene unidades de inverso de
 longitud, de modo que su efecto cambia con las unidades en que se escriba el
-problema. En el escenario
-de la Tabla~1, con $s = 10$, el $K_f$ del código es 0.31 veces el del artículo
+problema. En el escenario de la Tabla~1, con $s = 10$ y las longitudes en
+milímetros, como en el código publicado, el $K_f$ del código es 0.31 veces el
+del artículo
 a distancias largas (3.1 frente a 10.2 a \SI{80}{m}), y la exactitud del MPASM
 cae en consecuencia: de \SI{48.5}{dB} a \SI{33.3}{dB} a \SI{200}{m}. En este
 trabajo se usó la expresión del artículo.
 
 \paragraph{La Ec.~(16), impresa.} El denominador de $\alpha$ en la métrica SAM
 aparece impreso como $\iint I_\mathrm{ref}$ en lugar de
-$\iint I_\mathrm{ref}^2$ (Ec.~\eqref{eq:sam}). Con la versión impresa, un campo
-idéntico a su referencia da $\alpha = 0.081$ y un SAM de \SI{0.37}{dB}, en
-lugar de $\alpha = 1$ y un SAM infinito. Además, la métrica deja de
+$\iint I_\mathrm{ref}^2$ (Ec.~\eqref{eq:sam}). Con la versión impresa, el haz
+gaussiano a \SI{12}{m} comparado consigo mismo da $\alpha = 0.081$ y un SAM de
+\SI{0.37}{dB}, en lugar de $\alpha = 1$ y un SAM infinito. Además, la métrica deja de
 discriminar: en las siete distancias de la tabla el SAM no pasa de
 \SI{3}{dB} y los tres métodos no se separan más de \SI{0.06}{dB} entre sí. Con
 esa métrica no podría haberse obtenido la Figura~4 del propio artículo. Con la
@@ -147,19 +153,22 @@ doble precisión, y en GPU, en precisión simple.
 \end{table}
 
 La GPU acelera los tres métodos entre 20 y 78 veces. Parte de esa ganancia es
-el cambio de precisión: a igual precisión (complex64 en los dos dispositivos)
-la aceleración queda entre 20 y 84 veces para el FFT-ASM y el BLAS, y entre 19
-y 25 para el MPASM. El control del muestreo tiene un precio: con $s = 1$ el
+el cambio de precisión, sobre todo en el MPASM: a igual precisión (complex64 en
+los dos dispositivos) la aceleración queda entre 20 y 84 veces para el FFT-ASM
+y el BLAS, y entre 19 y 25 para el MPASM. Con $N = 512$ los tiempos en GPU, de
+uno a tres milisegundos, no alcanzan a separar los métodos: el BLAS sale más
+rápido que el FFT-ASM, aunque hace el mismo cálculo más una máscara. El
+control del muestreo tiene un precio: con $s = 1$ el
 MPASM cuesta entre 1.6 y 9.2 veces lo que el FFT-ASM en GPU, según $N$, y el
 costo crece con el sobremuestreo, unas 25 veces de $s = 1$ a $s = 8$ con
 $N = 512$ (de \SI{2.8}{ms} a \SI{70}{ms}). En el escenario de la Tabla~1, con
-$s = 10$, una propagación del MPASM toma \SI{118}{ms} en GPU, frente a
+$s = 10$, una propagación del MPASM toma unos \SI{110}{ms} en GPU, frente a
 \SI{2}{ms} del FFT-ASM.
 
 Con esto el objetivo~1 queda cumplido: los tres métodos están implementados
-bajo una misma interfaz, cada uno coincide con una implementación
-independiente, y su exactitud está medida contra dos referencias verificadas
-por su cuenta. La comparación deja además una primera respuesta a la pregunta
+bajo una misma interfaz, el FFT-ASM y el MPASM coinciden con implementaciones
+independientes, y la exactitud de los tres está medida contra una solución
+analítica que una segunda referencia, verificada por su cuenta, confirma. La comparación deja además una primera respuesta a la pregunta
 de investigación: el control del muestreo del MPASM gana cuando el campo
 desborda la ventana, y en ese régimen su costo adicional se justifica.
 

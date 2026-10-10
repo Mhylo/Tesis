@@ -48,13 +48,18 @@ propagadores.
 Tabla~1 de~\cite{zhao2020}: longitud de onda $\lambda = \SI{632.8}{nm}$, radio
 de cintura $w_0 = \SI{1}{mm}$ y una ventana de \SI{5}{mm} muestreada con
 $N = 512$ puntos por lado ($\delta = \SI{9.78}{\micro\metre}$). Se propagó a 30
-distancias entre \SI{0.5}{m} y \SI{200}{m}: las siete de la tabla del artículo
-y una rejilla logarítmica entre ellas. El intervalo está elegido para cruzar
-el punto en que el haz deja de caber en la ventana, porque ahí es donde un
-propagador con el muestreo fijado por la FFT tiene que fallar. A diferencia
-del artículo, que coloca una lente de focal \SI{-300}{mm} delante del haz y
-usa la integral de Rayleigh--Sommerfeld como referencia, aquí el haz se
-propagó sin la lente, para disponer de la solución analítica.
+distancias entre \SI{0.5}{m} y \SI{200}{m}: siete distancias de control,
+fijadas al comienzo del trabajo, y una rejilla logarítmica entre ellas. El
+intervalo está elegido para cruzar el punto en que el haz deja de caber en la
+ventana, porque ahí es donde un propagador con el muestreo fijado por la FFT
+tiene que fallar. A diferencia del artículo, que coloca una lente de focal
+\SI{-300}{mm} delante del haz y usa la integral de Rayleigh--Sommerfeld como
+referencia, aquí el haz se propagó sin la lente, para disponer de la solución
+analítica. Hay dos diferencias más: la Figura~4 del artículo llega a
+\SI{2.5}{m} con $s = 1$ y $s = 4$, y aquí el MPASM se calculó con $s = 10$ y
+el $K_f$ automático de la Ec.~\eqref{eq:kf-auto}; y el FFT-ASM y el BLAS se
+aplicaron sin relleno de ceros, como el FFT-ASM del código
+publicado~\cite{zhao2020code}.
 
 \paragraph{Referencias.} Se usaron dos, independientes entre sí. La primera es
 la solución analítica del haz gaussiano,
@@ -64,7 +69,8 @@ la solución analítica del haz gaussiano,
 \end{equation}
 exacta dentro de la aproximación paraxial. La segunda es la integral de
 Rayleigh--Sommerfeld~I, que no aproxima el ángulo de
-propagación~\cite{goodman2005}:
+propagación~\cite{goodman2005}; es la Ec.~\eqref{eq:rs-goodman}, escrita en la
+forma en que la evalúa el código:
 \begin{equation}
   \begin{split}
   U(x, y; z) &= -\frac{1}{2\pi} \iint U_0(x', y')\,
@@ -122,10 +128,12 @@ Sección~\ref{sec:res-obj1}). Por construcción, el SAM mide la forma de la
 intensidad: es ciego a un error de escala global y a la fase. Donde la fase
 importa, los campos se compararon como complejos.
 
-\paragraph{Contraste con implementaciones de terceros.} Cada propagador se
-contrastó también con una implementación ajena: FFT-ASM con la de
-pyDHM~\cite{castaneda2022}, y MPASM, término a término, con el código publicado
-por sus autores~\cite{zhao2020code}. Ninguno de esos códigos se modificó en su
+\paragraph{Contraste con implementaciones de terceros.} El FFT-ASM y el MPASM
+se contrastaron también con implementaciones ajenas: el FFT-ASM con la de
+pyDHM~\cite{castaneda2022}, y el MPASM, término a término, con el código
+publicado por sus autores~\cite{zhao2020code}. Para el BLAS no se usó una
+implementación ajena; lo verifican la solución analítica y las pruebas
+automáticas descritas abajo. Ninguno de esos códigos se modificó en su
 física: la DFT matricial de Zhao et al.\ se copió tal cual, y su propagador se
 transcribió sin tocar el cálculo, porque el original exige una GPU solo para
 cargarse; pyLHM necesitó un único cambio de compatibilidad con la versión
@@ -203,7 +211,8 @@ El escalado es exacto solo en la aproximación paraxial. Fuera de ella, la fase
 que desprecia tiene dos partes: una aberración esférica, igual para todo el
 campo, y un desenfoque astigmático que depende de la posición. Un detalle visto
 desde la fuente a un ángulo $\theta$ enfoca a $z_\mathrm{eq}/\cos^3\theta$ en
-la dirección radial y a $z_\mathrm{eq}/\cos\theta$ en la tangencial. Con
+la dirección radial (meridional) y a $z_\mathrm{eq}/\cos\theta$ en la azimutal
+(sagital). Con
 objetos lisos esa fase no se nota, pero con detalle del orden del micrómetro
 sí (Sección~\ref{sec:res-obj2}).
 
@@ -236,17 +245,18 @@ multiplicada por la esférica en $x_n$ y por una ventana $W$ que deja pasar solo
 las frecuencias a menos de $1/(2\delta)$ de la frecuencia local de la esférica
 en esa muestra. Las matrices $A_n(f)$ ocupan el lugar de la DFT de entrada del
 MPASM, una por eje. Solo la parte parabólica de la esférica va dentro de las
-matrices, porque es la separable; el resto, $e^{ik(r - x^2/2R)}/r$, varía
+matrices, porque es la separable; el resto,
+$e^{ik[R - (x^2 + y^2)/(2L)]}/R$ con $R = \sqrt{x^2 + y^2 + L^2}$, varía
 despacio y se aplica punto a punto.
 
-La rejilla de frecuencias no sale de la Ec.~(14) de~\cite{zhao2020}, que supone
+La rejilla de frecuencias no sale de la Ec.~\eqref{eq:kf-auto}, que supone
 onda plana, sino de la geometría: tiene que cubrir desde
 $X_\mathrm{min}/(\lambda L) - 1/(2\delta)$ hasta
 $X_\mathrm{max}/(\lambda L) + 1/(2\delta)$, una banda más ancha que $1/\delta$.
 Es decir, $K_f < 1$: una expansión del intervalo espectral, no una compresión.
 Su paso se elige para que ninguna copia periódica del campo caiga en la
-ventana de salida. Se retropropaga el holograma de contraste menos uno,
-$c - 1$, y no $c$: la referencia que $c$ contiene está truncada por el borde
+ventana de salida. Se retropropaga $c - 1$, con $c$ el cociente de la
+Ec.~\eqref{eq:contraste}, y no $c$: la referencia que $c$ contiene está truncada por el borde
 del sensor, y retropropagada llenaría la periferia de difracción de borde
 (Sección~\ref{sec:metricas}). Con un sensor de $3000\times4000$ píxeles, el
 espectro se construye una vez en \SI{9.8}{s} y cada plano de reconstrucción
@@ -278,7 +288,8 @@ banco, la malla tiene cuatro ejes:
   la GPU: con $N = 2822$ y $s = 3$ el MPASM ocupa \SI{1.8}{GB} de los
   \SI{4}{GB} disponibles.
   \item $s \in \{1, 2, 3\}$.
-  \item $K_f$ igual a 0.5, 1 y 2 veces el valor automático de la Ec.~(14), para
+  \item $K_f$ igual a 0.5, 1 y 2 veces el automático de la
+  Ec.~\eqref{eq:kf-auto}, para
   medir si el automático es el adecuado. Los puntos con $sK_f < 1$ violan la
   condición de que la ventana de salida quepa en el periodo del espectro; el
   MPASM los rechaza, y quedan en el mapa como región excluida.
