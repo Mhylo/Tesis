@@ -32,6 +32,10 @@
 % anteproyecto, que es más legible con ecuaciones.
 \usepackage{setspace}
 \onehalfspacing
+% Si un párrafo no encuentra buen corte (nombres largos sin guiones, como
+% Rayleigh--Sommerfeld~I, o páginas en la bibliografía), estira los espacios
+% antes de salirse del margen.
+\setlength{\emergencystretch}{3em}
 
 % ---------- Matemáticas, tablas y gráficos ----------
 \usepackage{amsmath,amssymb}
@@ -77,6 +81,9 @@
 % En Overleaf compila con biber sin configurar nada.
 \usepackage[backend=biber, style=ieee]{biblatex}
 \addbibresource{referencias.bib}
+% biblatex-ieee usa la cadena 'artno' (número de artículo, p. ej. e0275818)
+% y no la trae traducida al español.
+\DefineBibliographyStrings{spanish}{artno = {art\adddot}}
 
 % ---------- Enlaces (va al final) ----------
 \usepackage[hidelinks]{hyperref}

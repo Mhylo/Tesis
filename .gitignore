@@ -35,3 +35,20 @@ resultados/*
 
 # Salida generada, 17 MB.
 test.html
+
+# LaTeX: auxiliares y PDF de compilacion del manuscrito (latexmk / LaTeX Workshop)
+manuscrito/build/
+manuscrito/*.aux
+manuscrito/*.bbl
+manuscrito/*.bcf
+manuscrito/*.blg
+manuscrito/*.fdb_latexmk
+manuscrito/*.fls
+manuscrito/*.lof
+manuscrito/*.log
+manuscrito/*.lot
+manuscrito/*.out
+manuscrito/*.pdf
+manuscrito/*.run.xml
+manuscrito/*.synctex.gz
+manuscrito/*.toc

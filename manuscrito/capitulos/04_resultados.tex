@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 % ============================================================
 % 4. RESULTADOS Y ANÁLISIS
 % Organizado por objetivo específico, para que se vea que cada
@@ -16,8 +17,9 @@
 %       medidos el 2026-10-08 con el código del commit de esta sección.
 
 Los tres propagadores quedaron implementados en un mismo paquete y verificados
-contra dos referencias independientes; el MPASM reproduce la Figura~4 de Zhao
-et al.~\cite{zhao2020} y, en el camino, aparecieron dos erratas del artículo
+contra dos referencias independientes; el MPASM reproduce el comportamiento de
+la Figura~4 de Zhao et al.~\cite{zhao2020} y, en el camino, aparecieron dos
+erratas del artículo
 original. Esta sección presenta la evidencia en ese orden.
 
 \subsection{Acuerdo con las implementaciones de terceros}
@@ -43,9 +45,10 @@ la cuadratura.
 
 \subsection{Exactitud en el escenario de la Tabla~1}
 
-La Figura~\ref{fig:sam-vs-z} reproduce la Figura~4 de~\cite{zhao2020}: el SAM
-de cada propagador frente a la solución analítica, a lo largo de casi tres
-órdenes de magnitud en distancia.
+La Figura~\ref{fig:sam-vs-z} es el equivalente de la Figura~4
+de~\cite{zhao2020} en el escenario descrito en la
+Sección~\ref{sec:verificacion}: el SAM de cada propagador frente a la solución
+analítica, a lo largo de casi tres órdenes de magnitud en distancia.
 
 \begin{figure}[htbp]
   \centering

@@ -29,6 +29,10 @@ microscopía holográfica digital sin lentes}
 % el número se ve desde la introducción.
 \pagenumbering{arabic}
 \input{capitulos/portada}
+% titlepage deja el contador en 1 al cerrar: la portada contaría dos veces
+% como página 1 (y hyperref avisa de un ancla page.1 duplicada). La que
+% sigue es la 2.
+\setcounter{page}{2}
 
 \pagestyle{empty}
 \assignpagestyle{\chapter}{empty} % también la primera hoja de cada lista
