@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 % ============================================================
 % 3. MATERIALES Y MÉTODOS
 % Una sección por fase del anteproyecto. Aquí va lo que se
@@ -50,7 +51,10 @@ $N = 512$ puntos por lado ($\delta = \SI{9.78}{\micro\metre}$). Se propagó a 30
 distancias entre \SI{0.5}{m} y \SI{200}{m}: las siete de la tabla del artículo
 y una rejilla logarítmica entre ellas. El intervalo está elegido para cruzar
 el punto en que el haz deja de caber en la ventana, porque ahí es donde un
-propagador con el muestreo fijado por la FFT tiene que fallar.
+propagador con el muestreo fijado por la FFT tiene que fallar. A diferencia
+del artículo, que coloca una lente de focal \SI{-300}{mm} delante del haz y
+usa la integral de Rayleigh--Sommerfeld como referencia, aquí el haz se
+propagó sin la lente, para disponer de la solución analítica.
 
 \paragraph{Referencias.} Se usaron dos, independientes entre sí. La primera es
 la solución analítica del haz gaussiano,
@@ -62,11 +66,12 @@ exacta dentro de la aproximación paraxial. La segunda es la integral de
 Rayleigh--Sommerfeld~I, que no aproxima el ángulo de
 propagación~\cite{goodman2005}:
 \begin{equation}
-  U(x, y; z) = -\frac{1}{2\pi} \iint U_0(x', y')\,
-  \frac{\partial}{\partial z}\!\left(\frac{e^{ikr}}{r}\right) \mathrm{d}x'\,\mathrm{d}y',
-  \qquad
+  \begin{split}
+  U(x, y; z) &= -\frac{1}{2\pi} \iint U_0(x', y')\,
+  \frac{\partial}{\partial z}\!\left(\frac{e^{ikr}}{r}\right) \mathrm{d}x'\,\mathrm{d}y',\\
   \frac{\partial}{\partial z}\!\left(\frac{e^{ikr}}{r}\right)
-  = \left(ik - \frac{1}{r}\right) \frac{e^{ikr}}{r}\,\frac{z}{r},
+  &= \left(ik - \frac{1}{r}\right) \frac{e^{ikr}}{r}\,\frac{z}{r},
+  \end{split}
   \label{eq:rs1}
 \end{equation}
 con $r$ la distancia entre el punto de entrada y el de salida. Evaluada
@@ -95,9 +100,10 @@ de propagación son del orden de $\lambda/(\pi w_0) \approx \SI{2e-4}{rad}$, as�
 que la solución analítica vale en todo el intervalo y es la que se usó para
 medir la exactitud de los propagadores.
 
-\paragraph{Métrica.} Se usó la métrica de exactitud del artículo original,
-SAM~\cite{zhao2020}, que compara la intensidad calculada $I$ con la de
-referencia $I_\mathrm{ref}$:
+\paragraph{Métrica.} Se usó la misma métrica de exactitud que el artículo
+original, SAM (\emph{simulation accuracy metric}), propuesta
+en~\cite{yu2012} y usada en~\cite{zhao2020}. Compara la intensidad calculada
+$I$ con la de referencia $I_\mathrm{ref}$:
 \begin{equation}
   \mathrm{SAM} = 10\log_{10}\frac{\iint I\,\mathrm{d}x\,\mathrm{d}y}
   {\iint \left|I - \alpha I_\mathrm{ref}\right| \mathrm{d}x\,\mathrm{d}y},
@@ -150,24 +156,165 @@ referencia publicada.}
 % ------------------------------------------------------------
 \section{Calibración numérica (Fase 2)}
 \label{sec:calibracion}
-% Repo: scripts/comparacion.py, kf_evolucion.py, contraste_referencias.py;
-%       resultados/kf, escalado_N.csv, escalado_s.csv.
+% Repo: CamposT/montaje.py, dlhm.py, barrido.py; scripts/barrido_obj2.py,
+%       verif_dlhm_esferico.py; tareas 24, 29, 30 y 78 del cronograma.
 
-\pendiente{parámetros barridos (distancias, paso y tamaño del sensor, $\lambda$,
-$s$, $K_f$); cómo se construyen los mapas de error; criterio de «precisión
-aceptable».}
+El objetivo~2 pide los rangos de distancia, apertura numérica y coeficientes
+de control en los que cada propagador es confiable bajo el muestreo propio de
+DLHM. Para responderlo hicieron falta dos piezas: una forma de aplicar los
+propagadores de onda plana a la iluminación divergente de la DLHM
+(Sección~\ref{sec:esferica}) y un barrido sobre la geometría del banco y los
+coeficientes de control, medido contra una referencia no paraxial
+(Sección~\ref{sec:barrido}). En el camino, la primera pieza mostró un límite
+con detalle fino, y para superarlo se formuló el MPASM con la iluminación
+esférica exacta (Sección~\ref{sec:mpasm-esferico}). El contraste con la
+transformada Z \emph{chirp} que pide el objetivo se hizo en el plano de la
+formulación (Sección~\ref{sec:czt-teoria}).
+
+Desde aquí se usan los parámetros del banco DLHM del laboratorio: longitud
+de onda $\lambda = \SI{528}{nm}$, \emph{pinhole} circular de
+\SI{5}{\micro\metre} de diámetro, píxel de $\delta = \SI{1.83}{\micro\metre}$
+y distancia fuente--sensor $L = \SI{10}{mm}$, con la muestra a
+$z = \SI{3}{mm}$ de la fuente (Sección~\ref{sec:montaje}).
 
 \subsection{Iluminación esférica y distancia efectiva}
 \label{sec:esferica}
-% Repo: CamposT/montaje.py, retropropagacion.py; tarea 24 del cronograma.
 
-\pendiente{el cambio de coordenadas antes de propagar: paso $\delta/M$ y la
-distancia efectiva $z_\text{eq}$, validados contra RS.}
+En DLHM la muestra está a una distancia $z$ de la fuente puntual y el sensor a
+$L$, de modo que entre muestra y sensor hay $d = L - z$ y el holograma
+registra el objeto magnificado $M = L/z$ veces. Los tres propagadores del
+objetivo~1 suponen iluminación plana. El teorema de escalado de
+Fresnel~\cite{latychevskaia2015} los conecta con la DLHM: dentro de la
+aproximación paraxial, el campo que produce en el sensor un objeto iluminado
+por la onda esférica equivale, salvo una fase cuadrática y una ampliación $M$,
+al de ese mismo objeto iluminado por una onda plana y propagado una distancia
+equivalente; en el plano de la muestra, eso es una malla reducida $M$ veces:
+\begin{equation}
+  z_\mathrm{eq} = \frac{z\,(L - z)}{L}, \qquad \delta_\mathrm{eq} = \frac{\delta}{M}.
+  \label{eq:escalado}
+\end{equation}
+Reconstruir es entonces retropropagar el holograma una distancia
+$z_\mathrm{eq}$ sobre la malla de paso $\delta/M$, con cualquiera de los tres
+propagadores y sin modificarlos. El paso $\delta/M$ es el píxel del sensor
+proyectado sobre la muestra; con los parámetros del banco vale
+\SI{0.55}{\micro\metre}.
 
-\subsection{Contraste con la transformada Z \emph{chirp}}
-\label{sec:czt}
+El escalado es exacto solo en la aproximación paraxial. Fuera de ella, la fase
+que desprecia tiene dos partes: una aberración esférica, igual para todo el
+campo, y un desenfoque astigmático que depende de la posición. Un detalle visto
+desde la fuente a un ángulo $\theta$ enfoca a $z_\mathrm{eq}/\cos^3\theta$ en
+la dirección radial y a $z_\mathrm{eq}/\cos\theta$ en la tangencial. Con
+objetos lisos esa fase no se nota, pero con detalle del orden del micrómetro
+sí (Sección~\ref{sec:res-obj2}).
 
-\pendiente{cómo se implementó la CZT y cómo se comparó con el MPASM.}
+\subsection{MPASM con iluminación esférica exacta}
+\label{sec:mpasm-esferico}
+
+La alternativa directa al escalado es multiplicar el holograma por la onda
+esférica $e^{ikR}/R$ y retropropagar con el espectro angular exacto. Con un
+propagador por FFT eso falla por muestreo: en el sensor, la esférica tiene
+frecuencia local $X/(\lambda R)$, que en el borde de un sensor de 3000
+píxeles de lado llega a \SI{501}{\per\milli\metre}, casi el doble del límite
+de Nyquist del píxel (\SI{273}{\per\milli\metre}).
+
+El MPASM permite evitarlo, porque no necesita la entrada bien muestreada sino
+su transformada de Fourier, y esa puede calcularse sin muestrear la esférica.
+Si el holograma $J$ está limitado en banda, $J(x) = \sum_n J_n
+\operatorname{sinc}\!\left((x - x_n)/\delta\right)$, y la transformada del
+producto de $J$ por la parte parabólica de la esférica es exactamente
+$F(f) = \sum_n J_n\, A_n(f)$, con
+\begin{equation}
+  A_n(f) = e^{i\pi x_n^2/(\lambda L)}\, e^{-i2\pi f x_n}\,
+  W\!\left(f - \frac{x_n}{\lambda L}\right),
+  \qquad
+  W(g) = \delta\sqrt{i\lambda L}\int_{-B-g}^{B-g} e^{-i\pi\lambda L s^2}\,\mathrm{d}s,
+  \label{eq:ventana-chirp}
+\end{equation}
+donde $B = 1/(2\delta)$. La integral es una diferencia de integrales de
+Fresnel, así que $A_n(f)$ tiene forma cerrada: es la fila de la DFT de siempre,
+multiplicada por la esférica en $x_n$ y por una ventana $W$ que deja pasar solo
+las frecuencias a menos de $1/(2\delta)$ de la frecuencia local de la esférica
+en esa muestra. Las matrices $A_n(f)$ ocupan el lugar de la DFT de entrada del
+MPASM, una por eje. Solo la parte parabólica de la esférica va dentro de las
+matrices, porque es la separable; el resto, $e^{ik(r - x^2/2R)}/r$, varía
+despacio y se aplica punto a punto.
+
+La rejilla de frecuencias no sale de la Ec.~(14) de~\cite{zhao2020}, que supone
+onda plana, sino de la geometría: tiene que cubrir desde
+$X_\mathrm{min}/(\lambda L) - 1/(2\delta)$ hasta
+$X_\mathrm{max}/(\lambda L) + 1/(2\delta)$, una banda más ancha que $1/\delta$.
+Es decir, $K_f < 1$: una expansión del intervalo espectral, no una compresión.
+Su paso se elige para que ninguna copia periódica del campo caiga en la
+ventana de salida. Se retropropaga el holograma de contraste menos uno,
+$c - 1$, y no $c$: la referencia que $c$ contiene está truncada por el borde
+del sensor, y retropropagada llenaría la periferia de difracción de borde
+(Sección~\ref{sec:metricas}). Con un sensor de $3000\times4000$ píxeles, el
+espectro se construye una vez en \SI{9.8}{s} y cada plano de reconstrucción
+cuesta \SI{0.56}{s} en la GPU, del mismo orden que el escalado
+(\SI{0.33}{s}).
+
+\subsection{Barrido de validez}
+\label{sec:barrido}
+
+El barrido mide el error de \emph{muestreo} de cada propagador en el problema
+de la Ec.~\eqref{eq:escalado}, que es el que resuelven al aplicarse a DLHM: una
+ventana de $N\times N$ puntos de paso $\delta z/L$ propagada a $z_\mathrm{eq}$.
+El error de \emph{formulación} del escalado es otro resultado y no se mezcla
+con este.
+
+\paragraph{Malla.} Con $\lambda$, $\delta$ y $L$ fijas en los valores del
+banco, la malla tiene cuatro ejes:
+\begin{itemize}
+  \item $z$ entre \SI{1.5}{mm} y \SI{8}{mm} cada \SI{0.5}{mm}, 14 valores con
+  el del banco incluido. El límite inferior es $L\lambda/(2\delta) =
+  \SI{1.44}{mm}$: por debajo, el píxel proyectado $\delta/M$ es menor que
+  $\lambda/2$ y reducirlo no aporta información. Con $z = \SI{8}{mm}$ la
+  magnificación es ya de 1.25.
+  \item La apertura numérica de una ventana cuadrada de $N\times N$ píxeles
+  vista desde la fuente, $\mathrm{NA} = \sin[\arctan(N\delta/2L)]$: con
+  $\delta$ y $L$ fijas, barrer la NA es barrer $N$. Se usaron siete valores,
+  de 0.03 a 0.25 ($N$ de 328 a 2822). Uno es 0.1288, el primer cero del patrón
+  de Airy del \emph{pinhole}, $1.22\lambda/d$. El máximo lo fija la memoria de
+  la GPU: con $N = 2822$ y $s = 3$ el MPASM ocupa \SI{1.8}{GB} de los
+  \SI{4}{GB} disponibles.
+  \item $s \in \{1, 2, 3\}$.
+  \item $K_f$ igual a 0.5, 1 y 2 veces el valor automático de la Ec.~(14), para
+  medir si el automático es el adecuado. Los puntos con $sK_f < 1$ violan la
+  condición de que la ventana de salida quepa en el periodo del espectro; el
+  MPASM los rechaza, y quedan en el mapa como región excluida.
+\end{itemize}
+Son 98 combinaciones de $z$ y NA y 1078 cálculos, de los que 78 caen en la
+región excluida.
+
+\paragraph{Objeto.} Una mancha gaussiana de cintura igual a 2.5 píxeles de la
+malla $\delta/M$, casi el detalle más fino que esa malla representa sin
+\emph{aliasing}: su espectro vale $2\times10^{-7}$ en la frecuencia de Nyquist.
+Así, en cualquier punto de la malla el objeto difracta hasta el borde de la
+banda. Se propaga solo el campo dispersado, sin el fondo uniforme: un fondo
+constante en una ventana finita difractaría en sus bordes, y el FFT-ASM, que
+trata la ventana como periódica, no tiene bordes.
+
+\paragraph{Referencia.} La integral de Rayleigh--Sommerfeld reducida a una
+dimensión (Sección~\ref{sec:verificacion}), evaluada con el perfil analítico
+de la gaussiana y no con el interpolado de los píxeles. Los nodos de la
+cuadratura se fijan por la fase del núcleo, y el campo radial se lleva al
+plano con un \emph{spline} cúbico tras quitarle la fase de la onda esférica
+que sale del centro del objeto. En cada punto la referencia se repite con el
+doble de nodos; la diferencia entre las dos es el error de la propia
+referencia, y por debajo de él no se puede afirmar nada.
+
+\paragraph{Propagadores y métrica.} El FFT-ASM y el BLAS se aplicaron con
+relleno de ceros a dos veces la ventana, como se usan en la práctica; el
+MPASM, que no lo necesita, sin relleno. Los propagadores se calcularon en GPU
+en precisión simple, y la referencia en doble. El error se midió como
+\begin{equation}
+  \varepsilon = \frac{\lVert U - U_\mathrm{ref}\rVert}{\lVert U_\mathrm{ref}\rVert},
+  \label{eq:error-relativo}
+\end{equation}
+sobre el campo complejo en toda la ventana: a diferencia del SAM, ve la fase.
+Para leer los mapas se marcan dos niveles de precisión aceptable, $10^{-3}$ y
+$10^{-2}$. Las conclusiones de la Sección~\ref{sec:res-obj2} no dependen de
+cuál de los dos se adopte.
 
 % ------------------------------------------------------------
 \section{Montaje y registro experimental (Fase 3)}

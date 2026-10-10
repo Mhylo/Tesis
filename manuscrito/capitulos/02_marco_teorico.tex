@@ -1,67 +1,377 @@
+% !TEX root = ../main.tex
 % ============================================================
 % 2. MARCO TEÓRICO Y ESTADO DEL ARTE
 % Lo que el lector necesita para entender los métodos y los
 % resultados, y dónde está la literatura. Solo teoría ajena:
-% lo que se desarrolló en el trabajo (p. ej. la distancia
-% efectiva de la tarea 24) va en el capítulo 3.
+% lo que se desarrolló en el trabajo (el MPASM con la esférica
+% exacta, el barrido) va en el capítulo 3.
+% Ecuaciones de Zhao (Ecs. 3, 4, 9, 11-14) y de Matsushima
+% (Ecs. 13-14) contrastadas contra los PDF de docs/ el 2026-10-09.
 % ============================================================
 \chapter{Marco teórico y estado del arte}
 \label{cap:marco}
+
+Este capítulo reúne lo que hace falta para leer los métodos y los
+resultados: cómo se propaga numéricamente un campo óptico, por qué el
+espectro angular calculado con la FFT falla cuando el muestreo no alcanza, qué
+soluciones existen y cómo el producto matricial las generaliza, y qué
+particularidades impone la geometría de la microscopía holográfica digital sin
+lentes. Cierra con los antecedentes en los que se inserta el trabajo.
 
 % ------------------------------------------------------------
 \section{Difracción escalar}
 \label{sec:difraccion}
 
-\pendiente{integral de Rayleigh--Sommerfeld y espectro angular como la misma
-solución en dos dominios \cite{goodman2005, ersoy2006}; función de
-transferencia $H(f_x,f_y)$; componentes evanescentes.}
+En la teoría escalar de la difracción, cada componente del campo
+monocromático $U$ satisface la ecuación de Helmholtz,
+$(\nabla^2 + k^2)\,U = 0$, con $k = 2\pi/\lambda$~\cite{goodman2005}. El
+problema que interesa aquí es el de la propagación entre planos paralelos:
+conocido el campo $U_0(x', y')$ en el plano $z = 0$, obtener el campo
+$U(x, y; z)$ en un plano a distancia $z$. Tiene dos soluciones exactas
+equivalentes.
+
+La primera es la integral de Rayleigh--Sommerfeld~I~\cite{goodman2005},
+\begin{equation}
+  \begin{split}
+  U(x, y; z) &= \frac{z}{i\lambda} \iint U_0(x', y')\,
+  \frac{e^{ikr}}{r^2}\left(1 + \frac{i}{kr}\right) \mathrm{d}x'\,\mathrm{d}y',\\
+  r &= \sqrt{(x - x')^2 + (y - y')^2 + z^2},
+  \end{split}
+  \label{eq:rs-goodman}
+\end{equation}
+que expresa el campo en cada punto de salida como la superposición de ondas
+esféricas emitidas por cada punto del plano de entrada, ponderadas por el
+factor de oblicuidad $z/r$. El término $i/(kr)$ solo pesa cuando $r$ es del
+orden de la longitud de onda; a las distancias de este trabajo es entre cuatro
+y nueve órdenes de magnitud menor que la unidad, pero se conserva porque hace
+exacta la expresión.
+
+La segunda es el espectro angular. El campo de entrada se descompone en ondas
+planas mediante la transformada de Fourier,
+$A_0(f_x, f_y) = \mathcal{F}\{U_0\}$, y cada componente, de frecuencias
+espaciales $(f_x, f_y)$, viaja en la dirección que le corresponde y acumula
+en $z$ una fase que depende solo de su dirección. El campo propagado es
+\begin{equation}
+  \begin{split}
+  U(x, y; z) &= \mathcal{F}^{-1}\!\left\{ A_0(f_x, f_y)\, H(f_x, f_y; z) \right\},\\
+  H(f_x, f_y; z) &= \exp\!\left[ i 2\pi z \sqrt{\frac{1}{\lambda^2} - f_x^2 - f_y^2}\, \right],
+  \end{split}
+  \label{eq:asm}
+\end{equation}
+donde $H$ es la función de transferencia del espacio libre. Las frecuencias con
+$f_x^2 + f_y^2 < 1/\lambda^2$ son ondas que se propagan; las demás hacen
+imaginaria la raíz y dan ondas evanescentes, que decaen como
+$\exp[-2\pi z\,(f_x^2 + f_y^2 - 1/\lambda^2)^{1/2}]$ y a distancias de varias
+longitudes de onda ya no contribuyen.
+
+Las Ecs.~\eqref{eq:rs-goodman} y~\eqref{eq:asm} son la misma solución en dos
+dominios: por el teorema de convolución, la transformada de Fourier del núcleo
+de la Ec.~\eqref{eq:rs-goodman} es exactamente $H$~\cite{goodman2005,
+ersoy2006}. Ninguna de las dos aproxima el ángulo de propagación. La
+aproximación de Fresnel sí lo hace: desarrollando la raíz de $H$ para
+frecuencias bajas, $H \approx e^{ikz}\exp[-i\pi\lambda z(f_x^2 + f_y^2)]$, que
+vale cuando las componentes relevantes del campo viajan cerca del eje. Varios
+de los métodos de esta sección y de la DLHM descansan en esa aproximación, y su
+alcance limitado es parte del problema que motiva el trabajo.
 
 % ------------------------------------------------------------
 \section{Espectro angular por FFT y sus límites de muestreo}
 \label{sec:asm-fft}
 
-\pendiente{discretización; paso en frecuencia $1/L$ fijado por la ventana;
-condición de muestreo de la función de transferencia y la frecuencia máxima
-que la cumple (Ec.~12 de \cite{zhao2020}); aliasing; la ventana de salida
-hereda la de entrada \cite{li2007}.}
+Numéricamente, el campo de entrada se conoce en una malla de $N\times N$
+puntos con paso $\delta$, sobre una ventana de lado $N\delta$. Calcular la
+Ec.~\eqref{eq:asm} con la transformada rápida de Fourier (FFT) fija el
+muestreo de todo lo demás. El espectro queda muestreado con paso
+$\Delta f = 1/(N\delta)$ entre $\pm 1/(2\delta)$, la frecuencia de Nyquist; el
+campo de salida queda en la misma malla que el de entrada; y el producto por
+$H$ equivale a una convolución \emph{circular}, de modo que el campo calculado
+es periódico con el periodo de la ventana. Lo que el campo propagado tenga
+fuera de la ventana reaparece por el borde opuesto. Para evitarlo se rellena
+la entrada con ceros, típicamente hasta duplicar la ventana, lo que linealiza
+la convolución~\cite{matsushima2009}.
+
+El problema principal está en la propia función de transferencia. Su fase
+oscila cada vez más rápido al alejarse del origen de frecuencias, y lo hace
+más deprisa cuanto mayor es $z$. Para que la versión muestreada de $H$ la
+represente sin \emph{aliasing}, la frecuencia local de esa fase tiene que
+quedar por debajo de la mitad de la frecuencia de muestreo en el dominio
+espectral. En una dimensión la condición es~\cite{zhao2020}
+\begin{equation}
+  \frac{z\lambda f_x}{\sqrt{1 - (\lambda f_x)^2}} \le \frac{1}{2\Delta f},
+  \label{eq:muestreo-h}
+\end{equation}
+y con el $\Delta f = 1/(N\delta)$ de la FFT se cumple solo para las
+frecuencias por debajo de
+\begin{equation}
+  f_\mathrm{max}^\mathrm{FFT} = \frac{N\delta}{\lambda\sqrt{4z^2 + N^2\delta^2}}.
+  \label{eq:fmax-fft}
+\end{equation}
+Por encima de $f_\mathrm{max}^\mathrm{FFT}$, la función de transferencia
+muestreada contiene réplicas, y el campo calculado acumula copias desplazadas
+que se superponen al verdadero~\cite{li2007, voelz2009}. Como
+$f_\mathrm{max}^\mathrm{FFT}$ decrece con $z$, toda la banda hasta la
+frecuencia de Nyquist queda bien muestreada solo hasta una distancia
+\begin{equation}
+  z_\mathrm{lim} = \frac{N\delta^2}{\lambda}\sqrt{1 - \left(\frac{\lambda}{2\delta}\right)^2},
+  \label{eq:zlim}
+\end{equation}
+que resulta de igualar la Ec.~\eqref{eq:fmax-fft} a $1/(2\delta)$. Más allá de
+$z_\mathrm{lim}$, el espectro angular calculado con la FFT pierde exactitud
+progresivamente. Físicamente es el mismo fenómeno que el de la convolución
+circular: a distancias largas el campo se abre más de lo que cabe en la
+ventana.
+
+La segunda limitación es geométrica. Como la ventana de salida hereda el
+tamaño y el paso de la de entrada, el espectro angular por FFT no puede
+calcular el campo en una región mayor ni con otro paso de muestreo. En
+configuraciones donde el plano de salida tiene una escala distinta a la del de
+entrada ---como en la DLHM, donde el holograma registra el objeto magnificado
+(Sección~\ref{sec:dlhm})--- esa rigidez obliga a remuestrear o a aproximar.
 
 % ------------------------------------------------------------
 \section{Soluciones conocidas al submuestreo}
 \label{sec:soluciones}
 
+Las soluciones al submuestreo de $H$ siguen dos ideas
+opuestas~\cite{zhao2020}: limitar la banda a la parte que sí se puede
+muestrear, o reducir el paso en frecuencia para que la condición de la
+Ec.~\eqref{eq:muestreo-h} se cumpla en toda ella.
+
 \subsection{Espectro angular de banda limitada (BLAS)}
-\pendiente{recorte de la función de transferencia \cite{matsushima2009}; por
-qué pierde detalle a distancias largas.}
+
+El método de banda limitada~\cite{matsushima2009} aplica la primera. Anula la
+función de transferencia fuera de la región en que está bien muestreada,
+\begin{equation}
+  H'(f_x; z) = H(f_x; z)\,\operatorname{rect}\!\left(\frac{f_x}{2f_\mathrm{lim}}\right),
+  \qquad
+  f_\mathrm{lim} = \frac{1}{\lambda\sqrt{(2\Delta f\,z)^2 + 1}},
+  \label{eq:blas}
+\end{equation}
+y lo mismo en $f_y$, con $\Delta f$ el paso en frecuencia de la ventana ya
+duplicada. Con eso desaparecen las réplicas de la función de transferencia, y
+el costo es el del espectro angular original. El precio aparece a distancias
+largas: $f_\mathrm{lim}$ decrece aproximadamente como $1/z$, y cuando cae por
+debajo de la frecuencia máxima que necesita el campo en la ventana de
+destino, $\sin\theta/\lambda$ para el ángulo $\theta$ que subtiende la
+ventana, se pierde parte de la banda física y con ella el detalle
+fino~\cite{matsushima2009}. Además, la mayoría de las muestras en frecuencia
+quedan fuera de la banda útil y se desperdician~\cite{zhao2020}.
 
 \subsection{Ventana ampliada y muestreo no uniforme}
-\pendiente{WWASM \cite{yu2012} y NUFFT \cite{kim2014}, en un párrafo cada uno:
-qué resuelven y qué cuestan.}
+
+El espectro angular de ventana ampliada (WWASM)~\cite{yu2012} aplica la
+segunda idea. Aprovecha que en la FFT el paso en frecuencia es el inverso del
+tamaño de la ventana: ampliando la ventana de entrada, $\Delta f$ disminuye
+hasta que la Ec.~\eqref{eq:muestreo-h} se cumple. La exactitud se recupera,
+pero la memoria y el tiempo de cálculo crecen rápidamente con la distancia,
+porque la ventana necesaria crece con ella.
+
+Una alternativa es abandonar el muestreo uniforme del espectro y calcular la
+integral del espectro angular con una transformada de Fourier no uniforme
+(NUFFT)~\cite{kim2014}. Así se concentran las muestras donde la función de
+transferencia las necesita, y el ancho de banda efectivo a distancias largas
+aumenta de forma notable. A cambio, la NUFFT introduce una etapa de
+interpolación por convolución que complica la implementación.
+
+Las dos ideas tienen en común que modifican la FFT desde fuera ---recortando,
+rellenando o reinterpolando--- para acomodarse a reglas de muestreo que la
+propia FFT impone~\cite{zhao2020}.
 
 % ------------------------------------------------------------
 \section{Espectro angular por producto matricial (MPASM)}
 \label{sec:mpasm}
 
-\pendiente{la DFT como triple producto de matrices; los coeficientes $K_f$ y
-$s$ y el muestreo de salida $r$; ancho de banda efectivo frente a BLAS;
-complejidad \cite{zhao2020, zhao2020code}.}
+El MPASM~\cite{zhao2020} parte de que la transformada discreta de Fourier
+(DFT) bidimensional puede escribirse como un triple producto de
+matrices~\cite{schmidt2010}. Si la entrada $U_0$ es una matriz de $M\times N$
+muestras en las posiciones $\mathbf{x}$ e $\mathbf{y}$, su espectro en las
+frecuencias $\mathbf{f}_x$ y $\mathbf{f}_y$ es
+\begin{equation}
+  F(\mathbf{f}_x, \mathbf{f}_y) = \frac{1}{MN\,K_{fx}K_{fy}\,s^2}\;
+  \mathbf{M}_{y,f_y}^{\mathsf{T}}\, U_0\, \mathbf{M}_{f_x,x}^{\mathsf{T}},
+  \qquad
+  \mathbf{M}_{f_x,x} = \exp\!\left(-i2\pi\,\mathbf{f}_x^{\mathsf{T}}\mathbf{x}\right),
+  \label{eq:dft-matricial}
+\end{equation}
+y análogamente $\mathbf{M}_{y,f_y}$. La diferencia con la FFT es que los
+vectores de frecuencia dejan de estar impuestos por el algoritmo: se eligen.
+En el MPASM,
+\begin{equation}
+  \mathbf{f}_x = \left[-\tfrac{n}{2}, -\tfrac{n}{2}+1, \ldots, \tfrac{n}{2}-1\right]
+  \frac{1}{\delta\,K_{fx}\,n}, \qquad n = sN,
+  \label{eq:fx-mpasm}
+\end{equation}
+de modo que el intervalo espectral es $\pm 1/(2\delta K_f)$ y el paso en
+frecuencia $\Delta f = 1/(sN\delta K_f)$. El campo propagado se obtiene
+multiplicando el espectro por $H$ y aplicando una DFT inversa escrita del mismo
+modo, con vectores de salida $\mathbf{x}'$ de $rN$ puntos y paso $\delta'$,
+elegidos también libremente:
+\begin{equation}
+  U(\mathbf{x}', \mathbf{y}') = \mathbf{M}_{y',f_y}
+  \left[ F(\mathbf{f}_x, \mathbf{f}_y) \cdot H(\mathbf{f}_x, \mathbf{f}_y; z) \right]
+  \mathbf{M}_{f_x,x'}.
+  \label{eq:mpasm}
+\end{equation}
+Con $s = K_f = r = 1$ y $\delta' = \delta$, el MPASM coincide con el espectro
+angular por FFT~\cite{zhao2020}.
+
+Los coeficientes de control tienen papeles distintos. El factor $K_f \ge 1$
+comprime el intervalo espectral: concentra las $sN$ muestras en la banda donde
+la función de transferencia sí cumple la condición de muestreo, en lugar de
+repartirlas hasta la frecuencia de Nyquist. El sobremuestreo $s$ multiplica el
+número de muestras en frecuencia y reduce el paso $\Delta f$. Los parámetros
+de salida $r$ y $\delta'$ permiten observar una ventana mayor que la de
+entrada, o con otro paso, sin cambiar la entrada.
+
+Llevando el paso $\Delta f$ del MPASM a la Ec.~\eqref{eq:muestreo-h}, Zhao et
+al.\ obtienen la frecuencia máxima hasta la que la función de transferencia
+queda bien muestreada~\cite{zhao2020}:
+\begin{equation}
+  f_\mathrm{max}^\mathrm{MPASM} =
+  \frac{\sqrt{\sqrt{(sN\lambda)^4 + 64\,(sN\lambda z)^2} - (sN\lambda)^2}}{4\sqrt{2}\,z\lambda},
+  \label{eq:fmax-mpasm}
+\end{equation}
+y eligen el factor de compresión para que el intervalo espectral cubra
+exactamente esa banda, $K_f = \max\{1,\ (1/2\delta)/f_\mathrm{max}^\mathrm{MPASM}\}$.
+A distancias largas, el ancho de banda efectivo resultante es mucho mayor que
+el del BLAS, y crece aproximadamente como $\sqrt{s}$~\cite{zhao2020}. La
+compresión tiene un límite que no aparece en las definiciones por separado: un
+espectro muestreado con paso $\Delta f$ describe un campo periódico de periodo
+$1/\Delta f = sN\delta K_f$, así que la ventana de salida, de lado
+$rN\delta'$, tiene que caber en ese periodo, $r\delta'/\delta \le sK_f$. Si no
+cabe, la salida contiene copias superpuestas del campo.
+
+El control tiene un costo. El producto de matrices crece más deprisa con $N$
+que la FFT, que es $\mathcal{O}(N^2\log N^2)$: Zhao et al.\ estiman que lo
+supera a partir de $N \approx 300$~\cite{zhao2020}, aunque el producto de
+matrices aprovecha muy bien el paralelismo de una GPU. Además, el sobremuestreo
+añade $(s^2 - 1)MN$ muestras al espectro, que es la matriz más grande del
+cálculo.
 
 \subsection{Relación con la transformada Z \emph{chirp}}
-\pendiente{la CZT como otro cálculo de la DFT con muestreo arbitrario y el
-parecido estructural con el MPASM (objetivo 2).}
+\label{sec:czt-teoria}
+
+La transformada Z \emph{chirp} (CZT)~\cite{rabiner1969} resuelve el mismo
+problema que las matrices del MPASM: evaluar la transformada de Fourier de una
+secuencia en un conjunto de frecuencias que no es el de la FFT. Calcula la
+transformada Z $X(z_k) = \sum_n x_n z_k^{-n}$ sobre los puntos
+$z_k = A\,W^{-k}$; con $A = e^{i2\pi f_0\delta}$ y $W = e^{-i2\pi\Delta f\delta}$,
+esos puntos son las frecuencias $f_k = f_0 + k\,\Delta f$, con origen, paso y
+número de muestras libres. Es exactamente lo que calcula la matriz
+$\mathbf{M}_{f_x,x}$ de la Ec.~\eqref{eq:dft-matricial}.
+
+La diferencia está en cómo se calcula. La identidad de
+Bluestein~\cite{bluestein1970}, $nk = \frac{1}{2}\left[n^2 + k^2 - (k - n)^2\right]$,
+convierte la suma en una multiplicación por un \emph{chirp}, una convolución
+con otro \emph{chirp} y una última multiplicación; la convolución se resuelve
+con FFT, y el costo baja de $\mathcal{O}(NK)$, el del producto directo, a
+$\mathcal{O}\big((N + K)\log(N + K)\big)$. En ese sentido, las matrices del
+MPASM son una CZT evaluada por producto directo: ganan en simplicidad y en
+afinidad con la GPU lo que pierden en número de operaciones. La forma matricial
+tiene además una ventaja estructural: admite cualquier matriz, no solo la de
+una DFT con muestreo uniforme. La formulación del MPASM con iluminación
+esférica de la Sección~\ref{sec:mpasm-esferico} la aprovecha: sus matrices
+incluyen una ventana dada por integrales de Fresnel que no es un \emph{chirp},
+y por tanto no tiene la estructura que la factorización de Bluestein
+aprovecha; con el producto matricial basta con escribir la matriz.
+
+En DLHM, el algoritmo de Bluestein aparece en la transformada de
+Fresnel--Bluestein, con la que se han modelado hologramas de alta apertura
+numérica~\cite{restrepo2011}: incorpora el frente esférico con una
+discretización no lineal que resuelve el problema de muestreo. Como se apoya
+en la aproximación de Fresnel, falla a magnificaciones bajas y para aperturas
+numéricas mayores que 0.58~\cite{lopera2024}. La librería pyDHM
+incluye también un propagador basado en la CZT~\cite{castaneda2022}, igualmente
+paraxial.
 
 % ------------------------------------------------------------
 \section{Microscopía holográfica digital sin lentes}
 \label{sec:dlhm}
 
-\pendiente{geometría fuente puntual--muestra--sensor ($z$, $L$); magnificación
-$M = L/z$; apertura numérica y resolución; modelo de formación del holograma
-como difracción de un frente esférico más magnificación no homogénea
-\cite{lopera2024}.}
+La holografía en línea fue propuesta por Gabor para la microscopía
+electrónica~\cite{gabor1948}: una onda ilumina la muestra, y la parte que la
+muestra dispersa interfiere con la que la atraviesa sin dispersarse, que actúa
+como referencia. La microscopía holográfica digital sin lentes (DLHM) lleva esa
+idea a la luz visible con una iluminación esférica~\cite{garcia2006}. Una
+fuente puntual ---en la práctica, un \emph{pinhole} de pocos micrómetros--- emite
+una onda divergente; la muestra está a una distancia $z$ de la fuente y un
+sensor digital a una distancia $L$, sin ningún elemento óptico entre ellos
+(Figura~\pendiente{esquema del montaje}). Como el frente es divergente, el
+patrón de difracción llega al sensor magnificado,
+\begin{equation}
+  M = \frac{L}{z},
+  \label{eq:magnificacion}
+\end{equation}
+y la magnificación es mayor cuanto más cerca de la fuente está la
+muestra~\cite{garcia2006, lopera2024}. La apertura numérica la fija el
+sensor, de ancho $W$, visto desde la fuente,
+\begin{equation}
+  \mathrm{NA} = \frac{W/2}{\sqrt{(W/2)^2 + L^2}},
+  \label{eq:na}
+\end{equation}
+y tiene que ser menor que la del cono de iluminación de la fuente para que el
+sensor esté iluminado entero~\cite{lopera2024}. La resolución lateral queda
+limitada por la difracción y por el muestreo del sensor~\cite{garcia2006,
+lopera2024}; la cota por difracción es del orden de $\lambda/(2\,\mathrm{NA})$.
+
+El campo en el sensor es la propagación del producto de la transmitancia de la
+muestra por la onda esférica de la fuente, y puede escribirse con la integral
+de Rayleigh--Sommerfeld~\cite{lopera2024}. El sensor registra su intensidad,
+el holograma. Si $R$ es la onda de referencia ---la esférica que llega al
+sensor sin dispersarse--- y $O$ la que dispersa la muestra, el holograma es
+\begin{equation}
+  I = |R + O|^2 = |R|^2 + |O|^2 + R^*O + R\,O^*.
+  \label{eq:holograma}
+\end{equation}
+El término $R^*O$ contiene el objeto; $R\,O^*$ es su conjugado, que al
+reconstruir produce la imagen gemela característica de la holografía en
+línea~\cite{gabor1948, latychevskaia2015}. Restar al holograma la intensidad
+de la referencia, registrada sin muestra, elimina el término $|R|^2$ y deja el
+holograma de contraste~\cite{garcia2006}; en este trabajo se divide por ella,
+lo que además normaliza la envolvente de la iluminación
+(Sección~\ref{sec:metricas}).
+
+Lopera et al.~\cite{lopera2024} modelan la formación del holograma separando
+los efectos que la iluminación esférica mezcla: la difracción del frente
+esférico tras atravesar la muestra y la magnificación del campo difractado,
+que no es homogénea en el sensor, más una distorsión geométrica asociada a la
+proyección de un frente esférico sobre un sensor plano. Esa descomposición
+permite simular de forma eficiente hologramas de alta apertura numérica y alta
+magnificación, que los métodos clásicos no reproducen con
+exactitud~\cite{lopera2024}.
+
+El origen de la dificultad numérica es el mismo que el de la
+Sección~\ref{sec:asm-fft}. La DLHM necesita propagar entre dos planos con
+escalas distintas ---la muestra y el sensor, separadas por la magnificación---
+y un frente esférico que, muestreado con el paso del sensor, oscila más
+deprisa que el límite de Nyquist en la periferia. Los métodos de convolución
+basados en la FFT exigen la misma malla en los dos planos, lo que limita la
+magnificación a la unidad~\cite{lopera2024}.
 
 \subsection{Reconstrucción en DLHM}
-\pendiente{RS no aproximada como referencia de exactitud \cite{buitrago2019};
-el espectro angular con iluminación de onda esférica que se usa de rutina en
-el laboratorio, que es la línea base del objetivo 3.}
+\label{sec:reconstruccion-dlhm}
+
+Reconstruir es propagar el holograma de vuelta hasta el plano de la muestra.
+El método clásico es la transformada de Kirchhoff--Helmholtz, que incorpora la
+geometría esférica con un cambio de coordenadas~\cite{kreuzer2001}. La
+integral de Rayleigh--Sommerfeld sin aproximaciones evita cualquier
+restricción de muestreo sobre el plano de salida y es la referencia de
+exactitud natural, pero exige del orden de $MNPQ$ operaciones para una entrada
+de $M\times N$ y una salida de $P\times Q$ puntos; su costo solo se vuelve
+manejable en GPU~\cite{buitrago2019}. Su versión por convolución calculada con
+FFT~\cite{shen2006} es rápida, pero hereda la exigencia de una misma malla en
+la entrada y la salida.
+
+Entre esos extremos están los métodos de espectro angular con iluminación
+esférica. Por el teorema de escalado de Fresnel, dentro de la aproximación
+paraxial la reconstrucción con iluminación esférica equivale a una
+propagación con onda plana a una distancia equivalente, sobre la malla del
+sensor proyectada en la muestra~\cite{latychevskaia2015}; así, cualquier
+propagador de onda plana se aplica sin modificarse
+(Sección~\ref{sec:esferica}). La reconstrucción de rutina en el montaje DLHM
+del laboratorio multiplica el holograma por la onda de referencia y lo
+retropropaga con el espectro angular, y es la línea base frente a la que se
+compararon los métodos de este trabajo (Sección~\ref{sec:metricas}).
 
 % ------------------------------------------------------------
 \section{Antecedentes}
@@ -69,31 +379,32 @@ el laboratorio, que es la línea base del objetivo 3.}
 
 % Base: sección B del anteproyecto.
 Las limitaciones de muestreo del espectro angular basado en FFT se
-identificaron tempranamente \cite{li2007}. El método de banda limitada
-\cite{matsushima2009} restringe el cálculo a las frecuencias que sí cumplen la
-condición de muestreo y es hoy la solución más difundida; una alternativa
-opuesta amplía la ventana de entrada para comprimir el muestreo en frecuencia
-\cite{yu2012}; también se han explorado transformadas de Fourier con muestreo
-no uniforme, que amplían el rango útil a costa de una implementación más
-compleja \cite{kim2014}.
+identificaron tempranamente~\cite{li2007}. El método de banda
+limitada~\cite{matsushima2009} restringe el cálculo a las frecuencias que sí
+cumplen la condición de muestreo y es hoy la solución más difundida; una
+alternativa opuesta amplía la ventana de entrada para comprimir el muestreo
+en frecuencia~\cite{yu2012}; también se han explorado transformadas de
+Fourier con muestreo no uniforme, que amplían el rango útil a costa de una
+implementación más compleja~\cite{kim2014}.
 
 El MPASM se propuso en 2020 junto con una implementación en Python de acceso
-abierto \cite{zhao2020, zhao2020code}. Los resultados publicados lo comparan
+abierto~\cite{zhao2020, zhao2020code}. Los resultados publicados lo comparan
 contra el ASM convencional, el método de banda limitada y la integral de
 Rayleigh--Sommerfeld, cuya evaluación directa sirve de referencia porque no
 impone restricciones de muestreo sobre el plano de salida. Toda esa
 validación, sin embargo, se hizo en simulación ---un haz gaussiano atravesando
 una lente---, sin datos experimentales.
 
-En DLHM, el grupo de Óptica de la Universidad Nacional de Colombia (Sede
-Medellín) ha abordado la reconstrucción mediante la implementación no
-aproximada de la integral de Rayleigh--Sommerfeld (RSD), que elimina las
-restricciones sobre el rango de propagación a costa de un elevado costo
-computacional, mitigado en GPU \cite{buitrago2019}; por esa ausencia de
-restricciones de muestreo se emplea aquí como referencia de exactitud
-numérica. La reconstrucción de rutina en el montaje DLHM del laboratorio, en
-cambio, se realiza con un propagador de espectro angular que incorpora la
-iluminación de onda esférica del \emph{pinhole}, y es esa la línea base frente
-a la cual se contrastan los métodos implementados. Este trabajo se inserta en
-esa línea, evaluando una familia de propagadores ---la del producto
-matricial--- no explorada antes en DLHM.
+En DLHM, el muestreo flexible ya se había abordado con la transformada de
+Fresnel--Bluestein~\cite{restrepo2011}, limitada por su base paraxial. El
+grupo de Óptica de la Universidad Nacional de Colombia (Sede Medellín) ha
+abordado la reconstrucción mediante la implementación no aproximada de la
+integral de Rayleigh--Sommerfeld, que elimina las restricciones sobre el rango
+de propagación a costa de un elevado costo computacional, mitigado en
+GPU~\cite{buitrago2019}; y Lopera et al.\ propusieron un modelo de formación
+del holograma que separa la difracción de la magnificación~\cite{lopera2024}.
+La reconstrucción de rutina en el montaje DLHM del laboratorio se realiza con
+un propagador de espectro angular que incorpora la iluminación de onda
+esférica del \emph{pinhole}. Este trabajo se inserta en esa línea, evaluando
+una familia de propagadores ---la del producto matricial--- no explorada antes
+en DLHM.
