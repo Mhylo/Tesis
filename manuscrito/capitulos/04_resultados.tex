@@ -165,8 +165,8 @@ $N = 512$ (de \SI{2.8}{ms} a \SI{70}{ms}). En el escenario de la Tabla~1, con
 $s = 10$, una propagación del MPASM toma unos \SI{110}{ms} en GPU, frente a
 \SI{2}{ms} del FFT-ASM.
 
-Con esto el objetivo~1 queda cumplido: los tres métodos están implementados
-bajo una misma interfaz, el FFT-ASM y el MPASM coinciden con implementaciones
+Con esto el objetivo~1 queda cumplido: los tres métodos están implementados y
+agrupados en un mismo marco computacional, el FFT-ASM y el MPASM coinciden con implementaciones
 independientes, y la exactitud de los tres está medida contra una solución
 analítica que una segunda referencia, verificada por su cuenta, confirma. La comparación deja además una primera respuesta a la pregunta
 de investigación: el control del muestreo del MPASM gana cuando el campo
