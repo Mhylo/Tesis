@@ -8,9 +8,36 @@
 \chapter{Materiales y métodos}
 \label{cap:metodos}
 
-\pendiente{un párrafo sobre la metodología en cascada y la validación en dos
-niveles (referencias numéricas y hologramas de laboratorio), con todos los
-métodos aplicados al mismo dato.}
+% Base: sección E del anteproyecto aceptado, en pasado y con lo que se hizo.
+El trabajo siguió la metodología en cascada, de enfoque cuantitativo, que
+planteó el anteproyecto. Cada fase entregó un producto verificado que alimentó
+la siguiente, y cada sección de este capítulo corresponde a una de ellas:
+\begin{itemize}
+  \item la Fase~1 (Sección~\ref{sec:implementacion}) entregó los tres
+  propagadores implementados y verificados, que responden al objetivo~1;
+  \item la Fase~2 (Sección~\ref{sec:calibracion}), la forma de aplicarlos a la
+  iluminación esférica de la DLHM y los mapas de validez bajo su muestreo, que
+  responden al objetivo~2;
+  \item la Fase~3 (Sección~\ref{sec:montaje}), los parámetros del montaje y los
+  hologramas;
+  \item la Fase~4 (Sección~\ref{sec:metricas}), las reconstrucciones y su
+  comparación, que responden al objetivo~3.
+\end{itemize}
+El registro experimental de la Fase~3 corrió en paralelo con las fases
+numéricas y estuvo a cargo del laboratorio.
+
+La validación se hizo en dos niveles. El primero fue contra soluciones de
+referencia en casos controlados: la solución analítica del haz gaussiano y la
+integral de Rayleigh--Sommerfeld, verificada por su cuenta
+(Sección~\ref{sec:verificacion}). El segundo fue contra hologramas de una
+muestra de resolución conocida, simulados con los parámetros del montaje del
+laboratorio (Sección~\ref{sec:metricas}). En cada nivel, los métodos que se
+comparan se aplicaron al mismo dato, de modo que las diferencias entre los
+resultados son atribuibles al propagador.
+
+\pendiente{si se reconstruyen los hologramas experimentales del laboratorio,
+el segundo nivel los incluye; si no, declarar aquí la desviación del
+objetivo~3 frente al anteproyecto, acordada con Carlos.}
 
 % ------------------------------------------------------------
 \section{Marco computacional unificado (Fase 1)}
