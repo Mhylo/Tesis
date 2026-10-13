@@ -19,15 +19,16 @@ métodos aplicados al mismo dato.}
 %       campos.py; scripts/mpasm_minimo.py; código de referencia
 %       en referencia/ y el parche de scripts/parchar_referencias.py.
 
-Los tres métodos se implementaron en Python dentro de un mismo paquete,
-\texttt{CamposT}, a partir del código publicado del MPASM~\cite{zhao2020code}.
-FFT-ASM, BLAS y MPASM comparten una sola interfaz: reciben el campo de
-entrada, el paso de muestreo, la longitud de onda y la distancia de
-propagación, y devuelven el campo propagado; el MPASM añade como argumentos
-opcionales sus coeficientes de control ($s$, $K_f$ y el muestreo de salida
-$r$). Una función común despacha al método pedido con el mismo relleno de
-ceros y el mismo recorte, de modo que todos se aplican al mismo dato en las
-mismas condiciones. El cálculo corre en CPU (NumPy) o en GPU (CuPy) con un
+Los tres métodos se implementaron en Python y quedaron agrupados en un mismo
+marco computacional, el paquete \texttt{CamposT}, construido a partir del
+código publicado del MPASM~\cite{zhao2020code}. Dentro de ese marco, FFT-ASM,
+BLAS y MPASM se usan de la misma manera: reciben el campo de entrada, el paso
+de muestreo, la longitud de onda y la distancia de propagación, y devuelven el
+campo propagado. El MPASM acepta además, de forma opcional, sus coeficientes
+de control ($s$, $K_f$ y el muestreo de salida $r$). Para compararlos, una
+misma función aplica el método elegido con el mismo relleno de ceros y el
+mismo recorte, de modo que todos trabajan sobre el mismo dato y en las mismas
+condiciones. El cálculo corre en CPU (NumPy) o en GPU (CuPy) con un
 único cuerpo de código, que solo cambia el módulo de arreglos, así que las
 diferencias de tiempo entre dispositivos miden el hardware y no dos
 implementaciones distintas.
@@ -129,9 +130,10 @@ intensidad: es ciego a un error de escala global y a la fase. Donde la fase
 importa, los campos se compararon como complejos.
 
 \paragraph{Contraste con implementaciones de terceros.} El FFT-ASM y el MPASM
-se contrastaron también con implementaciones ajenas: el FFT-ASM con la de
-pyDHM~\cite{castaneda2022}, y el MPASM, término a término, con el código
-publicado por sus autores~\cite{zhao2020code}. Para el BLAS no se usó una
+se contrastaron también con implementaciones ajenas. El FFT-ASM, con la de la
+librería pyDHM~\cite{castaneda2022}, que suministró el tutor de este trabajo;
+el MPASM, término a término, con el código publicado por sus
+autores~\cite{zhao2020code}. Para el BLAS no se usó una
 implementación ajena; lo verifican la solución analítica y las pruebas
 automáticas descritas abajo. Ninguno de esos códigos se modificó en su
 física: la DFT matricial de Zhao et al.\ se copió tal cual, y su propagador se

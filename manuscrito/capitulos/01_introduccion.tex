@@ -135,9 +135,10 @@ régimen vectorial ni algoritmos de recuperación de fase.
 %       resultados/barrido_obj2/; resultados/mi_prueba_dlhm/.
 Se entregaron:
 \begin{itemize}
-  \item un paquete de \emph{software} en Python, \texttt{CamposT}, con los tres
-  propagadores bajo una interfaz común, que corre en CPU y en GPU con el mismo
-  código y está cubierto por pruebas automáticas;
+  \item un paquete de \emph{software} en Python, \texttt{CamposT}, que agrupa
+  los tres propagadores (FFT-ASM, BLAS y MPASM) en un mismo marco
+  computacional, corre en CPU y en GPU con el mismo código y está cubierto por
+  pruebas automáticas;
   \item una formulación del MPASM con la iluminación esférica exacta de la
   DLHM, implementada en el mismo paquete;
   \item los mapas de validez de los tres métodos bajo el muestreo del montaje
