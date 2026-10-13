@@ -1,9 +1,10 @@
 % !TEX root = ../main.tex
 % ============================================================
 % 1. INTRODUCCIÓN
-% Base: secciones A, C, D y F del anteproyecto. Las directrices exigen
-% los objetivos APROBADOS: van literales, no se reescriben.
-% TODO: pasar a pasado lo que el anteproyecto dejaba en futuro.
+% Base: secciones A, C, D y F del anteproyecto aceptado
+% (docs/Entregables/AnteProyecto_Tesis.pdf), cotejadas el 2026-10-12.
+% Las directrices exigen los objetivos APROBADOS: van literales, no se
+% reescriben. Lo que el anteproyecto dejaba en futuro va en pasado.
 % ============================================================
 \chapter{Introducción}
 \label{cap:introduccion}
@@ -52,6 +53,9 @@ convencional: el paso del sensor deja el contenido frecuencial del campo cerca
 del límite de Nyquist, y la iluminación divergente introduce una magnificación
 que sitúa el patrón registrado en una escala distinta a la del objeto, algo que
 la FFT no puede representar. El MPASM ofrece justamente ese control, pero solo
+% Se aparta del anteproyecto a propósito: este decía "con haces gaussianos e
+% iluminación de onda plana", y Zhao et al. usaron un haz gaussiano que
+% atraviesa una lente de -300 mm, no una onda plana (revisión del 10/10).
 había sido evaluado en simulación, con un haz gaussiano: no se había reportado
 su aplicación a hologramas experimentales ni
 existían criterios publicados para elegir sus parámetros en condiciones reales
@@ -113,7 +117,12 @@ propagadores. A esto se suma que su formulación matricial se parece
 estructuralmente a la transformada Z \emph{chirp} (CZT), un algoritmo que
 también permite calcular espectros con muestreo arbitrario; observar esa
 relación durante la caracterización numérica ayuda a situar el método entre los
-propagadores existentes.
+propagadores existentes. El problema articula además áreas del programa que
+rara vez confluyen en un solo curso: la óptica física y la difracción escalar,
+la holografía digital, el procesamiento digital de señales, los métodos
+numéricos y la formación experimental e instrumental.
+% ? Frase literal del anteproyecto. Los hologramas los registró el
+% laboratorio: ¿se mantiene "la formación experimental e instrumental"?
 
 % ------------------------------------------------------------
 \section{Alcance}
@@ -122,15 +131,40 @@ El trabajo se limita al régimen de difracción escalar y a hologramas en línea
 registrados en un montaje DLHM existente; no incluye instrumentación nueva, el
 régimen vectorial ni algoritmos de recuperación de fase.
 
-\pendiente{productos entregados: el paquete de software (nombre, licencia,
-repositorio), los hologramas con sus reconstrucciones y los mapas de validez.
-Decirlo en pasado y con lo que de verdad se entregó.}
+% Repo: CamposT/ (propagadores.py, dlhm.py, tests/);
+%       resultados/barrido_obj2/; resultados/mi_prueba_dlhm/.
+Se entregaron:
+\begin{itemize}
+  \item un paquete de \emph{software} en Python, \texttt{CamposT}, con los tres
+  propagadores bajo una interfaz común, que corre en CPU y en GPU con el mismo
+  código y está cubierto por pruebas automáticas;
+  \item una formulación del MPASM con la iluminación esférica exacta de la
+  DLHM, implementada en el mismo paquete;
+  \item los mapas de validez de los tres métodos bajo el muestreo del montaje
+  DLHM del laboratorio, con los criterios para elegir los parámetros de
+  muestreo;
+  \item las reconstrucciones de hologramas simulados de una muestra de
+  resolución conocida, con el MPASM de iluminación esférica y con el método del
+  laboratorio;
+  \item este documento.
+\end{itemize}
+
+\pendiente{repositorio y licencia del código (tareas 52 y 55; hoy no hay
+archivo LICENSE). Hologramas experimentales: decir si se reconstruyeron o
+declarar la desviación del objetivo~3, con el visto bueno de Carlos.}
 
 % ------------------------------------------------------------
 \section{Estructura del documento}
 
-\pendiente{un párrafo que recorra los capítulos: el
-Capítulo~\ref{cap:marco} presenta el marco teórico y los antecedentes; el
-Capítulo~\ref{cap:metodos}, la implementación, los barridos y el montaje; el
-Capítulo~\ref{cap:resultados}, los resultados por objetivo; y el
-Capítulo~\ref{cap:conclusiones}, las conclusiones y el trabajo futuro.}
+El Capítulo~\ref{cap:marco} presenta la teoría que usa el resto del documento:
+la difracción escalar, el espectro angular calculado con la FFT y sus límites
+de muestreo, las soluciones conocidas, el MPASM y su relación con la CZT, y la
+formación y la reconstrucción de hologramas en DLHM. Cierra con los
+antecedentes. El Capítulo~\ref{cap:metodos} describe lo que se construyó y cómo
+se midió, en el orden de las fases del anteproyecto: la implementación y su
+verificación; la calibración numérica bajo el muestreo de la DLHM, que incluye
+la iluminación esférica y el barrido de validez; el montaje; y la cadena de
+reconstrucción con sus métricas. El Capítulo~\ref{cap:resultados} presenta los
+resultados en el orden de los objetivos específicos y los discute frente a la
+pregunta de investigación. El Capítulo~\ref{cap:conclusiones} recoge las
+conclusiones y el trabajo futuro.
