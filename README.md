@@ -78,6 +78,14 @@ y qué parte del cambio de precisión.
                         no lo genera. A diferencia de los tres de arriba no
                         lleva copia propia -llama a CamposT.pipeline.propagar()-
                         y corre uno o varios a la vez sobre el mismo dato.
+      comparacion_cruzada.py
+                        Ida y vuelta con fase cruzando FFT-ASM y MPASM
+                        (mpasm_minimo) a cada z de una lista: las cuatro
+                        combinaciones, con los .npy de ida y vuelta, SAM y
+                        rms_amplitud contra el objeto y resumen.csv. Ida y
+                        vuelta FFT sale exacta aunque este aliada; las
+                        cruzadas son las que miden. Escribe en
+                        resultados/comparacion_cruzada/.
       figura_escenario.py
                         Dibuja el escenario de la Tabla 1 del paper en tres
                         figuras: la apertura, el frente de onda propagado y el
