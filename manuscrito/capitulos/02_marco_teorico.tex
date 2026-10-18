@@ -238,9 +238,29 @@ exactamente esa banda,
   K_f = \max\left\{1,\ \frac{1/(2\delta)}{f_\mathrm{max}^\mathrm{MPASM}}\right\},
   \label{eq:kf-auto}
 \end{equation}
-que en adelante se llama el $K_f$ automático. A distancias largas, el ancho de banda efectivo resultante es mucho mayor que
-el del BLAS, y crece aproximadamente como $\sqrt{s}$~\cite{zhao2020}. La
-compresión tiene un límite que no aparece en las definiciones por separado: un
+que en adelante se llama el $K_f$ automático. A distancias largas, la
+Ec.~\eqref{eq:kf-auto} tiende a $K_f \approx \delta^{-1}\sqrt{\lambda z/(sN)}$:
+el $K_f$ automático vale 1 hasta $z \approx sN\delta^2/\lambda$ ---$s$ veces la
+$z_\mathrm{lim}$ de la Ec.~\eqref{eq:zlim} cuando $\delta \gg \lambda$--- y a
+partir de ahí crece como $\sqrt{z}$ (Figura~\ref{fig:kf-z}). El ancho de banda
+efectivo resultante es mucho mayor que el del BLAS, y crece aproximadamente
+como $\sqrt{s}$~\cite{zhao2020}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{kf_vs_z.pdf}
+  \caption[$K_f$ automático en función de la distancia]{$K_f$ automático (Ec.~\eqref{eq:kf-auto}) en función de la
+  distancia, en el escenario de la Tabla~1 de~\cite{zhao2020} ($N = 512$,
+  $\delta = \SI{9.78}{\micro\metre}$, $\lambda = \SI{632.8}{nm}$), para cuatro
+  valores de $s$. Las líneas punteadas son la asíntota
+  $\delta^{-1}\sqrt{\lambda z/(sN)}$, que cruza $K_f = 1$ en
+  $z = sN\delta^2/\lambda$. El punto marca el valor con $s = 10$ a
+  \SI{200}{m}, el de la Sección~\ref{sec:res-obj1}.}
+  % Repo: scripts/figuras_manuscrito.py (figura_kf_vs_z).
+  \label{fig:kf-z}
+\end{figure}
+
+La compresión tiene un límite que no aparece en las definiciones por separado: un
 espectro muestreado con paso $\Delta f$ describe un campo periódico de periodo
 $1/\Delta f = sN\delta K_f$, así que la ventana de salida, de lado
 $rN\delta'$, tiene que caber en ese periodo, $r\delta'/\delta \le sK_f$. Si no
