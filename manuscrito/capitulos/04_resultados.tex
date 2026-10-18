@@ -54,7 +54,7 @@ analítica, a lo largo de casi tres órdenes de magnitud en distancia.
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.85\textwidth]{obj1_sam_vs_z.pdf}
-  \caption{Exactitud de los tres propagadores frente a la solución analítica
+  \caption[Exactitud de los tres propagadores en el escenario de la Tabla~1]{Exactitud de los tres propagadores frente a la solución analítica
   del haz gaussiano, en el escenario de la Tabla~1 de~\cite{zhao2020}
   ($\lambda = \SI{632.8}{nm}$, $w_0 = \SI{1}{mm}$, $N = 512$, ventana de
   \SI{5}{mm}). SAM según la Ec.~\eqref{eq:sam}; más alto es mejor. El MPASM
@@ -106,10 +106,22 @@ que dan las dos tiende a $1/(sN\lambda)$, que tiene unidades de inverso de
 longitud, de modo que su efecto cambia con las unidades en que se escriba el
 problema. En el escenario de la Tabla~1, con $s = 10$ y las longitudes en
 milímetros, como en el código publicado, el $K_f$ del código es 0.31 veces el
-del artículo
-a distancias largas (3.1 frente a 10.2 a \SI{80}{m}), y la exactitud del MPASM
-cae en consecuencia: de \SI{48.5}{dB} a \SI{33.3}{dB} a \SI{200}{m}. En este
-trabajo se usó la expresión del artículo.
+del artículo a distancias largas (3.1 frente a 10.2 a \SI{80}{m};
+Figura~\ref{fig:errata-kf}), y la exactitud del MPASM cae en consecuencia: de
+\SI{48.5}{dB} a \SI{33.3}{dB} a \SI{200}{m}. En este trabajo se usó la
+expresión del artículo.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{errata_kf.pdf}
+  \caption[La Ec.~(14) de Zhao et al.: artículo frente a código publicado]{$K_f$ automático con la Ec.~(14) de~\cite{zhao2020} tal como está
+  impresa y tal como la calcula el código publicado~\cite{zhao2020code}, en el
+  escenario de la Tabla~1 con $s = 10$ y las longitudes en milímetros. A
+  distancias largas, el cociente entre las dos tiende a $1/(sN\lambda)$, que
+  depende de las unidades; aquí vale 0.31.}
+  % Repo: scripts/figuras_manuscrito.py (figura_errata_kf).
+  \label{fig:errata-kf}
+\end{figure}
 
 \paragraph{La Ec.~(16), impresa.} El denominador de $\alpha$ en la métrica SAM
 aparece impreso como $\iint I_\mathrm{ref}$ en lugar de
@@ -124,11 +136,12 @@ corregida, el MPASM y el FFT-ASM se separan \SI{26.5}{dB} a \SI{12}{m}.
 \subsection{Costo de cómputo}
 
 La Tabla~\ref{tab:tiempos} resume el tiempo de una propagación en CPU, en
-doble precisión, y en GPU, en precisión simple.
+doble precisión, y en GPU, en precisión simple, y la
+Figura~\ref{fig:tiempos} muestra cómo crece con $N$ y, en el MPASM, con $s$.
 
 \begin{table}[htbp]
   \centering
-  \caption{Tiempo de una propagación en CPU (Intel Core i5-11300H, complex128)
+  \caption[Tiempo de una propagación en CPU y en GPU]{Tiempo de una propagación en CPU (Intel Core i5-11300H, complex128)
   y en GPU (NVIDIA RTX 3050, complex64), en milisegundos, para una malla de
   $N\times N$ con $s = 1$. Tiempos sincronizados, sin la ejecución de
   calentamiento. La aceleración es el cociente entre los dos.}
@@ -151,6 +164,19 @@ doble precisión, y en GPU, en precisión simple.
     \bottomrule
   \end{tabular}
 \end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{tiempos.pdf}
+  \caption[Tiempo de propagación en función de $N$ y de $s$]{Tiempo de una propagación en CPU (Intel Core i5-11300H,
+  complex128, línea continua) y en GPU (NVIDIA RTX 3050, complex64, línea
+  discontinua). (a)~Los tres métodos en función de $N$, con $s = 1$. (b)~El
+  MPASM en función de $s$, con $N = 512$. Son las mismas medidas de la
+  Tabla~\ref{tab:tiempos}.}
+  % Repo: scripts/comparacion.py (resultados/escalado_N.csv y escalado_s.csv)
+  %       y scripts/figuras_manuscrito.py (figura_tiempos).
+  \label{fig:tiempos}
+\end{figure}
 
 La GPU acelera los tres métodos entre 20 y 78 veces. Parte de esa ganancia es
 el cambio de precisión, sobre todo en el MPASM: a igual precisión (complex64 en

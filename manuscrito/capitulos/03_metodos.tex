@@ -243,7 +243,7 @@ desde la fuente a un ángulo $\theta$ enfoca a $z_\mathrm{eq}/\cos^3\theta$ en
 la dirección radial (meridional) y a $z_\mathrm{eq}/\cos\theta$ en la azimutal
 (sagital). Con
 objetos lisos esa fase no se nota, pero con detalle del orden del micrómetro
-sí (Sección~\ref{sec:res-obj2}).
+sí (Figura~\ref{fig:mpasm-esferico}).
 
 \subsection{MPASM con iluminación esférica exacta}
 \label{sec:mpasm-esferico}
@@ -291,6 +291,37 @@ del sensor, y retropropagada llenaría la periferia de difracción de borde
 espectro se construye una vez en \SI{9.8}{s} y cada plano de reconstrucción
 cuesta \SI{0.56}{s} en la GPU, del mismo orden que el escalado
 (\SI{0.33}{s}).
+
+% Repo: scripts/verif_dlhm_esferico.py campo --n 3000 (los datos,
+%       resultados/dlhm_esferico/campo_N3000.csv) y
+%       scripts/figuras_manuscrito.py (la figura).
+La Figura~\ref{fig:mpasm-esferico} compara las dos formas de reconstruir
+sobre una ventana de $3000\times3000$ píxeles del sensor, con los parámetros
+del banco. El objeto es un absorbente con barras de \SI{1.25}{\micro\metre} y
+puntos de \SI{1.6}{\micro\metre}, repetido en mosaico, y su holograma se
+calculó con la propagación esférica exacta. La correlación con el objeto,
+medida tesela a tesela, baja con el ángulo desde la fuente en los dos casos,
+pero de forma muy distinta. Con el campo complejo en el sensor, el escalado se
+queda en 0.89 ya cerca del eje, por la aberración esférica que desprecia, y
+baja a 0.63 en las teselas a más de \SI{15}{\degree}; el MPASM con la esférica
+exacta se mantiene por encima de 0.92 en todo el sensor. Con solo la
+intensidad, como la registra el sensor, las dos curvas bajan porque la
+intensidad trae además la imagen gemela (Sección~\ref{sec:dlhm}), y la
+diferencia entre ellas se mantiene.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{mpasm_esferico.pdf}
+  \caption[MPASM con iluminación esférica exacta frente al escalado paraxial]{Correlación con el objeto de la reconstrucción DLHM, tesela a
+  tesela, en función del ángulo con que la fuente ve cada tesela: MPASM con la
+  iluminación esférica exacta (Sección~\ref{sec:mpasm-esferico}) frente al
+  escalado paraxial (Sección~\ref{sec:esferica}). Ventana de
+  $3000\times3000$ píxeles, $\lambda = \SI{528}{nm}$,
+  $\delta = \SI{1.83}{\micro\metre}$, $z = \SI{3}{mm}$ y $L = \SI{10}{mm}$.
+  (a)~Reconstrucción desde el campo complejo en el sensor; (b)~desde la
+  intensidad.}
+  \label{fig:mpasm-esferico}
+\end{figure}
 
 \subsection{Barrido de validez}
 \label{sec:barrido}
