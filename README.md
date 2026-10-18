@@ -84,7 +84,10 @@ y qué parte del cambio de precisión.
                         combinaciones, con los .npy de ida y vuelta, SAM y
                         rms_amplitud contra el objeto y resumen.csv. Ida y
                         vuelta FFT sale exacta aunque este aliada; las
-                        cruzadas son las que miden. Escribe en
+                        cruzadas son las que miden. Con R > 1 anade MPASM
+                        con la ventana ampliada (r, mag): un sensor simulado
+                        mas grande, que en la zona de Fresnel recupera el
+                        detalle que la ventana fija pierde. Escribe en
                         resultados/comparacion_cruzada/.
       figura_escenario.py
                         Dibuja el escenario de la Tabla 1 del paper en tres
