@@ -7,8 +7,82 @@
 
 \section{Conclusiones}
 
-\pendiente{una conclusión por objetivo específico, con el número que la
-sostiene.}
+% Repo: cada número sale del capítulo 4, que da su script.
+\paragraph{Objetivo 1: implementación y verificación.} Los tres propagadores
+---FFT-ASM, BLAS y MPASM--- quedaron en un mismo paquete, \texttt{CamposT}, que
+corre en CPU y en GPU con el mismo código y está cubierto por pruebas
+automáticas, ellas mismas comprobadas por mutación. Coinciden con
+implementaciones independientes: el FFT-ASM con el de pyDHM hasta
+$1.9\times10^{-8}$, y el MPASM con el código de sus autores a precisión de
+máquina. Su exactitud se midió contra la solución analítica del haz gaussiano,
+y la confirma una referencia construida aquí, la integral de
+Rayleigh--Sommerfeld reducida a una dimensión, que se aparta
+$2.0\times10^{-6}$ de una solución exacta no paraxial y es diecinueve veces más
+exacta que la evaluación por fuerza bruta de pyLHM. En el escenario con el que
+se presentó el MPASM, este se mantuvo entre 31.1 y \SI{48.5}{dB} de
+\SI{0.5}{m} a \SI{200}{m}, mientras el FFT-ASM caía por debajo de \SI{5}{dB}
+desde \SI{12}{m}, con el haz ya fuera de la ventana. La verificación encontró
+dos erratas en el artículo original: la Ec.~(14) del código publicado, que no
+es dimensionalmente consistente y baja el MPASM de 48.5 a \SI{33.3}{dB} a
+\SI{200}{m}, y el denominador impreso de la métrica SAM, con el que un campo
+comparado consigo mismo da \SI{0.37}{dB}. La GPU acelera los tres métodos
+entre 20 y 78 veces, y el control del muestreo tiene un precio: con $s = 1$, el
+MPASM cuesta entre 1.6 y 9.2 veces lo que el FFT-ASM.
+
+\paragraph{Objetivo 2: validez bajo el muestreo de la DLHM.} El escalado de
+Fresnel permite aplicar a la DLHM los propagadores de onda plana sin
+modificarlos, pero es paraxial: con detalle del orden del micrómetro, la
+correlación de la reconstrucción con el objeto se queda en 0.89 cerca del eje y
+baja a 0.63 a más de \SI{15}{\degree} de la fuente. El MPASM con la
+iluminación esférica exacta, formulado en este trabajo, lleva la parte
+parabólica de la esférica dentro de sus matrices mediante integrales de
+Fresnel, con $K_f < 1$, y se mantiene por encima de 0.92 en todo el sensor,
+con \SI{0.56}{s} por plano para un sensor de $3000\times4000$ píxeles en la
+GPU. Esa formulación es también el resultado del contraste con la CZT: las
+matrices del MPASM son una CZT evaluada por producto directo, y las de la
+esférica, que no son un \emph{chirp}, no admiten la factorización de
+Bluestein, mientras que el producto matricial solo pide escribirlas. En la
+geometría nominal del banco, con la precisión aceptable en $10^{-3}$, el
+FFT-ASM y el BLAS con relleno al doble son confiables en 79 y 78 de las 98
+celdas del barrido y fallan solo con la muestra cerca de la fuente y ventanas
+pequeñas; el MPASM con $s = 3$ y el $K_f$ automático lo es en 95, y con
+$s = 1$ no conviene. De los tres $K_f$ probados, el automático fue el mejor en
+todas las celdas: la mitad o el doble empeoran el error, en mediana, entre 77 y
+$1.3\times10^{5}$ veces. La frontera entre lo confiable y lo que no la traza el
+cociente $z_\mathrm{eq}/[N(\delta/M)^2/\lambda]$, que en el banco la fija en
+unos 3, el valor que corresponde al relleno al doble. La ida y vuelta con
+fase, de distancias cortas a la zona de Fresnel, muestra lo mismo desde la
+reconstrucción. Con onda plana, por debajo del cociente 1, las cuatro
+combinaciones de FFT-ASM y MPASM devuelven el objeto exacto; por encima, con la
+misma ventana, el FFT-ASM y el MPASM recuperan la misma información, y lo mismo
+la cadena del laboratorio y el MPASM esférico en el banco. Donde el campo cabe
+en el banco, el MPASM esférico es además más exacto que la cadena del
+laboratorio ---\SI{25.4}{dB} frente a entre 20.3 y \SI{20.7}{dB} con la
+muestra a \SI{7}{mm}---, porque no remuestrea la esférica. Que el FFT-ASM
+supere la ida y vuelta consigo mismo no prueba nada: deshace su propio error a
+cualquier distancia.
+
+\paragraph{Objetivo 3: hologramas experimentales.} Se reconstruyeron los
+hologramas que registró el laboratorio de dos \emph{targets} USAF, de
+amplitud y de fase, en 17 posiciones de la platina con 16 capturas cada una.
+Todas las posiciones tienen un foco único, en el que las capturas coinciden
+con una dispersión de entre el 0.27 y el 0.57\,\% en amplitud y de entre el
+0.69 y el 2.4\,\% en fase. Los hologramas no traían su geometría y la nominal
+del banco no les sirvió: ajustando a la vez los focos y la escala del USAF se
+infirió un píxel de unos \SI{3.8}{\micro\metre} y $L = \SI{18.2}{mm}$, con los
+que la platina avanza a pasos de 0.1 y \SI{0.05}{mm}, con residuos de 4.3 y
+\SI{11.5}{\micro\metre} rms. Esa geometría queda por confirmar con el
+laboratorio. Frente al método de espectro angular con onda esférica del
+laboratorio, el MPASM esférico dio con la misma ventana casi la misma imagen
+---correlación de 0.87 a 0.97, y contrastes que ninguno gana en todos los
+elementos---, como predice el criterio para hologramas con cociente entre 1.2
+y 6.2. Su ventaja fue de memoria: en la misma GPU de \SI{4}{GB} procesa un
+recorte veinte veces mayor que el que admite la cadena del laboratorio, que
+con 1024 píxeles ya pediría \SI{4.8}{GB}. Con ese recorte, el contraste de los
+elementos de 5 a \SI{10}{\micro\metre} pasa de entre 0.26 y 0.41 a entre 0.60
+y 0.72, y las frecuencias del USAF se recuperan a menos del 3.8\,\%, a cambio
+de más textura en el fondo: la relación señal--ruido de la zona de fondo baja
+de entre 8.9 y 15.8 a entre 7.6 y 11.4.
 
 % Repo: el texto que acordó el concilio del 21/10 (redacción A, reescrita).
 %       Sus números: resultados/comparacion_cruzada/, resultados/cruzada_dlhm/,
@@ -23,8 +97,10 @@ y $z_\mathrm{eq} = z$. En la DLHM, con $M = L/z$ y $z_\mathrm{eq} = z(L-z)/L$
 $z_\mathrm{eq}/z_\mathrm{lim} = \lambda L(L-z)/(N\delta^2 z)$ crece al acercar
 la muestra a la fuente: en los hologramas del laboratorio, a 0.4--2~mm de ella,
 vale de 1.2 a 6.2 con el sensor entero y la geometría inferida, mientras que en
-un DHM típico $N\delta^2/\lambda$ ronda los 46~mm y un reenfoque de milímetros
-queda muy por debajo. La idea de que el MPASM rinde con mayores distancias se
+un microscopio holográfico digital con objetivo (DHM) típico, con
+$N = 2048$ píxeles de \SI{3.45}{\micro\metre} y luz de \SI{532}{nm},
+$N\delta^2/\lambda$ ronda los 46~mm y un reenfoque de milímetros queda muy por
+debajo. La idea de que el MPASM rinde con mayores distancias se
 sostiene, entonces, si la distancia se lee como equivalente, medida frente a
 $z_\mathrm{lim}$, y no como física; y el criterio es un orden de magnitud, no
 una frontera, porque sale del escalado paraxial. Por encima de él hay que
@@ -46,4 +122,36 @@ contraste, no fidelidad.
 
 \section{Trabajos futuros}
 
-\pendiente{lo que quedó fuera del alcance o abierto por los resultados.}
+Los resultados dejan abiertos cinco caminos, en orden de cercanía con lo que
+ya está hecho:
+\begin{itemize}
+  \item \textbf{Confirmar la geometría del registro.} El píxel y $L$ se
+  infirieron de los propios hologramas, y el ajuste no distingue
+  \SI{3.8}{\micro\metre} de \SI{3.66}{\micro\metre}, el píxel de
+  \SI{1.83}{\micro\metre} con agrupamiento $2\times2$. Guardar con cada
+  conjunto de hologramas el píxel efectivo, el agrupamiento y $L$, o registrar
+  un holograma con la muestra en una posición conocida, haría innecesario el
+  ajuste.
+  \item \textbf{Medir fidelidad, no solo contraste.} Sin verdad de terreno,
+  las métricas del objetivo~3 miden nitidez y contraste. Muestras de
+  transmitancia conocida y registros sin compresión, en lugar de JPEG de 8
+  bits, permitirían comparar la reconstrucción con el objeto, como se hizo en
+  simulación.
+  \item \textbf{Llevar el MPASM esférico a la reconstrucción de rutina.} Su
+  ventaja en el laboratorio es usar todo el sensor con la memoria disponible.
+  Integrarlo en la cadena del laboratorio, y comparar las dos cadenas sobre la
+  misma ventana grande en una GPU con más memoria, cerraría la comparación del
+  objetivo~3.
+  \item \textbf{La imagen gemela.} Ninguna de las cadenas comparadas la
+  suprime, y quedó fuera del alcance. Los algoritmos iterativos de
+  recuperación de fase propagan muchas veces entre el sensor y la muestra, y la
+  malla de salida libre del MPASM esférico permitiría hacerlo con el sensor
+  entero en una GPU de consumo.
+  \item \textbf{Simular hologramas con el MPASM.} Más allá del límite de la
+  ventana, el MPASM con sobremuestreo propaga correctamente donde el FFT-ASM
+  se contamina de \emph{aliasing}. Esa propagación es la que se usa para
+  simular hologramas con los que validar métodos de reconstrucción, y en
+  montajes de distancia equivalente grande, como la holografía sin lentes con
+  el sensor a decenas de centímetros, el control del muestreo rinde sin
+  depender del tamaño del sensor.
+\end{itemize}
