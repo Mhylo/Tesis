@@ -52,7 +52,8 @@ montaje~\cite{lopera2024}. Dos rasgos de esa geometría tensionan al ASM
 convencional: el paso del sensor deja el contenido frecuencial del campo cerca
 del límite de Nyquist, y la iluminación divergente introduce una magnificación
 que sitúa el patrón registrado en una escala distinta a la del objeto, algo que
-la FFT no puede representar. El MPASM ofrece justamente ese control, pero solo
+la FFT, con la misma malla en la entrada y en la salida, solo acomoda
+remuestreando o aproximando. El MPASM ofrece justamente ese control, pero solo
 % Se aparta del anteproyecto a propósito: este decía "con haces gaussianos e
 % iluminación de onda plana", y Zhao et al. usaron un haz gaussiano que
 % atraviesa una lente de -300 mm, no una onda plana (revisión del 10/10).
@@ -108,7 +109,8 @@ El MPASM aporta un grado de libertad que los métodos convencionales no tienen:
 elegir de forma independiente cómo se muestrea el campo en el espacio y en la
 frecuencia. Ese control encaja con lo que exige DLHM, donde la magnificación
 geométrica y las condiciones de registro imponen restricciones que el ASM
-basado en FFT no puede acomodar. Verificar si esa flexibilidad se traduce en
+basado en FFT solo acomoda remuestreando, con una malla que crece con la
+ventana. Verificar si esa flexibilidad se traduce en
 mejoras medibles sobre la reconstrucción de hologramas experimentales es una
 pregunta que la literatura aún no respondía, ya que el método solo había sido
 evaluado en simulaciones; y contar con criterios explícitos para elegir los
@@ -129,11 +131,13 @@ numéricos y la formación experimental e instrumental.
 
 El trabajo se limita al régimen de difracción escalar y a hologramas en línea
 registrados en un montaje DLHM existente; no incluye instrumentación nueva, el
-régimen vectorial ni algoritmos de recuperación de fase. La única salida
-deliberada de la geometría del banco es un ensayo con iluminación plana, de
-distancias cortas a la zona de Fresnel, que sirve para separar lo que aportan
-los coeficientes de control cuando el campo se sale de la ventana
-(Sección~\ref{sec:metodo-fresnel}).
+régimen vectorial ni algoritmos de recuperación de fase. Hay dos salidas
+deliberadas de la geometría del banco: la verificación del objetivo~1, hecha en
+el escenario con el que se presentó el MPASM para poder comparar con un
+resultado publicado (Sección~\ref{sec:verificacion}), y un ensayo con
+iluminación plana, de distancias cortas a la zona de Fresnel, que sirve para
+separar lo que aportan los coeficientes de control cuando el campo se sale de
+la ventana (Sección~\ref{sec:metodo-fresnel}).
 
 % Repo: CamposT/ (propagadores.py, dlhm.py, tests/);
 %       resultados/barrido_obj2/; scripts/comparacion_cruzada.py,
@@ -153,7 +157,7 @@ Se entregaron:
   desde el banco DLHM hasta la zona de Fresnel, que establece cuándo pesan
   $s$, $K_f$ y la ventana de salida;
   \item las reconstrucciones de los hologramas experimentales del laboratorio,
-  de \emph{targets} USAF de amplitud y de fase, con el MPASM de iluminación
+  de \emph{targets} de resolución USAF 1951, de amplitud y de fase, con el MPASM de iluminación
   esférica y con el método del laboratorio, junto con la geometría de registro
   inferida de esos mismos hologramas;
   \item este documento.

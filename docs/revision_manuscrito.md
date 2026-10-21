@@ -30,3 +30,22 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
   cada frase lleva un número de las conclusiones.
 - El abstract en inglés es opcional: las directrices solo piden el resumen.
   Está comentado en `resumen.tex`.
+
+## Capítulo 1
+
+- **Justificación, última frase.** Tu `% ?` sigue abierto: ¿se mantiene "la
+  formación experimental e instrumental"? Los hologramas los registró el
+  laboratorio. Lo experimental del trabajo fue inferir la geometría del
+  registro y reconstruir. Una salida es cambiarla por "el tratamiento de datos
+  experimentales".
+- **Contribuciones.** El planteamiento dice que no existían criterios
+  publicados para elegir los parámetros del MPASM, y la tesis entrega uno: el
+  cociente de la ventana. El concilio del 11/10 sugería un párrafo de
+  contribuciones al final de la introducción:
+  - el MPASM esférico;
+  - el criterio de ventana;
+  - la referencia RS radial;
+  - las dos erratas de Zhao;
+  - la geometría inferida.
+
+  Es una adición, no una corrección, así que no se escribió.
