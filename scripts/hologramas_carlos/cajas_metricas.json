@@ -1,0 +1,9 @@
+{
+  "_nota": "Cajas (x0, x1, y0, y1) en pixeles del recorte comun de 512 x 512 (centrado en el sensor), sobre amp z<k>, captura 1, en el foco comun. Elementos ['v'|'h', x0, x1, y0, y1]: tres barras del USAF, identificadas a ojo el 2026-10-21 en la reconstruccion del exacto con el recorte grande (comparar.zona_grande). fondo: zona sin elementos para el SNR.",
+  "1": {"elementos": [["v", 205, 385, 160, 280], ["v", 245, 430, 380, 490]],
+        "fondo": [60, 160, 330, 420]},
+  "9": {"elementos": [["h", 440, 510, 92, 205], ["h", 440, 510, 235, 335]],
+        "fondo": [100, 250, 380, 480]},
+  "17": {"elementos": [["v", 0, 310, 220, 400]],
+         "fondo": [360, 490, 20, 120]}
+}
