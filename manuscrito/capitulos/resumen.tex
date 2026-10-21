@@ -7,8 +7,9 @@
 % Repo: los números, del capítulo 5 (y por él, del 4).
 Reconstruir un holograma en microscopía holográfica digital sin lentes (DLHM)
 exige propagar numéricamente el campo entre el sensor y la muestra. El
-espectro angular calculado con la FFT, el método más usado, impone a todo el
-cálculo el muestreo de la entrada; el espectro angular por producto matricial
+espectro angular calculado con la FFT (FFT-ASM), el método más usado, impone a
+todo el cálculo el muestreo de la entrada; el espectro angular por producto
+matricial
 (MPASM) lo libera con dos coeficientes de control, $K_f$ y $s$, pero solo se
 había evaluado en simulación. En este trabajo se implementaron el FFT-ASM, el
 método de banda limitada y el MPASM en un mismo paquete de Python para CPU y
@@ -18,10 +19,11 @@ iluminación esférica exacta de la DLHM; se midió la validez de los métodos e
 la geometría del banco del laboratorio y en una ida y vuelta desde distancias
 cortas hasta la zona de Fresnel, y se reconstruyeron hologramas experimentales
 de \emph{targets} USAF de amplitud y de fase, cuya geometría se infirió de los
-propios hologramas. El control del muestreo rinde cuando la distancia de
-propagación equivalente es del orden de $N(\delta/M)^2/\lambda$ o mayor, es
-decir, cuando el campo no cabe en la ventana del registro, lo que en la DLHM
-ocurre con la muestra cerca de la fuente y no a distancias físicas grandes. En
+propios hologramas. El control del muestreo rinde cuando el campo
+propagado no cabe en la ventana del registro, algo que un cociente entre la
+distancia de propagación equivalente y el tamaño de la ventana permite
+anticipar, y que en la DLHM ocurre con la muestra cerca de la fuente, a
+magnificaciones altas, y no a distancias físicas grandes. En
 ese régimen, el MPASM con sobremuestreo propaga con entre 11 y 1100 veces
 menos error que el FFT-ASM con relleno. Al reconstruir, con la misma ventana,
 el MPASM esférico y el método del laboratorio dan casi la misma imagen
