@@ -204,7 +204,8 @@ propia FFT impone~\cite{zhao2020}.
 El MPASM~\cite{zhao2020} parte de que la transformada discreta de Fourier
 (DFT) bidimensional puede escribirse como un triple producto de
 matrices~\cite{schmidt2010}. Si la entrada $U_0$ es una matriz de $M\times N$
-muestras en las posiciones $\mathbf{x}$ e $\mathbf{y}$, su espectro en las
+muestras ---en esta sección $M$ es el número de filas; desde la
+Sección~\ref{sec:dlhm}, la magnificación--- en las posiciones $\mathbf{x}$ e $\mathbf{y}$, su espectro en las
 frecuencias $\mathbf{f}_x$ y $\mathbf{f}_y$ es
 \begin{equation}
   F(\mathbf{f}_x, \mathbf{f}_y) = \frac{1}{MN\,K_{fx}K_{fy}\,s^2}\;
@@ -235,10 +236,13 @@ elegidos también libremente:
 Con $s = K_f = r = 1$ y $\delta' = \delta$, el MPASM coincide con el espectro
 angular por FFT~\cite{zhao2020}.
 
-Los coeficientes de control tienen papeles distintos. El factor $K_f \ge 1$
-comprime el intervalo espectral: concentra las $sN$ muestras en la banda donde
-la función de transferencia sí cumple la condición de muestreo, en lugar de
-repartirlas hasta la frecuencia de Nyquist. El sobremuestreo $s$ multiplica el
+Los coeficientes de control tienen papeles distintos. El factor $K_f$ escala
+el intervalo espectral. Con $K_f > 1$, el uso de~\cite{zhao2020}, lo
+comprime: concentra las $sN$ muestras en la banda donde la función de
+transferencia sí cumple la condición de muestreo, en lugar de repartirlas
+hasta la frecuencia de Nyquist. Con $K_f < 1$ lo expande más allá de esa
+frecuencia, que es lo que pide la iluminación esférica de la
+Sección~\ref{sec:mpasm-esferico}. El sobremuestreo $s$ multiplica el
 número de muestras en frecuencia y reduce el paso $\Delta f$. Los parámetros
 de salida $r$ y $\delta'$ permiten observar una ventana mayor que la de
 entrada, o con otro paso, sin cambiar la entrada.
@@ -285,8 +289,9 @@ $1/\Delta f = sN\delta K_f$, así que la ventana de salida, de lado
 $rN\delta'$, tiene que caber en ese periodo, $r\delta'/\delta \le sK_f$. Si no
 cabe, la salida contiene copias superpuestas del campo.
 
-El control tiene un costo. El producto de matrices crece más deprisa con $N$
-que la FFT, que es $\mathcal{O}(N^2\log N^2)$: Zhao et al.\ estiman que lo
+El control tiene un costo. El producto de matrices, $\mathcal{O}(N^3)$ para
+una malla de $N\times N$, crece más deprisa con $N$ que la FFT,
+$\mathcal{O}(N^2\log N)$: Zhao et al.\ estiman que lo
 supera a partir de $N \approx 300$~\cite{zhao2020}, aunque el producto de
 matrices aprovecha muy bien el paralelismo de una GPU. Además, el sobremuestreo
 añade $(s^2 - 1)MN$ muestras al espectro, que es la matriz más grande del
@@ -298,7 +303,8 @@ cálculo.
 La transformada Z \emph{chirp} (CZT)~\cite{rabiner1969} resuelve el mismo
 problema que las matrices del MPASM: evaluar la transformada de Fourier de una
 secuencia en un conjunto de frecuencias que no es el de la FFT. Calcula la
-transformada Z $X(z_k) = \sum_n x_n z_k^{-n}$ sobre los puntos
+transformada Z $X(z_k) = \sum_n x_n z_k^{-n}$ ---aquí $z_k$ es un punto del
+plano complejo, no una distancia--- sobre los puntos
 $z_k = A\,W^{-k}$; con $A = e^{i2\pi f_0\delta}$ y $W = e^{-i2\pi\Delta f\delta}$,
 esos puntos son las frecuencias $f_k = f_0 + k\,\Delta f$, con origen, paso y
 número de muestras libres. Es exactamente lo que calcula la matriz
@@ -306,7 +312,8 @@ $\mathbf{M}_{f_x,x}$ de la Ec.~\eqref{eq:dft-matricial}.
 
 La diferencia está en cómo se calcula. La identidad de
 Bluestein~\cite{bluestein1970}, $nk = \frac{1}{2}\left[n^2 + k^2 - (k - n)^2\right]$,
-convierte la suma en una multiplicación por un \emph{chirp}, una convolución
+convierte la suma en una multiplicación por un \emph{chirp} ---una exponencial
+de fase cuadrática, cuya frecuencia crece linealmente---, una convolución
 con otro \emph{chirp} y una última multiplicación; la convolución se resuelve
 con FFT, y el costo baja de $\mathcal{O}(NK)$, el del producto directo, a
 $\mathcal{O}\big((N + K)\log(N + K)\big)$. En ese sentido, las matrices del
@@ -409,8 +416,8 @@ Sección~\ref{sec:asm-fft}. La DLHM necesita propagar entre dos planos con
 escalas distintas ---la muestra y el sensor, separadas por la magnificación---
 y un frente esférico que, muestreado con el paso del sensor, oscila más
 deprisa que el límite de Nyquist en la periferia. Los métodos de convolución
-basados en la FFT exigen la misma malla en los dos planos, lo que limita la
-magnificación a la unidad~\cite{lopera2024}.
+basados en la FFT exigen la misma malla en los dos planos, lo que, si no se
+remuestrea el holograma, limita la magnificación a la unidad~\cite{lopera2024}.
 
 \subsection{Reconstrucción en DLHM}
 \label{sec:reconstruccion-dlhm}
@@ -420,9 +427,9 @@ El método clásico es la transformada de Kirchhoff--Helmholtz, que incorpora la
 geometría esférica con un cambio de coordenadas~\cite{kreuzer2001}. La
 integral de Rayleigh--Sommerfeld sin aproximaciones evita cualquier
 restricción de muestreo sobre el plano de salida y es la referencia de
-exactitud natural, pero exige del orden de $MNPQ$ operaciones para una entrada
-de $M\times N$ y una salida de $P\times Q$ puntos; su costo solo se vuelve
-manejable en GPU~\cite{buitrago2019}. Su versión por convolución calculada con
+exactitud natural, pero exige una operación por cada par de puntos de entrada
+y de salida, del orden de $N^4$ con dos mallas de $N\times N$; su costo solo se
+vuelve manejable en GPU~\cite{buitrago2019}. Su versión por convolución calculada con
 FFT~\cite{shen2006} es rápida, pero hereda la exigencia de una misma malla en
 la entrada y la salida.
 
@@ -433,9 +440,10 @@ propagación con onda plana a una distancia equivalente, sobre la malla del
 sensor proyectada en la muestra~\cite{latychevskaia2015}; así, cualquier
 propagador de onda plana se aplica sin modificarse
 (Sección~\ref{sec:esferica}). La reconstrucción de rutina en el montaje DLHM
-del laboratorio multiplica el holograma por la onda de referencia y lo
-retropropaga con el espectro angular, y es la línea base frente a la que se
-compararon los métodos de este trabajo (Sección~\ref{sec:metricas}).
+del laboratorio remuestrea el holograma a una malla en la que la onda esférica
+queda bien muestreada, lo multiplica por ella y lo retropropaga con el espectro
+angular. Es la línea base frente a la que se compararon los métodos de este
+trabajo (Sección~\ref{sec:metricas}).
 
 % ------------------------------------------------------------
 \section{Antecedentes}

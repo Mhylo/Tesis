@@ -49,3 +49,21 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
   - la geometría inferida.
 
   Es una adición, no una corrección, así que no se escribió.
+
+## Capítulo 2
+
+- **Lista de símbolos.** Se aclararon en el texto M (filas o magnificación) y
+  z_k (punto de la transformada Z). Quedan letras con más de un uso, cada una
+  definida donde aparece:
+  - W: ancho del sensor (Ec. na), parámetro de la CZT y ventana de Fresnel
+    (Ec. ventana-chirp);
+  - A: espectro A_0, parámetro de la CZT y matriz A_n(f);
+  - s: sobremuestreo y variable de integración de la Ec. ventana-chirp;
+  - z_k: punto de la CZT y posición de la platina (3.4 y 4.3).
+
+  Una lista de símbolos en los preliminares lo resolvería sin tocar las
+  ecuaciones. Es una adición, así que no se hizo.
+- **Antecedentes, penúltima frase.** "La reconstrucción de rutina en el
+  montaje DLHM del laboratorio se realiza con un propagador de espectro
+  angular..." repite la 2.5.1. El concilio del 11/10 sugería quitarla. No se
+  tocó porque es una decisión de estilo.
