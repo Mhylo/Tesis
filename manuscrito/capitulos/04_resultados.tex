@@ -916,7 +916,11 @@ objeto exacto (Sección~\ref{sec:res-fresnel}). El control empieza a pesar
 cuando la distancia supera $z_\mathrm{lim} \approx N\delta^2/\lambda$
 (Ec.~\eqref{eq:zlim}), porque desde ahí el campo se sale de la ventana. No es,
 entonces, una cuestión de distancias largas a secas, sino del cociente entre
-la distancia y $N\delta^2/\lambda$. En DLHM, donde por el escalado la
+la distancia y $N\delta^2/\lambda$. El $K_f$ automático lo registra: vale 1
+mientras el campo cabe y, pasada $sN\delta^2/\lambda$, crece con la distancia
+como $\sqrt{z}$ (Figura~\ref{fig:kf-z}), de 1 a 16.1 entre \SI{0.5}{m} y
+\SI{200}{m} en el escenario de la Tabla~1, el mismo intervalo en que el MPASM
+se separa del FFT-ASM en la Figura~\ref{fig:sam-vs-z}. En DLHM, donde por el escalado la
 propagación es de $z_\mathrm{eq}$ sobre la malla de paso $\delta/M$
 (Ec.~\eqref{eq:escalado}), ese papel lo cumple $N(\delta/M)^2/\lambda$. Las
 distancias físicas son de milímetros, pero la malla en la muestra es tan fina
@@ -977,6 +981,28 @@ frontera, porque sale del escalado paraxial---, lo que en este montaje ocurre
 con la muestra
 cerca de la fuente, a magnificaciones altas, y no a distancias físicas
 grandes.
+
+\paragraph{Dónde rinde más el MPASM.} Fuera de la DLHM, el cociente crece con
+la distancia física, y con él el $K_f$ automático. Es el caso de las técnicas
+que registran el holograma lejos del objeto. En la holografía digital de
+Fresnel, el ángulo entre la onda objeto y la de referencia no puede pasar de
+unos pocos grados para que el sensor resuelva las franjas, así que solo caben
+objetos pequeños y lejanos: el primer holograma registrado sobre un CCD fue el
+de un cubo de \SI{11}{mm} a \SI{1}{m}~\cite{schnars1994}. La interferometría
+holográfica digital, que compara dos de esos hologramas para medir
+deformaciones y formas, trabaja en la misma geometría~\cite{schnars2005}. Con
+un sensor de 2048 píxeles de \SI{3.45}{\micro\metre} y luz de \SI{532}{nm},
+$N\delta^2/\lambda$ ronda los \SI{46}{mm}, y a \SI{1}{m} el cociente vale 22 y
+el $K_f$ automático, 4.7 con $s = 1$. Es el régimen del escenario de la
+Tabla~1 y de la zona de Fresnel del ensayo de ida y vuelta, donde el MPASM
+propagó con la exactitud que el FFT-ASM pierde y amplió la ventana de salida a
+un costo de memoria que el FFT-ASM no puede igualar
+(Secciones~\ref{sec:res-obj1} y~\ref{sec:res-fresnel}). En esas técnicas
+también se reconstruye con la transformada de Fresnel de una sola FFT, cuya
+malla de salida crece con la distancia pero que es paraxial~\cite{schnars2005};
+frente al espectro angular por FFT, que es el que se comparó aquí, es ahí donde
+los coeficientes de control del MPASM rinden más. En la DLHM lo que rinde es
+su forma matricial.
 
 \paragraph{Límites.} Lo experimental es un solo banco y dos muestras, y su
 geometría ---el tamaño de píxel y $L$--- se infirió de los mismos hologramas:
