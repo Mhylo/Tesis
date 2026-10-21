@@ -205,9 +205,10 @@ MPASM exige rellenar la malla mucho más allá de lo que cuestan sus matrices
 \section{Validez bajo el muestreo de DLHM (objetivo 2)}
 \label{sec:res-obj2}
 
-La respuesta al objetivo~2 tiene tres partes, en el orden de la
+La respuesta al objetivo~2 tiene cuatro partes, en el orden de la
 Sección~\ref{sec:calibracion}: cómo aplicar los propagadores a la
-iluminación esférica de la DLHM (Sección~\ref{sec:res-esferica}), en qué
+iluminación esférica de la DLHM (Sección~\ref{sec:res-esferica}), qué separa
+la formulación matricial de la CZT (Sección~\ref{sec:res-czt}), en qué
 rangos son confiables en el banco (Sección~\ref{sec:res-banco}) y cómo
 propagan y retropropagan el FFT-ASM y el MPASM, desde el banco hasta la zona
 de Fresnel (Sección~\ref{sec:res-fresnel}). Lo que lo ordena todo es si el
@@ -246,8 +247,73 @@ mantiene.
   \label{fig:mpasm-esferico}
 \end{figure}
 
-\pendiente{comparación MPASM--CZT: el número ya medido contra pyDHM
-(tarea~32).}
+\subsection{La formulación matricial frente a la CZT}
+\label{sec:res-czt}
+% Repo: scripts/contraste_czt.py -> resultados/contraste_czt/acuerdo.csv y
+%       tiempos.csv (21/10). Los tiempos en GPU, de la Tabla 4.1.
+
+El contraste con la CZT que pide el objetivo~2 se hizo término a término.
+Cada matriz del MPASM es de la forma $\exp(\mp i2\pi\,a_n b_k)$, con $a_n$ y
+$b_k$ sobre mallas uniformes ---posiciones y frecuencias---, y eso es una CZT
+(Sección~\ref{sec:czt-teoria}) cuyos parámetros salen de las dos mallas, por
+un factor de fase que centra la entrada. El MPASM se calculó de los dos modos,
+con sus matrices y con la CZT de SciPy, que usa la factorización de Bluestein,
+con las mismas frecuencias, el mismo $K_f$ y la misma función de
+transferencia, en el escenario de la Tabla~1 de~\cite{zhao2020} a
+\SI{0.5}{m}, \SI{12}{m} y \SI{200}{m}, con $s = 1$, 4 y 10. Los dos dan el
+mismo espectro y el mismo campo propagado: en las nueve combinaciones, la
+diferencia relativa máxima va de $4\times10^{-12}$ a $4\times10^{-10}$
+(Tabla~\ref{tab:czt}), redondeo de doble precisión.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption[El MPASM calculado con sus matrices y con la CZT]{Diferencia
+  relativa máxima, $\max|a - b|/\max|b|$, entre el MPASM calculado con la CZT
+  y con sus matrices, en el espectro y en el campo propagado. Escenario de la
+  Tabla~1 de~\cite{zhao2020}, $K_f$ automático, complex128 en CPU.}
+  \label{tab:czt}
+  \begin{tabular}{rrrcc}
+    \toprule
+    $z$ [m] & $s$ & $K_f$ & espectro & campo propagado \\
+    \midrule
+    0.5   & 1  & 2.54  & $5.4\times10^{-12}$ & $1.4\times10^{-11}$ \\
+          & 4  & 1.27  & $1.0\times10^{-10}$ & $1.3\times10^{-10}$ \\
+          & 10 & 1.00  & $3.9\times10^{-10}$ & $4.2\times10^{-10}$ \\
+    12    & 1  & 12.45 & $4.0\times10^{-12}$ & $6.7\times10^{-12}$ \\
+          & 4  & 6.22  & $2.6\times10^{-11}$ & $4.2\times10^{-11}$ \\
+          & 10 & 3.94  & $5.9\times10^{-11}$ & $6.9\times10^{-11}$ \\
+    200   & 1  & 50.81 & $7.3\times10^{-12}$ & $2.2\times10^{-11}$ \\
+          & 4  & 25.41 & $6.9\times10^{-12}$ & $1.3\times10^{-11}$ \\
+          & 10 & 16.07 & $6.0\times10^{-11}$ & $1.3\times10^{-10}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+La diferencia está en el costo, y es menor de lo que anticipa el conteo de
+operaciones (Sección~\ref{sec:czt-teoria}). En CPU y en doble precisión, con
+$s = 1$ y 4 y mallas de 512 a 2048 puntos por lado, los dos caminos tardan lo
+mismo en orden de magnitud: con $N = 512$ son más rápidas las matrices
+(\SI{0.11}{s} frente a \SI{0.15}{s} con $s = 1$), y desde $N = 1024$ la CZT,
+hasta 1.5 veces con $N = 2048$ (\SI{2.2}{s} frente a \SI{3.4}{s}). El producto
+de matrices aprovecha las bibliotecas de álgebra lineal densa, y además corre
+sin cambios en la GPU: ahí, en precisión simple, tarda entre \SI{2.8}{ms} y
+\SI{89}{ms} con $s = 1$ (Tabla~\ref{tab:tiempos}), entre 25 y 50 veces menos
+que la CZT de SciPy en la CPU, que no tiene versión para GPU.
+
+Lo que la CZT no alcanza es el MPASM esférico. Sus matrices
+(Ec.~\eqref{eq:ventana-chirp}) multiplican la fila de la DFT por la parte
+parabólica de la esférica en $x_n$ y por una ventana que depende de
+$f - x_n/(\lambda L)$. Sin esa ventana, la suma sería la CZT del holograma
+multiplicado por la esférica muestreada, que en el borde de un sensor de 3000
+píxeles oscila casi al doble del límite de Nyquist
+(Sección~\ref{sec:mpasm-esferico}): la CZT reproduciría el \emph{aliasing}.
+La ventana lo evita, y al hacerlo acopla $n$ y $f$ de una forma que no es la de
+un \emph{chirp}, así que la factorización de Bluestein ya no aplica. Al
+producto matricial le basta con escribir la matriz. Ese es el resultado del
+contraste: la CZT calcula exactamente lo mismo que el MPASM de onda plana, con
+un costo parecido en CPU, pero no la formulación esférica, que es la que la
+DLHM necesita.
 
 \subsection{Validez en el banco}
 \label{sec:res-banco}

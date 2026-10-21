@@ -10,15 +10,23 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
 - **Declarar el uso de herramientas de IA.** Está en la lista "Antes de
   entregar" del plan. Hay que revisar si EAFIT lo pide. Si lo pide, va una nota
   en la metodología o en los agradecimientos.
-- **pyDHM y la CZT (4.2.1).** El número de la tarea 32 existe: en el escenario
-  de la Tabla 1, el Fresnel–Bluestein de pyDHM se aparta de la analítica entre
-  0.011 y 0.23, y el MPASM con s = 4, entre 1.2e-4 y 5.5e-4
-  (`scripts/contraste_referencias.py`). Antes de escribirlo hay dos cuidados:
-  - la causa no está establecida. Los ángulos son de unos 2e-4 rad, así que
-    "es paraxial" no la explica;
-  - el script encontró que `pyDHM.fresnel` y `pyDHM.bluestein` usan `np.exp2`
-    donde va `np.exp`. Es la librería de Carlos, así que hay que hablarlo con
-    él antes de que entre al documento.
+- **La CZT: resuelta el 21/10, sin pyDHM.** La 4.2.2 nueva hace el contraste
+  término a término que la tarea 32 dejó pendiente (`scripts/contraste_czt.py`,
+  `tests/test_contraste_czt.py`):
+  - el MPASM calculado con la CZT de SciPy y con sus matrices da lo mismo
+    hasta 4e-10;
+  - en CPU, los dos caminos cuestan lo mismo en orden de magnitud;
+  - la formulación esférica no es una CZT.
+
+  El número de pyDHM no se usó. Queda algo para decirle a Carlos, fuera de la
+  tesis: `pyDHM.fresnel` y `pyDHM.bluestein` usan `np.exp2` donde va `np.exp`.
+  Corregido, el error del Fresnel–Bluestein a 6 m baja de 0.23 a 0.059
+  (`scripts/contraste_referencias.py`).
+- **La GPU no estaba visible el 21/10 por la tarde.** CuPy daba
+  `cudaErrorNoDevice` dentro y fuera del sandbox, y nvidia-smi pedía permisos
+  de administrador. Por eso el contraste con la CZT cita los tiempos en GPU de
+  la Tabla 4.1. Si hay que volver a correr algo en la GPU (por ejemplo, con
+  otra L), conviene revisar antes el modo de energía o el controlador.
 - **Cita de pyLHM** (`03_metodos.tex`, pendiente). La entrada de la
   bibliografía no tiene URL ni autores. Hay que confirmar con Carlos cómo se
   cita.

@@ -38,10 +38,13 @@ iluminación esférica exacta, formulado en este trabajo, lleva la parte
 parabólica de la esférica dentro de sus matrices mediante integrales de
 Fresnel, con $K_f < 1$, y se mantiene por encima de 0.92 en todo el sensor,
 con \SI{0.56}{s} por plano para un sensor de $3000\times4000$ píxeles en la
-GPU. Esa formulación es también el resultado del contraste con la CZT: las
-matrices del MPASM son una CZT evaluada por producto directo, y las de la
-esférica, que no son un \emph{chirp}, no admiten la factorización de
-Bluestein, mientras que el producto matricial solo pide escribirlas. En la
+GPU. Esa formulación es también el resultado del contraste con la CZT. Las
+matrices del MPASM de onda plana son una CZT evaluada por producto directo:
+calculado de los dos modos, el MPASM da el mismo campo hasta
+$4\times10^{-10}$, y en CPU los dos caminos cuestan lo mismo en orden de
+magnitud. Las de la esférica, en cambio, no son un \emph{chirp} y no admiten
+la factorización de Bluestein, mientras que el producto matricial solo pide
+escribirlas. En la
 geometría nominal del banco, con la precisión aceptable en $10^{-3}$, el
 FFT-ASM y el BLAS con relleno al doble son confiables en 79 y 78 de las 98
 celdas del barrido y fallan solo con la muestra cerca de la fuente y ventanas
