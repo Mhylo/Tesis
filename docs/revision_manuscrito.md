@@ -67,3 +67,21 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
   montaje DLHM del laboratorio se realiza con un propagador de espectro
   angular..." repite la 2.5.1. El concilio del 11/10 sugería quitarla. No se
   tocó porque es una decisión de estilo.
+
+## Capítulo 3
+
+- **La L adoptada.** La 3.3 dice "se adoptaron δ = 3.80 µm y L = 18.23 mm".
+  La Tabla 3.1 da, con 3.80 µm fijo, L = 18.19 ± 0.29 mm, igual que
+  `calibracion.json` (`pixel_380.L = 18.194`). Pero `correr.py` usa
+  `L_EXP = 18.229`, con el comentario "ajuste conjunto", y ningún archivo de
+  resultados lo reproduce. La diferencia, 0.035 mm, cae dentro de la
+  incertidumbre. Hay dos salidas:
+  - decir de dónde sale el 18.23;
+  - adoptar 18.19 y volver a correr `correr.py exacto` y `comparar.py`, lo que
+    toma horas en GPU.
+
+  Lo más barato es la primera, si sabes de dónde salió.
+- **Más letras con dos usos** (para la lista de símbolos): k (número de onda
+  y posición de la platina, 3.4) y r (distancia en las integrales RS y factor
+  de la malla de salida del MPASM). El diámetro del pinhole pasó a d_p, porque
+  d ya era L − z.
