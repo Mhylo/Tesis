@@ -102,3 +102,20 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
   "se contrastó con RS y da 3.6e-6". Si se ubica el script que lo produce,
   ese número cerraría el límite en la 4.2.1. Si no, el límite queda como
   está.
+
+## Capítulo 5
+
+- Se cotejó contra el capítulo 4 ya revisado y no cambió nada.
+- **"Un orden de magnitud, no una frontera."** El párrafo de la pregunta (el
+  del concilio) dice que el criterio "es un orden de magnitud, no una
+  frontera, porque sale del escalado paraxial". La 4.2.2 muestra que en los
+  mapas del banco sí traza una frontera nítida, pero en 3 y no en 1, porque
+  depende del relleno. Las dos cosas son compatibles, y la 4.2.2 lo dice
+  ("que caiga en 3 y no en 1 es lo que quiere decir que el criterio sea un
+  orden de magnitud"). Si quieres que la conclusión lo recoja, basta con
+  agregar al final de esa frase: "y su valor exacto depende del relleno: en
+  el banco, con relleno al doble, la frontera cae en 3". No se tocó porque
+  es el texto que aprobaste.
+- **Extensión.** El capítulo tiene unas 1500 palabras, frente a las 800 del
+  plan. Los párrafos del objetivo 3 y de la pregunta repiten varios números
+  (el recorte 20 veces mayor, el contraste que casi se duplica).
