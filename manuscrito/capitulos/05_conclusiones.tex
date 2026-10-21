@@ -8,7 +8,41 @@
 \section{Conclusiones}
 
 \pendiente{una conclusión por objetivo específico, con el número que la
-sostiene, y una que responda la pregunta de investigación.}
+sostiene.}
+
+% Repo: el texto que acordó el concilio del 21/10 (redacción A, reescrita).
+%       Sus números: resultados/comparacion_cruzada/, resultados/cruzada_dlhm/,
+%       resultados/barrido_obj2/ y resultados/hologramas_carlos/.
+\paragraph{La pregunta de investigación.} El control explícito del muestreo
+conviene cuando el campo propagado no cabe en la ventana del registro. Con $N$
+píxeles de tamaño $\delta$, longitud de onda $\lambda$ y magnificación $M$, eso
+ocurre cuando la distancia equivalente $z_\mathrm{eq}$ es del orden de
+$z_\mathrm{lim} \approx N(\delta/M)^2/\lambda$ o mayor; con onda plana, $M = 1$
+y $z_\mathrm{eq} = z$. En la DLHM, con $M = L/z$ y $z_\mathrm{eq} = z(L-z)/L$
+(Ec.~\eqref{eq:escalado}), el cociente
+$z_\mathrm{eq}/z_\mathrm{lim} = \lambda L(L-z)/(N\delta^2 z)$ crece al acercar
+la muestra a la fuente: en los hologramas del laboratorio, a 0.4--2~mm de ella,
+vale de 1.2 a 6.2 con el sensor entero y la geometría inferida, mientras que en
+un DHM típico $N\delta^2/\lambda$ ronda los 46~mm y un reenfoque de milímetros
+queda muy por debajo. La idea de que el MPASM rinde con mayores distancias se
+sostiene, entonces, si la distancia se lee como equivalente, medida frente a
+$z_\mathrm{lim}$, y no como física; y el criterio es un orden de magnitud, no
+una frontera, porque sale del escalado paraxial. Por encima de él hay que
+separar la propagación de la reconstrucción. Al propagar ---que es como se
+simula un holograma--- el MPASM con sobremuestreo ($s = 3$) y $K_f$ automático
+sigue a Rayleigh-Sommerfeld donde el FFT-ASM se contamina de aliasing, con
+entre 10 y 1100 veces menos error; con $s = 1$ pierde frente al FFT-ASM con
+relleno al doble. Al reconstruir, $K_f$ y $s$ no agregan información: con la
+misma ventana, las dos cadenas dan casi la misma imagen de los hologramas
+(correlación de 0.87 a 0.97), y subir $s$ de 1 a 4 cambia menos de 0.01~dB. Lo
+que mejora la reconstrucción es una ventana mayor, y lo que aporta el MPASM es
+poder pagarla: con onda plana, ampliarla le cuesta 32~MB frente a unos 32~GB al
+FFT-ASM con relleno de ceros, y con los hologramas el MPASM esférico ---que
+lleva la iluminación dentro de sus matrices y no usa $s$--- procesa en una GPU
+de \SI{4}{GB} un recorte 20 veces mayor que el de la cadena del laboratorio,
+con el que el contraste en los elementos de 5 a 10~\si{\micro\metre} casi se
+duplica. Esa mejora la da la apertura, no el propagador, y sin referencia mide
+contraste, no fidelidad.
 
 \section{Trabajos futuros}
 

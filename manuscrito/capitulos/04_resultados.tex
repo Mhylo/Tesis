@@ -296,7 +296,10 @@ separados por el cociente 1.
   representativas de las tres escalas. Con onda plana, ASM es el FFT-ASM; en
   el banco DLHM, la cadena del laboratorio, y entre paréntesis va el SAM en la
   mitad central de la ventana. El cociente es $z/z_\mathrm{lim}$ o
-  $z_\mathrm{eq}/[N(\delta/M)^2/\lambda]$. A: ASM; M: MPASM.}
+  $z_\mathrm{eq}/[N(\delta/M)^2/\lambda]$. A: ASM; M: MPASM. Con onda plana,
+  A$\to$A sale exacto a cualquier distancia porque se deshace a sí mismo
+  ($H(z)\,H(-z) = 1$): no mide exactitud, y desde \SI{20}{mm} no quiere decir
+  que el FFT-ASM gane.}
   \label{tab:ida-vuelta}
   \setlength{\tabcolsep}{5pt}
   \begin{tabular}{llrcccc}
@@ -735,26 +738,30 @@ solos, no agregan información: con la misma ventana, el FFT-ASM y el MPASM
 ---y, en la DLHM, la cadena del laboratorio y el MPASM esférico--- devuelven
 la misma reconstrucción, y subir $s$ no la cambia
 (Sección~\ref{sec:res-fresnel}). Lo que $K_f$ y $s$ hacen es mantener bien
-muestreado el cálculo, y eso le da al MPASM tres capacidades que el FFT-ASM
+muestreado el cálculo, y eso le da al MPASM dos capacidades que el FFT-ASM
 no tiene:
 \begin{itemize}
   \item una propagación directa correcta más allá de $z_\mathrm{lim}$, donde el
   FFT-ASM entrega un campo contaminado por las copias que reentran por los
-  bordes. Al reconstruir un holograma medido eso pesa poco, pero al simularlo
-  ---que es como se validan los métodos de reconstrucción--- el holograma
-  sale contaminado;
+  bordes. Pide sobremuestreo: con $s = 1$ el MPASM queda por debajo del
+  FFT-ASM con relleno al doble (Sección~\ref{sec:res-banco}). Al reconstruir
+  un holograma medido eso pesa poco, pero al simularlo ---que es como se
+  validan los métodos de reconstrucción--- el holograma sale contaminado;
   \item una ventana de salida independiente de la de entrada, que en la zona
   de Fresnel recupera el detalle que la ventana fija pierde, con un costo de
-  memoria que el FFT-ASM no puede igualar (Sección~\ref{sec:res-fresnel});
-  \item matrices de transformada arbitrarias, no solo las de una DFT
-  uniforme. Es lo que permite llevar la iluminación esférica exacta de la DLHM
-  dentro de la propagación (Sección~\ref{sec:res-esferica}), sin muestrearla
-  punto a punto. En la ida y vuelta del banco eso fue lo que separó al MPASM
-  de la cadena del laboratorio donde el campo cabe, y con los hologramas
-  experimentales es lo que le permite procesar, en la misma tarjeta, un
-  recorte del sensor veinte veces mayor que el que la otra cadena alcanza
-  (Sección~\ref{sec:res-obj3}).
+  memoria que el FFT-ASM no puede igualar (Sección~\ref{sec:res-fresnel}).
 \end{itemize}
+La tercera ventaja no viene de $K_f$ ni de $s$, sino de la forma matricial
+misma: matrices de transformada arbitrarias, no solo las de una DFT uniforme.
+Es lo que permite llevar la iluminación esférica exacta de la DLHM dentro de
+la propagación (Sección~\ref{sec:res-esferica}), sin muestrearla punto a
+punto; el MPASM esférico no usa $s$, y su $K_f < 1$ lo fija la geometría. En la
+ida y vuelta del banco eso fue lo que separó al MPASM de la cadena del
+laboratorio donde el campo cabe, y con los hologramas experimentales es lo que
+le permite procesar, en la misma tarjeta, un recorte del sensor veinte veces
+mayor que el que la otra cadena alcanza (Sección~\ref{sec:res-obj3}). La
+mejora de contraste que eso trae la da la apertura del recorte mayor; el MPASM
+la hace posible.
 
 \paragraph{Una advertencia de método.} La ida y vuelta con un mismo
 propagador no valida su exactitud: el FFT-ASM la supera a cualquier distancia,
@@ -770,7 +777,9 @@ reconstrucción, y la ventaja del MPASM fue la que dan sus matrices, poder
 trabajar con una ventana mucho mayor en la misma tarjeta y recuperar con ella
 el detalle fino (Sección~\ref{sec:res-obj3}). Ahí está, en la DLHM, la
 respuesta a en qué condiciones conviene el control del muestreo: cuando el
-cociente del criterio pasa de 1, lo que en este montaje ocurre con la muestra
+cociente del criterio es del orden de 1 o mayor ---un orden de magnitud, no una
+frontera, porque sale del escalado paraxial---, lo que en este montaje ocurre
+con la muestra
 cerca de la fuente, a magnificaciones altas, y no a distancias físicas
 grandes.
 
