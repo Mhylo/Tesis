@@ -23,9 +23,11 @@ propios hologramas. El control del muestreo rinde cuando el campo
 propagado no cabe en la ventana del registro, algo que un cociente entre la
 distancia de propagación equivalente y el tamaño de la ventana permite
 anticipar, y que en la DLHM ocurre con la muestra cerca de la fuente, a
-magnificaciones altas, y no a distancias físicas grandes. En
+magnificaciones altas. En
 ese régimen, el MPASM con sobremuestreo propaga con entre 11 y 1100 veces
-menos error que el FFT-ASM con relleno. Al reconstruir, con la misma ventana,
+menos error que el FFT-ASM con relleno, y como su $K_f$ crece con la
+distancia, el método resulta más útil en montajes de propagación larga, como
+la interferometría holográfica. Al reconstruir, con la misma ventana,
 el MPASM esférico y el método del laboratorio dan casi la misma imagen
 (correlación de 0.87 a 0.97). La ventaja del MPASM es de memoria: en una GPU
 de \SI{4}{GB} procesa un recorte del sensor veinte veces mayor, con el que el
