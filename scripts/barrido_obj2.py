@@ -69,9 +69,16 @@ Puntos de 98 con error <= 1e-3 (<= 1e-2 entre paréntesis), K_f automático:
   con este objeto: con el relleno x2 el campo cabe en la ventana.
 - t_s incluye el plan de cuFFT en la primera llamada de cada tamaño: no sirve
   para comparar costes (para eso, scripts/comparacion.py).
+- LA FRONTERA ES EL CRITERIO DE VENTANA (--frontera, 2026-10-21). FFT-ASM x2
+  se aparta del piso en 26 celdas, y son exactamente las de cociente
+  z_eq/[N(delta/M)^2/lambda] >= 3.17; el resto queda en <= 3.20. Con relleno
+  x2, la luz del borde de la banda que sale del centro reentra al sensor
+  cuando el cociente llega a 2·2 - 1 = 3. Igual de nítida con 2x, 3x o 5x el
+  piso como umbral, y con el cociente sin aproximar (cae en 3.9).
 
     Tesis_env/Scripts/python.exe -m scripts.barrido_obj2             # todo
     Tesis_env/Scripts/python.exe -m scripts.barrido_obj2 --rapido    # 4 puntos
+    Tesis_env/Scripts/python.exe -m scripts.barrido_obj2 --frontera  # la 4.2.2
 """
 
 import argparse
@@ -364,6 +371,79 @@ def resumen(umbral):
         print(f"  {m:8s} s={s or '-':2s} Kf x{f or '-':4s}  {ok:3d}   banco {eb}")
 
 
+def cociente(z, n, exacto=False):
+    """z_eq / [N (delta/M)^2 / lambda], el cociente del criterio de ventana,
+    del punto (z, n). Paraxial, como en el texto; con exacto, dividido por la
+    raíz de la Ec. (zlim) del manuscrito."""
+    paso = MALLA.delta * z / MALLA.L
+    q = z * (MALLA.L - z) / MALLA.L / (n * paso**2 / MALLA.lamb)
+    return q / np.sqrt(1 - (MALLA.lamb / (2 * paso)) ** 2) if exacto else q
+
+
+#: FFT-ASM x2 "se sale" de la ventana donde su error pasa de SALE veces el
+#: piso de la referencia (con 2 o 5 salen las mismas celdas)
+SALE = 3.0
+
+
+def frontera():
+    """El criterio de ventana sobre el mapa. Con relleno x2 la ventana mide 2N:
+    la luz que sale del centro del objeto recorre 1.5 ventanas antes de
+    reentrar al sensor por el borde opuesto, y la del borde de la banda, que se
+    desvía lambda z_eq/(2 delta/M), lo hace con cociente 2·2 - 1 = 3. Imprime
+    dónde se aparta FFT-ASM x2 del piso, qué cociente tienen esas celdas y qué
+    hacen ahí s y K_f. Los números de la Sección 4.2.2."""
+    filas = leer()
+    err = {(r["metodo"], r["s"], r["kf_factor"], float(r["z"]), int(r["N"])):
+           float(r["err_rel"]) for r in filas if r["err_rel"]}
+    piso = {(float(r["z"]), int(r["N"])): float(r["err_ref"]) for r in filas}
+    na = dict(zip(MALLA.n, MALLA.na))
+    fft = lambda c: err[("fft_asm", "", "", *c)]
+    mp = lambda s, c, f="1.0": err.get(("mpasm", str(s), f, *c), np.nan)
+    sale = sorted(c for c in piso if fft(c) > SALE * piso[c])
+    queda = [c for c in piso if c not in sale]
+
+    print(f"piso de la referencia: {min(piso.values()):.1e} a {max(piso.values()):.1e}")
+    for exacto in (False, True):
+        q = lambda c: cociente(*c, exacto=exacto)
+        print(f"FFT-ASM x2 > {SALE:g} x piso en {len(sale)} de {len(piso)} celdas; cociente "
+              f"{'sin aproximar' if exacto else 'paraxial'}: >= {min(map(q, sale)):.2f} "
+              f"en ellas, <= {max(map(q, queda)):.2f} en el resto")
+    print(f"  error / piso: <= {max(fft(c) / piso[c] for c in queda):.2f} en el resto, "
+          f">= {min(fft(c) / piso[c] for c in sale):.1f} en ellas; error máximo "
+          f"{max(map(fft, sale)):.2f}")
+    for n in MALLA.n:
+        zs = [z for z, nn in sale if nn == n]
+        print(f"  NA {na[n]:.3f}: z = {', '.join(f'{z:g}' for z in zs) or '-'}")
+
+    for s in (2, 3):
+        r = [fft(c) / mp(s, c) for c in sale]
+        print(f"FFT-ASM x2 / MPASM s = {s} en esas celdas: {min(r):.1f} a {max(r):.0f} "
+              f"(mediana {np.median(r):.0f})")
+    print("MPASM s = 3 por encima de 1e-3 en (z, NA):",
+          [(z, round(na[n], 3)) for z, n in sorted(piso) if mp(3, (z, n)) > 1e-3])
+    print(f"MPASM s = 1 peor que FFT-ASM x2 en {sum(mp(1, c) > fft(c) for c in piso)} "
+          f"de {len(piso)} celdas")
+    for z, n in ((3.0, MALLA.n[MALLA.na.index(0.06)]),):
+        print(f"  z = {z:g}, NA 0.06: FFT-ASM x2 {fft((z, n)):.1e}, MPASM s = 1/2/3 "
+              + " / ".join(f"{mp(s, (z, n)):.1e}" for s in MALLA.s))
+
+    for s in MALLA.s:
+        for f in ("0.5", "2.0"):
+            r = np.array([mp(s, c, f) / mp(s, c) for c in piso])
+            r = r[np.isfinite(r)]
+            print(f"K_f = {f} x automático, s = {s}: {r.size} celdas válidas; empeora entre "
+                  f"{r.min():.1f} y {r.max():.0e} veces (mediana {np.median(r):.0f}), "
+                  f"mejora en {(r < 1).sum()}")
+    kf = {(r["s"], float(r["z"]), int(r["N"])): float(r["kf"]) for r in filas
+          if r["metodo"] == "mpasm" and r["kf_factor"] == "1.0"}
+    nb = MALLA.n[MALLA.na.index(MALLA.na_banco)]
+    print(f"K_f automático en el banco (z = {MALLA.z_banco:g}, NA {MALLA.na_banco}): "
+          + ", ".join(f"s = {s}: {kf[(str(s), MALLA.z_banco, nb)]:.2f}" for s in MALLA.s)
+          + f"; con NA {MALLA.na[-1]}: {kf[('1', MALLA.z_banco, MALLA.n[-1])]:.2f} (s = 1)")
+    (s, z, n), v = max(kf.items(), key=lambda t: t[1])
+    print(f"K_f automático máximo: {v:.2f} (s = {s}, z = {z:g}, NA {na[n]:.3f})")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--rapido", action="store_true", help="solo 2 z x 2 NA, para probar")
@@ -371,9 +451,13 @@ if __name__ == "__main__":
     ap.add_argument("--figuras", action="store_true", help="solo las figuras, desde el CSV")
     ap.add_argument("--resumen", type=float, metavar="UMBRAL",
                     help="solo la tabla de puntos bajo UMBRAL, desde el CSV")
+    ap.add_argument("--frontera", action="store_true",
+                    help="solo el criterio de ventana sobre el mapa, desde el CSV")
     args = ap.parse_args()
     if args.figuras:
         figuras()
+    elif args.frontera:
+        frontera()
     elif args.resumen:
         resumen(args.resumen)
     else:
