@@ -19,7 +19,7 @@
 Los tres propagadores quedaron implementados en un mismo paquete y verificados
 contra la solución analítica, que una segunda referencia independiente
 confirma; el MPASM reproduce el comportamiento de la Figura~4 de Zhao et
-al.~\cite{zhao2020} y, en el camino, aparecieron dos erratas del artículo
+al.~\cite{zhao2020}, y la verificación encontró dos erratas del artículo
 original. Esta sección presenta la evidencia en ese orden.
 
 \subsection{Acuerdo con las implementaciones de terceros}
@@ -616,8 +616,9 @@ sensor de $rN$ píxeles de paso $\delta'$. La ventaja es de simulación y de
 diseño ---calcular el holograma que registraría un sensor grande sin agrandar
 la malla del objeto---, y con un sensor real la información sigue acotada por
 su tamaño. El segundo es que la exactitud de la ida del MPASM no se contrastó
-aquí contra Rayleigh--Sommerfeld, sino que se toma de la
-Sección~\ref{sec:res-obj1}, y que cada escala es un solo ensayo: un objeto, una longitud de onda
+aquí contra Rayleigh--Sommerfeld, sino que se toma de las
+Secciones~\ref{sec:res-obj1} y~\ref{sec:res-banco}, que la miden con otros
+objetos y otras mallas, y que cada escala es un solo ensayo: un objeto, una longitud de onda
 y un tamaño de ventana.
 
 
@@ -832,12 +833,12 @@ GPU de consumo es lenta en doble precisión.
 % ------------------------------------------------------------
 \section{Discusión}
 \label{sec:discusion}
-% Sin números nuevos: todos salen de las Secciones 4.1 y 4.2.
+% Sin números nuevos: todos salen de las Secciones 4.1 a 4.3.
 
 La pregunta de investigación pide dos cosas: qué características de un
 propagador con control explícito del muestreo mejoran la reconstrucción, y en
 qué condiciones de registro conviene. Los resultados de las
-Secciones~\ref{sec:res-obj1} y~\ref{sec:res-obj2} responden las dos con un
+Secciones~\ref{sec:res-obj1} a~\ref{sec:res-obj3} responden las dos con un
 mismo criterio: si el campo propagado cabe o no en la ventana.
 
 \paragraph{Cuándo pesa el control.} Mientras el campo cabe en la ventana, la

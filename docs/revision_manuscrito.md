@@ -85,3 +85,20 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
   y posición de la platina, 3.4) y r (distancia en las integrales RS y factor
   de la malla de salida del MPASM). El diámetro del pinhole pasó a d_p, porque
   d ya era L − z.
+
+## Capítulo 4
+
+- **Los 5 dB a 0.5 m (4.1).** "40.5 dB frente a 35.4 dB a 0.5 m" queda sin
+  causa. Ahí el MPASM usa s = 10 y K_f = 1, así que no es el caso que
+  coincide con el FFT-ASM (s = K_f = 1). El concilio del 11/10 ya lo marcó:
+  un jurado con el artículo de Zhao lo va a preguntar. Hay dos salidas:
+  - una frase con la causa, si la conoces;
+  - declararla abierta: "la causa de esa diferencia no se investigó".
+
+  No se tocó porque decir cualquiera de las dos es decisión tuya.
+- **La ida esférica contra RS (4.2.3, límites).** Ahora los límites remiten a
+  las Secciones 4.1 y 4.2.2, pero las dos validan el MPASM de onda plana. La
+  ida del banco usa el MPASM esférico. Según el concilio del 11/10, esa ida
+  "se contrastó con RS y da 3.6e-6". Si se ubica el script que lo produce,
+  ese número cerraría el límite en la 4.2.1. Si no, el límite queda como
+  está.
