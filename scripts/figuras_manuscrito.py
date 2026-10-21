@@ -12,7 +12,14 @@ la Figura 4.1 de scripts/exactitud.py).
                             resultados/dlhm_esferico/campo_N3000.csv, de
                             scripts/verif_dlhm_esferico.py campo --n 3000.
                             Sección 3.2.2.
-    errata_kf.pdf           la Ec. (14) impresa frente a la del código
+    mapas_banco.pdf         error frente a RS en la malla z x NA del banco,
+                            FFT-ASM, BLAS y MPASM con s = 1 a 3, con la curva
+                            del criterio de ventana. Datos:
+                            resultados/barrido_obj2/barrido.csv, de
+                            scripts/barrido_obj2.py. Sección 4.2.2.
+    mapas_kf.pdf            el MPASM con K_f a 0.5, 1 y 2 veces el
+                            automático. Mismos datos. Sección 4.2.2.
+    errata_kf.pdf          la Ec. (14) impresa frente a la del código
                             publicado, s = 10. Sección 4.1.
     tiempos.pdf             tiempo contra N y contra s. Datos:
                             resultados/escalado_N.csv y escalado_s.csv, de
@@ -659,10 +666,123 @@ def figura_exp_carlos():
     fig.tight_layout()
     guardar(fig, "exp_carlos.pdf")
 
+# ------------------------------------------------- mapas de validez en el banco
+#: la frontera que predice el criterio de ventana con relleno x2 (ver
+#: scripts/barrido_obj2.py, frontera)
+COCIENTE_FRONTERA = 3.0
+
+
+def _curva_cociente(ax, nivel=COCIENTE_FRONTERA):
+    """La curva de cociente = nivel sobre un mapa de barrido_obj2, cuyo eje
+    vertical es el índice de la NA: entre filas, log N se interpola."""
+    from scripts.barrido_obj2 import MALLA, cociente
+    zs = np.linspace(MALLA.z[0] - 0.25, MALLA.z[-1] + 0.25, 300)
+    idx = np.linspace(-0.5, len(MALLA.n) - 0.5, 300)
+    i0 = np.arange(len(MALLA.n))
+    logn = np.log(MALLA.n)
+    pendiente = np.gradient(logn)
+    # dentro de las filas, interpolación; en los medios bordes, extrapolación
+    ln = np.interp(idx, i0, logn)
+    ln = np.where(idx < 0, logn[0] + idx * pendiente[0], ln)
+    ln = np.where(idx > i0[-1], logn[-1] + (idx - i0[-1]) * pendiente[-1], ln)
+    Z, I = np.meshgrid(zs, idx)
+    Q = cociente(Z, np.exp(np.broadcast_to(ln[:, None], Z.shape)))
+    ax.contour(Z, I, Q, levels=[nivel], colors=[COLOR["fft"]], linestyles=["-."],
+               linewidths=1.3)
+
+
+def _barra_y_leyenda(fig, ax, im, con_cociente=True, con_fuera=False, apiladas=False):
+    """Barra de color y leyenda de los mapas, en un eje vacío: lado a lado, o
+    con apiladas, la barra arriba y la leyenda debajo."""
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    ax.axis("off")
+    cax = ax.inset_axes([0.08, 0.45, 0.1, 0.52] if apiladas else [0.06, 0.08, 0.07, 0.84])
+    barra = fig.colorbar(im, cax=cax)
+    barra.set_label("log$_{10}$ del error relativo del campo", fontsize=8)
+    barra.ax.tick_params(labelsize=7.5)
+    marcas = [Line2D([], [], color="#1f1f1d", lw=1.2, label="error $10^{-3}$"),
+              Line2D([], [], color="#1f1f1d", lw=1.2, ls="--", label="error $10^{-2}$")]
+    if con_cociente:
+        marcas.append(Line2D([], [], color=COLOR["fft"], lw=1.3, ls="-.",
+                             label=f"cociente = {COCIENTE_FRONTERA:g}"))
+    marcas += [Line2D([], [], ls="none", marker="o", ms=8, mfc="none", mec="#c2410c",
+                      mew=2, label="punto del banco"),
+               Line2D([], [], ls="none", marker="o", ms=3, color="#5f5e5a",
+                      label="en el piso de\nla referencia")]
+    if con_fuera:
+        marcas.append(Patch(facecolor="#e8e7e3", edgecolor="#b8b7b2", hatch="///",
+                            label="$sK_f < 1$"))
+    if apiladas:
+        ax.legend(handles=marcas, loc="upper left", bbox_to_anchor=(-0.05, 0.38),
+                  frameon=False, fontsize=7.5, handlelength=2.2)
+    else:
+        ax.legend(handles=marcas, loc="center left", bbox_to_anchor=(0.42, 0.5),
+                  frameon=False, fontsize=7.5, handlelength=2.2)
+
+
+def figura_mapas_banco():
+    """Error frente a RS de FFT-ASM y BLAS con relleno x2 y del MPASM con s = 1,
+    2 y 3 y K_f automático, en la malla z x NA del banco (barrido_obj2), con
+    la curva del criterio de ventana encima."""
+    from matplotlib.colors import LinearSegmentedColormap
+    from scripts.barrido_obj2 import MALLA, RAMPA, _mapa, _panel, leer
+    cmap = LinearSegmentedColormap.from_list("azul", RAMPA)
+    cmap.set_bad("#ffffff")
+    filas = leer()
+    paneles = [("(a) FFT-ASM, relleno ×2", "fft_asm", None, None),
+               ("(b) BLAS, relleno ×2", "blas", None, None)]
+    paneles += [(f"({l}) MPASM, $s$ = {s}", "mpasm", s, 1.0)
+                for l, s in zip("cde", MALLA.s)]
+    fig, ejes = plt.subplots(2, 3, figsize=(7.4, 5.4), sharex=True, sharey=True)
+    for ax, (titulo, m, s, f) in zip([ejes[0, 0], ejes[0, 1], *ejes[1]], paneles):
+        im = _panel(ax, *_mapa(filas, m, s, f), "", cmap)
+        _curva_cociente(ax)
+        ax.set_title(titulo, fontsize=8.5, color=TINTA, loc="left")
+    for ax in ejes[1]:
+        ax.set_xlabel("$z$, fuente a muestra [mm]")
+    for ax in ejes[:, 0]:
+        ax.set_ylabel("NA de la ventana")
+    _barra_y_leyenda(fig, ejes[0, 2], im)
+    fig.tight_layout()
+    guardar(fig, "mapas_banco.pdf")
+
+
+def figura_mapas_kf():
+    """El MPASM con K_f a 0.5, 1 y 2 veces el automático, para s = 1, 2 y 3."""
+    from matplotlib.colors import LinearSegmentedColormap
+    from scripts.barrido_obj2 import MALLA, RAMPA, _mapa, _panel, leer
+    cmap = LinearSegmentedColormap.from_list("azul", RAMPA)
+    cmap.set_bad("#ffffff")
+    filas = leer()
+    fig = plt.figure(figsize=(7.4, 6.6))
+    rejilla = fig.add_gridspec(3, 4, width_ratios=[1, 1, 1, 0.55])
+    ejes = np.array([[fig.add_subplot(rejilla[a, b]) for b in range(3)] for a in range(3)])
+    for a, s in enumerate(MALLA.s):
+        for b, f in enumerate(MALLA.kf_factor):
+            ax = ejes[a, b]
+            im = _panel(ax, *_mapa(filas, "mpasm", s, f), "", cmap)
+            ax.set_title(f"$s$ = {s}, $K_f$ × {f:g}", fontsize=8.5, color=TINTA,
+                         loc="left")
+            if b:
+                ax.set_yticklabels([])
+            if a < 2:
+                ax.set_xticklabels([])
+        ejes[a, 0].set_ylabel("NA de la ventana")
+    for ax in ejes[-1]:
+        ax.set_xlabel("$z$ [mm]")
+    _barra_y_leyenda(fig, fig.add_subplot(rejilla[:, 3]), im, con_cociente=False,
+                     con_fuera=True, apiladas=True)
+    fig.tight_layout()
+    guardar(fig, "mapas_kf.pdf")
+
+
 def main():
     estilo()
     figura_kf_vs_z()
     figura_mpasm_esferico()
+    figura_mapas_banco()
+    figura_mapas_kf()
     figura_errata_kf()
     figura_tiempos()
     figura_fresnel_reconstrucciones()
