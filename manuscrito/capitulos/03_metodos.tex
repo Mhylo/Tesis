@@ -16,8 +16,9 @@ la siguiente, y cada sección de este capítulo corresponde a una de ellas:
   \item la Fase~1 (Sección~\ref{sec:implementacion}) entregó los tres
   propagadores implementados y verificados, que responden al objetivo~1;
   \item la Fase~2 (Sección~\ref{sec:calibracion}), la forma de aplicarlos a la
-  iluminación esférica de la DLHM y los mapas de validez bajo su muestreo, que
-  responden al objetivo~2;
+  iluminación esférica de la DLHM, los mapas de validez bajo su muestreo y una
+  comparación en la zona de Fresnel que separa lo que aportan los coeficientes
+  de control, que responden al objetivo~2;
   \item la Fase~3 (Sección~\ref{sec:montaje}), los parámetros del montaje y los
   hologramas;
   \item la Fase~4 (Sección~\ref{sec:metricas}), las reconstrucciones y su
@@ -29,15 +30,13 @@ numéricas y estuvo a cargo del laboratorio.
 La validación se hizo en dos niveles. El primero fue contra soluciones de
 referencia en casos controlados: la solución analítica del haz gaussiano y la
 integral de Rayleigh--Sommerfeld, verificada por su cuenta
-(Sección~\ref{sec:verificacion}). El segundo fue contra hologramas de una
-muestra de resolución conocida, simulados con los parámetros del montaje del
-laboratorio (Sección~\ref{sec:metricas}). En cada nivel, los métodos que se
-comparan se aplicaron al mismo dato, de modo que las diferencias entre los
-resultados son atribuibles al propagador.
-
-\pendiente{si se reconstruyen los hologramas experimentales del laboratorio,
-el segundo nivel los incluye; si no, declarar aquí la desviación del
-objetivo~3 frente al anteproyecto, acordada con Carlos.}
+(Sección~\ref{sec:verificacion}). El segundo fue contra hologramas de muestras
+de resolución conocida: simulados con los parámetros del montaje, en una ida
+y vuelta con objeto conocido (Sección~\ref{sec:metodo-fresnel}), y
+experimentales, registrados por el laboratorio con \emph{targets} USAF de
+amplitud y de fase (Secciones~\ref{sec:montaje} y~\ref{sec:metricas}). En
+cada nivel, los métodos que se comparan se aplicaron al mismo dato, de modo que
+las diferencias entre los resultados son atribuibles al propagador.
 
 % ------------------------------------------------------------
 \section{Marco computacional unificado (Fase 1)}
@@ -171,9 +170,15 @@ actual de NumPy.
 \paragraph{Pruebas automáticas.} Las propiedades que un propagador correcto
 tiene que cumplir quedaron escritas como pruebas automáticas que se ejecutan
 con cada cambio del código: propagar a $z = 0$ devuelve el campo de entrada; la
-energía se conserva; propagar a $z$ y luego a $-z$ recupera el campo; CPU y GPU
-dan el mismo resultado; y los coeficientes de control cumplen sus
-restricciones. Para comprobar que las pruebas detectan lo que dicen detectar,
+energía se conserva; propagar a $z$ y luego a $-z$ recupera el campo ---en el
+MPASM, sin compresión del intervalo espectral, y en el BLAS, mientras su
+filtro no recorta la banda---; CPU y GPU dan el mismo resultado; y los
+coeficientes de control cumplen sus restricciones. Estas pruebas verifican la
+implementación, no la exactitud, y la reversibilidad en particular no dice
+nada de esta: el FFT-ASM la cumple a cualquier distancia, \emph{aliasing}
+incluido, porque $H(z)\,H(-z) = 1$ deshace su propio error
+(Sección~\ref{sec:res-fresnel}). La exactitud se midió contra las referencias
+descritas arriba. Para comprobar que las pruebas detectan lo que dicen detectar,
 se usó prueba por mutación: se introdujeron errores a propósito en el código y
 se verificó que cada uno hiciera fallar al menos una prueba.
 
@@ -206,13 +211,21 @@ coeficientes de control, medido contra una referencia no paraxial
 con detalle fino, y para superarlo se formuló el MPASM con la iluminación
 esférica exacta (Sección~\ref{sec:mpasm-esferico}). El contraste con la
 transformada Z \emph{chirp} que pide el objetivo se hizo en el plano de la
-formulación (Sección~\ref{sec:czt-teoria}).
+formulación (Sección~\ref{sec:czt-teoria}). Por último, para ver dónde pesan
+los coeficientes de control y qué aportan a una reconstrucción, el FFT-ASM y
+el MPASM se compararon con un mismo ensayo de ida y vuelta cruzada, desde el
+banco DLHM hasta la zona de Fresnel de una ventana con iluminación plana
+(Sección~\ref{sec:metodo-fresnel}).
 
-Desde aquí se usan los parámetros del banco DLHM del laboratorio: longitud
+Desde aquí, y salvo en los ensayos con onda plana de la
+Sección~\ref{sec:metodo-fresnel}, se usan los parámetros nominales del banco
+DLHM del laboratorio: longitud
 de onda $\lambda = \SI{528}{nm}$, \emph{pinhole} circular de
 \SI{5}{\micro\metre} de diámetro, píxel de $\delta = \SI{1.83}{\micro\metre}$
 y distancia fuente--sensor $L = \SI{10}{mm}$, con la muestra a
-$z = \SI{3}{mm}$ de la fuente (Sección~\ref{sec:montaje}).
+$z = \SI{3}{mm}$ de la fuente. Los hologramas experimentales resultaron
+registrados con otra geometría, que hubo que inferir
+(Sección~\ref{sec:montaje}).
 
 \subsection{Iluminación esférica y distancia efectiva}
 \label{sec:esferica}
@@ -292,36 +305,16 @@ espectro se construye una vez en \SI{9.8}{s} y cada plano de reconstrucción
 cuesta \SI{0.56}{s} en la GPU, del mismo orden que el escalado
 (\SI{0.33}{s}).
 
-% Repo: scripts/verif_dlhm_esferico.py campo --n 3000 (los datos,
-%       resultados/dlhm_esferico/campo_N3000.csv) y
-%       scripts/figuras_manuscrito.py (la figura).
-La Figura~\ref{fig:mpasm-esferico} compara las dos formas de reconstruir
-sobre una ventana de $3000\times3000$ píxeles del sensor, con los parámetros
-del banco. El objeto es un absorbente con barras de \SI{1.25}{\micro\metre} y
-puntos de \SI{1.6}{\micro\metre}, repetido en mosaico, y su holograma se
-calculó con la propagación esférica exacta. La correlación con el objeto,
-medida tesela a tesela, baja con el ángulo desde la fuente en los dos casos,
-pero de forma muy distinta. Con el campo complejo en el sensor, el escalado se
-queda en 0.89 ya cerca del eje, por la aberración esférica que desprecia, y
-baja a 0.63 en las teselas a más de \SI{15}{\degree}; el MPASM con la esférica
-exacta se mantiene por encima de 0.92 en todo el sensor. Con solo la
-intensidad, como la registra el sensor, las dos curvas bajan porque la
-intensidad trae además la imagen gemela (Sección~\ref{sec:dlhm}), y la
-diferencia entre ellas se mantiene.
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\textwidth]{mpasm_esferico.pdf}
-  \caption[MPASM con iluminación esférica exacta frente al escalado paraxial]{Correlación con el objeto de la reconstrucción DLHM, tesela a
-  tesela, en función del ángulo con que la fuente ve cada tesela: MPASM con la
-  iluminación esférica exacta (Sección~\ref{sec:mpasm-esferico}) frente al
-  escalado paraxial (Sección~\ref{sec:esferica}). Ventana de
-  $3000\times3000$ píxeles, $\lambda = \SI{528}{nm}$,
-  $\delta = \SI{1.83}{\micro\metre}$, $z = \SI{3}{mm}$ y $L = \SI{10}{mm}$.
-  (a)~Reconstrucción desde el campo complejo en el sensor; (b)~desde la
-  intensidad.}
-  \label{fig:mpasm-esferico}
-\end{figure}
+% Repo: scripts/verif_dlhm_esferico.py campo --n 3000.
+Las dos formas de reconstruir, el escalado y el MPASM con la esférica exacta,
+se compararon sobre una ventana de $3000\times3000$ píxeles del sensor con los
+parámetros del banco. El objeto es un absorbente con barras de
+\SI{1.25}{\micro\metre} y puntos de \SI{1.6}{\micro\metre}, repetido en
+mosaico, y su holograma se calculó con la propagación esférica exacta. La
+reconstrucción se compara con el objeto tesela a tesela, por correlación, en
+función del ángulo con que la fuente ve cada tesela, y se hace dos veces:
+desde el campo complejo en el sensor y desde su intensidad. El resultado está
+en la Sección~\ref{sec:res-esferica}.
 
 \subsection{Barrido de validez}
 \label{sec:barrido}
@@ -387,21 +380,276 @@ Para leer los mapas se marcan dos niveles de precisión aceptable, $10^{-3}$ y
 $10^{-2}$. Las conclusiones de la Sección~\ref{sec:res-obj2} no dependen de
 cuál de los dos se adopte.
 
+\subsection{Ida y vuelta: FFT-ASM frente a MPASM}
+\label{sec:metodo-fresnel}
+% Repo: onda plana, scripts/comparacion_cruzada.py (R = 4: las cuatro z de
+%       N_F = 10 a 1 por defecto, ZS = (5, 10, 15) para las cortas y
+%       ZS = (20, 30, 50, 75) para la transicion; R = 1, ZS = (100, 200,
+%       1000) y S = 1 o 4 para la prueba de s). Banco DLHM con onda esferica,
+%       scripts/cruzada_dlhm.py. Desde la intensidad: python -m
+%       CamposT.propagacion y CamposT.retropropagacion con --pad 1.
+
+Para comparar cómo propagan y cómo retropropagan los dos métodos, sin que
+ninguno se valide a sí mismo, se usó un mismo ensayo de ida y vuelta: un
+objeto conocido se propaga hasta el sensor y se lo devuelve a su plano, y la
+reconstrucción se compara con el objeto. Cada ida y cada vuelta se hacen con
+los dos métodos, de modo que por distancia hay cuatro reconstrucciones:
+FFT-ASM$\to$FFT-ASM, FFT-ASM$\to$MPASM, MPASM$\to$FFT-ASM y MPASM$\to$MPASM.
+Las informativas son las cruzadas. Como $H(z)\,H(-z) = 1$ en toda la malla, el
+FFT-ASM deshace exactamente su propio error, \emph{aliasing} incluido, así que
+la ida y vuelta con un mismo método no mide su exactitud. La ida con el
+FFT-ASM devuelta con el MPASM deja ver el error de esa ida, y la combinación
+opuesta, el de la vuelta con el FFT-ASM. Del campo en el sensor se guarda el
+complejo, con su fase, para que la imagen gemela no se mezcle con lo que se
+mide; la vuelta desde la intensidad se trata aparte, al final de esta sección.
+
+La distancia se mide con el criterio de la ventana: el cociente entre la
+distancia de propagación y $z_\mathrm{lim} = N\delta^2/\lambda$
+(Ec.~\eqref{eq:zlim}), por debajo del cual el campo propagado cabe en la
+ventana. En la DLHM la propagación equivalente es $z_\mathrm{eq}$ sobre la
+malla de paso $\delta/M$ (Ec.~\eqref{eq:escalado}), y el cociente es
+$z_\mathrm{eq}/[N(\delta/M)^2/\lambda]$. El ensayo cubre tres escalas.
+
+\paragraph{El banco DLHM, con onda esférica.} Con los parámetros nominales del
+banco ($\lambda = \SI{528}{nm}$, $\delta = \SI{1.83}{\micro\metre}$,
+$L = \SI{10}{mm}$), un sensor simulado de $1024\times1024$ píxeles y la
+muestra a $z = 1$, 2, 3, 5 y \SI{7}{mm} de la fuente, el cociente va de 13.9 a
+0.66. A $z = \SI{3}{mm}$, el punto nominal, vale 3.6 con este sensor; con
+los 4640 píxeles del sensor de los hologramas experimentales
+(Sección~\ref{sec:montaje}) valdría 0.79. Aquí los dos métodos son los de la
+DLHM. El \emph{MPASM} es el MPASM con la esférica exacta
+(Sección~\ref{sec:mpasm-esferico}), con su ida y su vuelta. El \emph{ASM} es
+la cadena del laboratorio (Sección~\ref{sec:metricas}): la vuelta es esa
+cadena tal cual, y la ida es su espejo, que recorre sus pasos al revés
+sobre la misma malla remuestreada. La ida multiplica la transmitancia por la
+onda esférica en el plano de la muestra, propaga con su espectro angular hasta
+el sensor y divide por la referencia. Solo se propaga la parte del campo que
+dispersa el objeto, $(t - 1)$ por la esférica, y la referencia se suma
+analítica en el sensor. Propagar la iluminación entera no sirve: en la
+ventana de la cadena, la esférica diverge hasta $M$ veces el ancho del
+sensor y la FFT la reinyecta por los bordes: sin objeto, en el centro del
+sensor el holograma se apartaba de 1 hasta en 5.7. El objeto es una transmitancia tipo USAF de
+barras opacas sobre fondo transparente, suavizada un píxel.
+
+\paragraph{Distancias cortas, con onda plana.} El objeto es una transmitancia
+binaria tipo USAF 1951 de $512\times512$ píxeles: doce elementos de tres
+barras horizontales y tres verticales, con barras y huecos del mismo ancho,
+entre 4 y 13 píxeles, es decir, periodos de \SI{27.6}{\micro\metre} a
+\SI{89.7}{\micro\metre}. Su fondo es opaco y su fase, nula. Con
+$\lambda = \SI{405}{nm}$ y $\delta = \SI{3.45}{\micro\metre}$ la ventana mide
+\SI{1.77}{mm} de lado y $z_\mathrm{lim}$ vale \SI{15}{mm}. Las distancias
+cortas son 5, 10 y \SI{15}{mm}, todas hasta $z_\mathrm{lim}$.
+
+\paragraph{De la transición a la zona de Fresnel, con onda plana.} Con el
+mismo objeto, 20, 30, 50 y \SI{75}{mm}, apenas por encima de
+$z_\mathrm{lim}$; 100, 200 y \SI{1000}{mm}; y las distancias de número de
+Fresnel de la ventana (Ec.~\eqref{eq:nf} con $a = N\delta/2$) $N_F = 10$, 5,
+2 y 1: $z = \SI{192.6}{mm}$, \SI{385.2}{mm}, \SI{963}{mm} y \SI{1926}{mm}, la
+zona de Fresnel de esta ventana hasta su borde con Fraunhofer, entre 13 y 128
+veces $z_\mathrm{lim}$. Los dos métodos van sobre la misma malla de
+$N\times N$ puntos y sin relleno de ceros, el MPASM con $s = 1$ y $K_f$
+automático, de modo que solo cambia el propagador. Para separar el efecto de
+$s$, la comparación se repitió con $s = 4$ a \SI{100}{mm}, \SI{200}{mm} y
+\SI{1000}{mm}.
+
+\paragraph{Ventana ampliada.} Una tercera ida usa lo que solo el MPASM permite
+(Sección~\ref{sec:mpasm}): una malla de salida de $rN$ puntos con paso
+$\delta' > \delta$, que equivale a un sensor simulado más grande, sin tocar la
+malla del objeto. Se fijó $r = 4$. El paso $\delta'$ es el mayor con el que ese
+sensor todavía muestrea las franjas del holograma: la frecuencia local en el
+sensor llega a $(a' + a)/(\lambda z)$, con $a' = rN\delta'/2$ y $a = N\delta/2$
+los semianchos del sensor simulado y del objeto, y tiene que quedar por debajo
+de $1/(2\delta')$, lo que da
+\begin{equation}
+  \frac{\delta'}{\delta}\left(r\,\frac{\delta'}{\delta} + 1\right) \le
+  \frac{\lambda z}{N\delta^2}.
+  \label{eq:paso-ampliado}
+\end{equation}
+El sobremuestreo $s$ es el menor que cumple $r\delta'/\delta \le sK_f$, la
+condición para que la ventana de salida quepa en el periodo del espectro. La
+vuelta es el MPASM con paso de salida $\delta$, del que se toman los
+$N\times N$ puntos centrales. El FFT-ASM no tiene equivalente: su malla de
+salida es la de entrada, y para la misma ventana sin \emph{aliasing}
+necesitaría rellenar hasta $\max\{r\delta'/\delta,\ \lambda z/(N\delta^2)\}$
+veces $N$ puntos por lado.
+
+\paragraph{Medidas.} Cada reconstrucción se compara con el objeto con el SAM
+de la Ec.~\eqref{eq:sam}, sobre la intensidad, y con el error máximo del campo
+complejo, $\max|U - U_0|/\max|U_0|$, que ve la fase; en el banco DLHM, en la
+ventana entera y en su mitad central. De cada ida con onda plana se mide la
+fracción de la energía del objeto que cae en la ventana del sensor y el
+periodo más fino cuya luz difractada todavía llega a ella: el inverso de la
+Ec.~\eqref{eq:fmax-fft} en su lectura geométrica
+(Sección~\ref{sec:asm-fft}), con el lado de esa ventana en lugar de
+$N\delta$. La vuelta con onda plana se hizo también desde la raíz de la
+intensidad, que es lo único que entrega un sensor, de \SI{10}{mm} a
+\SI{1000}{mm} cada \SI{10}{mm}. Todo se calculó en GPU, en precisión simple,
+salvo la ida espejo de la cadena del laboratorio, que remuestrea con OpenCV en
+la CPU.
+
 % ------------------------------------------------------------
 \section{Montaje y registro experimental (Fase 3)}
 \label{sec:montaje}
-% Repo: docs/hoja_parametros_montaje.md; CamposT/montaje.py.
+% Repo: CamposT/montaje.py (los valores nominales); los hologramas, fuera del
+%       repo por tamano (Downloads/4_Amplitude_USAF.zip y 10_Phase_USAF.zip);
+%       la geometria inferida, scripts/hologramas_carlos/correr.py calibracion
+%       -> resultados/hologramas_carlos/calibracion.json.
 
-\pendiente{esquema del montaje; tabla de parámetros medidos ($\lambda$,
-$\delta_x$, $\delta_y$, $N_x \times N_y$, $L$, $z$); muestras (USAF 1951 u
-otra) y protocolo de adquisición.}
+El laboratorio registró los hologramas en su montaje DLHM
+(Figura~\ref{fig:esquema}) con dos muestras de resolución conocida: un
+\emph{target} USAF 1951 de amplitud, en el que se leen los grupos 4 a 7 con su
+número impreso, y uno de fase con grupos del USAF y una estrella de Siemens.
+Para cada muestra la platina la llevó por 17 posiciones a lo largo del eje, y
+en cada posición se registraron dieciséis hologramas con la muestra en
+distintas posiciones laterales, puestas a mano, y una imagen sin muestra. Son
+imágenes JPEG de 8 bits de $4640\times3506$ píxeles.
+
+Los hologramas no traían la geometría con que se registraron, y la nominal
+del banco no sirvió para ellos. Con el píxel de \SI{1.83}{\micro\metre} y
+$L = \SI{10}{mm}$, la escala que mide el USAF en cada posición no es compatible
+con la distancia a la que enfoca: la $L$ que implican las dos medidas juntas
+cambia un 12\,\% de una posición a otra (desviación del 5.7\,\%), y el ajuste
+del modelo de la Ec.~\eqref{eq:M-D} da $\chi^2$ por grado de libertad de 105.
+Con un píxel de unos \SI{3.8}{\micro\metre}, en cambio, la desviación de $L$
+baja al 1.5\,\%, el $\chi^2$ a 8, y la platina resulta avanzar a pasos de
+\SI{0.1}{mm}, un número redondo que el ajuste no impone
+(Sección~\ref{sec:res-obj3}). La Tabla~\ref{tab:montaje} recoge los
+parámetros con su origen. El píxel y $L$ son inferidos y quedan por confirmar
+con el laboratorio: el ajuste no distingue \SI{3.8}{\micro\metre} de
+\SI{3.66}{\micro\metre}, que sería el de \SI{1.83}{\micro\metre} con
+agrupamiento $2\times2$. Para reconstruir se adoptaron
+$\delta = \SI{3.80}{\micro\metre}$ y $L = \SI{18.23}{mm}$. Con ellos el sensor
+mide $17.6\times\SI{13.3}{mm}$ y su apertura numérica en el eje largo, por la
+Ec.~\eqref{eq:na}, es 0.43.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption[Parámetros del montaje y de los hologramas experimentales]{Parámetros
+  del montaje. ``Nominal'': los que dio el laboratorio para el banco;
+  ``inferido'': del ajuste conjunto de los focos y las magnificaciones del USAF
+  (Sección~\ref{sec:metricas}); ``medido'': leído de los archivos o del ajuste
+  del foco con la geometría adoptada.}
+  \label{tab:montaje}
+  \begin{tabular}{lll}
+    \toprule
+    parámetro & valor & origen \\
+    \midrule
+    longitud de onda $\lambda$ & \SI{528}{nm} & nominal \\
+    sensor & $4640\times3506$ píxeles, 8 bits (JPEG) & leído de los archivos \\
+    tamaño de píxel $\delta$ & \SI{1.83}{\micro\metre} & nominal \\
+     & $3.91\pm\SI{0.29}{\micro\metre}$; adoptado \SI{3.80}{\micro\metre} & inferido \\
+    fuente--sensor $L$ & \SI{10}{mm} ($3 + 7$) & nominal \\
+     & $18.7\pm\SI{1.4}{mm}$; con \SI{3.80}{\micro\metre}, $18.19\pm\SI{0.29}{mm}$ & inferido \\
+    fuente--muestra $z$ & \SI{3}{mm} & nominal \\
+     & amplitud: 0.413 a \SI{2.001}{mm}, pasos de \SI{0.099}{mm} & medido \\
+     & fase: 0.462 a \SI{1.274}{mm}, pasos de \SI{0.051}{mm} & medido \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 % ------------------------------------------------------------
 \section{Reconstrucción y métricas de comparación (Fase 4)}
 \label{sec:metricas}
-% Repo: CamposT/pipeline.py, roi.py, metricas.py; scripts/barrido_foco.py,
-%       retro_*.py, mi_prueba_*.py.
+% Repo: scripts/hologramas_carlos/ (foco.py, geometria.py, usaf.py, correr.py,
+%       comparar.py); CamposT/dlhm.py; la cadena del laboratorio, en
+%       scripts/mi_prueba_dlhm.py (reconstruir, MotorCarlos).
 
-\pendiente{cadena de reconstrucción; búsqueda del plano de foco por nitidez
-(sin verdad de terreno); resolución lateral sobre el \emph{target}, contraste,
-relación señal--ruido y tiempo de cómputo.}
+Un holograma experimental no trae verdad de terreno: no se sabe a qué
+distancia está la muestra, y en este caso tampoco se conocía la geometría del
+banco (Sección~\ref{sec:montaje}). Por eso la cadena de reconstrucción tiene
+tres pasos antes de comparar métodos: normalizar el holograma, encontrar el
+plano de foco y fijar la escala.
+
+\paragraph{Normalización.} Cada holograma se normaliza por amplitud con la
+imagen sin muestra de su posición, $I_\mathrm{ref}$: se reconstruye
+$(I - I_\mathrm{ref})/\sqrt{I_\mathrm{ref}}$ y la salida se divide por
+$\sqrt{I_\mathrm{ref}}$ llevada a la muestra por el mismo rayo
+(Sección~\ref{sec:dlhm}). Donde $I_\mathrm{ref}$ cae por debajo del 5\,\% de
+su máximo no se divide: las esquinas de la imagen sin muestra son oscuras, y
+dividir por ellas amplifica el ruido.
+
+\paragraph{Las dos cadenas que se comparan.} La del laboratorio es la de su
+reconstrucción de rutina (Sección~\ref{sec:reconstruccion-dlhm}): recorta un
+cuadrado centrado del holograma, lo remuestrea a la malla que exige la
+geometría para que la esférica quede bien muestreada, lo multiplica por la
+onda esférica de la fuente evaluada en el sensor, lo retropropaga $L - z$ con
+el espectro angular por FFT y divide por la onda de referencia propagada de la
+misma forma; del resultado se toma la huella del recorte, su $1/M$ central,
+en la malla de paso $\delta z/L$. La otra es el MPASM con la esférica exacta
+(Sección~\ref{sec:mpasm-esferico}), que lleva la parte parabólica de la
+esférica dentro de las matrices y elige la malla de salida libremente. Las
+dos multiplican por la misma onda esférica y propagan con el espectro angular;
+lo que las separa es cómo tratan el muestreo de esa esférica. Se comparan
+sobre el mismo recorte central y con la misma normalización.
+
+\paragraph{Búsqueda del plano de foco.} Sin verdad de terreno, el foco se
+eligió por nitidez, con el coeficiente de Tamura del módulo de la
+reconstrucción, $\sqrt{\sigma/\mu}$~\cite{memmolo2011}. Un objeto de amplitud
+enfoca en su máximo; uno de fase, en su mínimo, porque en el foco $|t| = 1$.
+Para barrer sin conocer la geometría se usó el escalado de Fresnel
+(Sección~\ref{sec:esferica}): leído en la malla del sensor, el holograma es uno
+de onda plana a la distancia
+\begin{equation}
+  D = \frac{L(L - z)}{z} = M^2 z_\mathrm{eq},
+  \label{eq:D-sensor}
+\end{equation}
+que es la misma propagación que $z_\mathrm{eq}$ sobre la malla de paso
+$\delta/M$, expresada en píxeles del sensor. $D$ no es una distancia física:
+con $L$ de unos \SI{18}{mm}, vale cientos de milímetros. Barrerla tiene la
+ventaja de que no necesita $L$. Como el barrido se hizo antes de conocer el
+píxel, se hizo con el nominal de \SI{1.83}{\micro\metre}; con un píxel $\delta$
+el mismo foco vale $D\,(\delta/\SI{1.83}{\micro\metre})^2$, y en el
+Capítulo~\ref{cap:resultados} se da con el adoptado. En la escala nominal, el
+barrido grueso va de 5 a \SI{200}{mm} con paso de \SI{0.5}{mm}, en la primera
+captura de cada posición, sobre un recorte
+central de $2048\times2560$ píxeles y midiendo en su cuadrado central de
+1024. El fino, con paso de \SI{0.1}{mm} y quitando la tendencia lenta de la
+curva, va en las dieciséis capturas de cada posición con el USAF de amplitud
+y en las ocho impares con el de fase. Las capturas de una misma posición dan
+la dispersión del foco. La retropropagación es el BLAS con relleno al doble.
+Con la geometría ya fijada, el foco se refina en $z$ con el MPASM esférico.
+
+\paragraph{Por qué el foco no basta.} El barrido fija $D$, no $z$: con
+cualquier $L$ hay una $z = L^2/(D + L)$ que enfoca igual de nítido, y la
+Ec.~\eqref{eq:D-sensor} se cumple igual. Lo que separa una $L$ de otra es la
+escala, porque $M = L/z = 1 + D/L$. Si además el tamaño de píxel no es el
+supuesto, sino $p$ veces él, el foco medido es $D/p^2$ y la magnificación
+medida, $M/p$, de modo que
+\begin{equation}
+  M_\mathrm{medida} = \frac{1}{p} + \frac{p}{L}\,D_\mathrm{medido}:
+  \label{eq:M-D}
+\end{equation}
+la recta entre las dos medidas tiene ordenada $1/p$ y pendiente $p/L$.
+
+\paragraph{Calibración con el USAF.} La magnificación se midió con el USAF
+de amplitud, cuyos grupos llevan impreso su número. En la reconstrucción
+enfocada de las posiciones 1, 5, 9 y 17 se ajustó, a lo largo de cada
+elemento, un modelo de tres barras de ancho $w$ separadas por $w$, con bordes
+suavizados, y se tomó $M = 2w\delta/\Lambda$, con $\Lambda$ el periodo del
+elemento en la muestra. Un ajuste y no la posición de los mínimos, porque
+dentro de las barras la reconstrucción trae franjas finas de la imagen
+gemela. Se usaron los grupos 4, 6 y 7, y solo los ajustes con bordes nítidos
+(anchura del borde de hasta 10 píxeles). Con los diecisiete focos y las
+cuatro magnificaciones se ajustaron a la vez el factor de píxel $p$, $L$ y la
+posición de la platina, $z_k = z_1 + (k - 1)\,\Delta z$, suponiendo un paso
+fijo.
+
+\paragraph{Métricas de la comparación.} Las dos cadenas se comparan en el
+mismo plano: el foco del MPASM esférico en el recorte grande, que es el que
+cuadra con la platina (Sección~\ref{sec:res-obj3}). El foco físico es uno, y
+el coeficiente de Tamura de un recorte pequeño no basta para buscarlo: con
+magnificaciones de 10 a 44, el recorte común ve unas decenas de micrómetros
+de la muestra. Aun así, en el USAF de amplitud se buscó también el foco
+propio de cada cadena, con 9 planos en $\pm$10\,\% de $z$ y 5 alrededor del
+máximo, marcando cuándo el máximo cae en el borde del rango. En el plano
+común se miden el coeficiente de Tamura, el contraste de Michelson de cada
+elemento del USAF a lo largo de sus barras, el elemento más fino con
+contraste de al menos 0.2, la relación señal--ruido (media sobre desviación)
+en una zona de fondo y el tiempo por plano, este con un plano previo de
+calentamiento y la GPU sincronizada. El lado del recorte común lo fija la
+cadena del laboratorio: su malla remuestreada crece con el ancho del recorte,
+no con el número de píxeles, y con la geometría de estos hologramas un recorte
+de 1024 píxeles pediría \SI{4.8}{GB} y uno de 768, \SI{2.6}{GB}, en una
+tarjeta de \SI{4}{GB} que además tiene que alojar al otro motor. El recorte
+común es de $512\times512$ píxeles.
