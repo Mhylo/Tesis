@@ -17,8 +17,8 @@ la siguiente, y cada sección de este capítulo corresponde a una de ellas:
   propagadores implementados y verificados, que responden al objetivo~1;
   \item la Fase~2 (Sección~\ref{sec:calibracion}), la forma de aplicarlos a la
   iluminación esférica de la DLHM, los mapas de validez bajo su muestreo y una
-  comparación en la zona de Fresnel que separa lo que aportan los coeficientes
-  de control, que responden al objetivo~2;
+  comparación de ida y vuelta, del banco a la zona de Fresnel, que separa lo
+  que aportan los coeficientes de control, que responden al objetivo~2;
   \item la Fase~3 (Sección~\ref{sec:montaje}), los parámetros del montaje y los
   hologramas;
   \item la Fase~4 (Sección~\ref{sec:metricas}), las reconstrucciones y su
@@ -207,8 +207,8 @@ DLHM. Para responderlo hicieron falta dos piezas: una forma de aplicar los
 propagadores de onda plana a la iluminación divergente de la DLHM
 (Sección~\ref{sec:esferica}) y un barrido sobre la geometría del banco y los
 coeficientes de control, medido contra una referencia no paraxial
-(Sección~\ref{sec:barrido}). En el camino, la primera pieza mostró un límite
-con detalle fino, y para superarlo se formuló el MPASM con la iluminación
+(Sección~\ref{sec:barrido}). La primera pieza mostró un límite con detalle
+fino, y para superarlo se formuló el MPASM con la iluminación
 esférica exacta (Sección~\ref{sec:mpasm-esferico}). El contraste con la
 transformada Z \emph{chirp} que pide el objetivo se hizo en el plano de la
 formulación (Sección~\ref{sec:czt-teoria}). Por último, para ver dónde pesan
@@ -337,7 +337,9 @@ banco, la malla tiene cuatro ejes:
   vista desde la fuente, $\mathrm{NA} = \sin[\arctan(N\delta/2L)]$: con
   $\delta$ y $L$ fijas, barrer la NA es barrer $N$. Se usaron siete valores,
   de 0.03 a 0.25 ($N$ de 328 a 2822). Uno es 0.1288, el primer cero del patrón
-  de Airy del \emph{pinhole}, $1.22\lambda/d$. El máximo lo fija la memoria de
+  de Airy del \emph{pinhole}, $1.22\lambda/d_\mathrm{p}$ con $d_\mathrm{p}$ su
+  diámetro: es la apertura del cono que ilumina el lóbulo central, y se tomó
+  como la del banco. El máximo lo fija la memoria de
   la GPU: con $N = 2822$ y $s = 3$ el MPASM ocupa \SI{1.8}{GB} de los
   \SI{4}{GB} disponibles.
   \item $s \in \{1, 2, 3\}$.
@@ -347,8 +349,9 @@ banco, la malla tiene cuatro ejes:
   condición de que la ventana de salida quepa en el periodo del espectro; el
   MPASM los rechaza, y quedan en el mapa como región excluida.
 \end{itemize}
-Son 98 combinaciones de $z$ y NA y 1078 cálculos, de los que 78 caen en la
-región excluida.
+Son 98 combinaciones de $z$ y NA y 1078 cálculos ---once por combinación: el
+FFT-ASM, el BLAS y nueve del MPASM---, de los que 78 caen en la región
+excluida.
 
 \paragraph{Objeto.} Una mancha gaussiana de cintura igual a 2.5 píxeles de la
 malla $\delta/M$, casi el detalle más fino que esa malla representa sin
@@ -441,7 +444,7 @@ $\lambda = \SI{405}{nm}$ y $\delta = \SI{3.45}{\micro\metre}$ la ventana mide
 cortas son 5, 10 y \SI{15}{mm}, todas hasta $z_\mathrm{lim}$.
 
 \paragraph{De la transición a la zona de Fresnel, con onda plana.} Con el
-mismo objeto, 20, 30, 50 y \SI{75}{mm}, apenas por encima de
+mismo objeto, 20, 30, 50 y \SI{75}{mm}, entre 1.3 y 5 veces
 $z_\mathrm{lim}$; 100, 200 y \SI{1000}{mm}; y las distancias de número de
 Fresnel de la ventana (Ec.~\eqref{eq:nf} con $a = N\delta/2$) $N_F = 10$, 5,
 2 y 1: $z = \SI{192.6}{mm}$, \SI{385.2}{mm}, \SI{963}{mm} y \SI{1926}{mm}, la
@@ -639,14 +642,14 @@ fijo.
 mismo plano: el foco del MPASM esférico en el recorte grande, que es el que
 cuadra con la platina (Sección~\ref{sec:res-obj3}). El foco físico es uno, y
 el coeficiente de Tamura de un recorte pequeño no basta para buscarlo: con
-magnificaciones de 10 a 44, el recorte común ve unas decenas de micrómetros
-de la muestra. Aun así, en el USAF de amplitud se buscó también el foco
+magnificaciones de 9 a 44, el recorte común ve un cuadrado de entre 44 y
+\SI{214}{\micro\metre} de lado en la muestra. Aun así, en el USAF de amplitud se buscó también el foco
 propio de cada cadena, con 9 planos en $\pm$10\,\% de $z$ y 5 alrededor del
 máximo, marcando cuándo el máximo cae en el borde del rango. En el plano
-común se miden el coeficiente de Tamura, el contraste de Michelson de cada
-elemento del USAF a lo largo de sus barras, el elemento más fino con
-contraste de al menos 0.2, la relación señal--ruido (media sobre desviación)
-en una zona de fondo y el tiempo por plano, este con un plano previo de
+común se miden la correlación entre los módulos de las dos reconstrucciones,
+el coeficiente de Tamura, el contraste de Michelson de cada elemento del USAF
+a lo largo de sus barras, la relación señal--ruido (media sobre desviación) en
+una zona de fondo y el tiempo por plano, este con un plano previo de
 calentamiento y la GPU sincronizada. El lado del recorte común lo fija la
 cadena del laboratorio: su malla remuestreada crece con el ancho del recorte,
 no con el número de píxeles, y con la geometría de estos hologramas un recorte
