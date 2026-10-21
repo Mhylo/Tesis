@@ -104,8 +104,8 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
   - declararla abierta: "la causa de esa diferencia no se investigó".
 
   No se tocó porque decir cualquiera de las dos es decisión tuya.
-- **La ida esférica contra RS (4.2.3, límites).** Ahora los límites remiten a
-  las Secciones 4.1 y 4.2.2, pero las dos validan el MPASM de onda plana. La
+- **La ida esférica contra RS (4.2.4, límites).** Ahora los límites remiten a
+  las Secciones 4.1 y 4.2.3, pero las dos validan el MPASM de onda plana. La
   ida del banco usa el MPASM esférico. Según el concilio del 11/10, esa ida
   "se contrastó con RS y da 3.6e-6". Si se ubica el script que lo produce,
   ese número cerraría el límite en la 4.2.1. Si no, el límite queda como
@@ -116,9 +116,9 @@ que necesita una decisión tuya o de Carlos. El texto no se tocó en estos punto
 - Se cotejó contra el capítulo 4 ya revisado y no cambió nada.
 - **"Un orden de magnitud, no una frontera."** El párrafo de la pregunta (el
   del concilio) dice que el criterio "es un orden de magnitud, no una
-  frontera, porque sale del escalado paraxial". La 4.2.2 muestra que en los
+  frontera, porque sale del escalado paraxial". La 4.2.3 muestra que en los
   mapas del banco sí traza una frontera nítida, pero en 3 y no en 1, porque
-  depende del relleno. Las dos cosas son compatibles, y la 4.2.2 lo dice
+  depende del relleno. Las dos cosas son compatibles, y la 4.2.3 lo dice
   ("que caiga en 3 y no en 1 es lo que quiere decir que el criterio sea un
   orden de magnitud"). Si quieres que la conclusión lo recoja, basta con
   agregar al final de esa frase: "y su valor exacto depende del relleno: en
