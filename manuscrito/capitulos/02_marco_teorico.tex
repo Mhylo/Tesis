@@ -75,6 +75,18 @@ vale cuando las componentes relevantes del campo viajan cerca del eje. Varios
 de los métodos de esta sección y de la DLHM descansan en esa aproximación, y su
 alcance limitado es parte del problema que motiva el trabajo.
 
+Para una apertura de semiancho $a$, el número de Fresnel
+\begin{equation}
+  N_F = \frac{a^2}{\lambda z}
+  \label{eq:nf}
+\end{equation}
+ordena los regímenes de la propagación. Con $N_F \gtrsim 1$ el patrón es de
+difracción de Fresnel, y se parece tanto más a la sombra geométrica de la
+apertura cuanto mayor es $N_F$; con $N_F \ll 1$ es de Fraunhofer, y su forma
+es la de la transformada de Fourier de la apertura~\cite{goodman2005}. En lo
+que sigue, la zona de Fresnel de una ventana es el intervalo de distancias en
+que su $N_F$ baja de unas decenas a 1.
+
 % ------------------------------------------------------------
 \section{Espectro angular por FFT y sus límites de muestreo}
 \label{sec:asm-fft}
@@ -109,7 +121,14 @@ frecuencias por debajo de
 \end{equation}
 Por encima de $f_\mathrm{max}^\mathrm{FFT}$, la función de transferencia
 muestreada contiene réplicas, y el campo calculado acumula copias desplazadas
-que se superponen al verdadero~\cite{li2007, voelz2009}. Como
+que se superponen al verdadero~\cite{li2007, voelz2009}. La
+Ec.~\eqref{eq:fmax-fft} tiene además una lectura geométrica. Una onda plana
+de frecuencia $f$ viaja con un ángulo $\sin\theta = \lambda f$, y
+$f_\mathrm{max}^\mathrm{FFT}$ es la de la que, saliendo del centro de la
+ventana, llega a su borde a la distancia $z$. Lo que el campo propagado lleve
+a frecuencias mayores sale de la ventana, así que
+$1/f_\mathrm{max}^\mathrm{FFT}$ es también el periodo más fino del objeto
+cuya luz difractada todavía cae en ella. Como
 $f_\mathrm{max}^\mathrm{FFT}$ decrece con $z$, toda la banda hasta la
 frecuencia de Nyquist queda bien muestreada solo hasta una distancia
 \begin{equation}
@@ -321,14 +340,26 @@ idea a la luz visible con una iluminación esférica~\cite{garcia2006}. Una
 fuente puntual ---en la práctica, un \emph{pinhole} de pocos micrómetros--- emite
 una onda divergente; la muestra está a una distancia $z$ de la fuente y un
 sensor digital a una distancia $L$, sin ningún elemento óptico entre ellos
-(Figura~\pendiente{esquema del montaje}). Como el frente es divergente, el
+(Figura~\ref{fig:esquema}). Como el frente es divergente, el
 patrón de difracción llega al sensor magnificado,
 \begin{equation}
   M = \frac{L}{z},
   \label{eq:magnificacion}
 \end{equation}
 y la magnificación es mayor cuanto más cerca de la fuente está la
-muestra~\cite{garcia2006, lopera2024}. La apertura numérica la fija el
+muestra~\cite{garcia2006, lopera2024}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{esquema_montaje.pdf}
+  \caption[Esquema del montaje DLHM]{Esquema de la DLHM: una fuente puntual
+  ilumina la muestra, a una distancia $z$, con una onda divergente, y el
+  sensor, a $L$ de la fuente, registra el holograma. Un detalle de la muestra
+  a una altura $x$ del eje llega al sensor a $Mx$, con $M = L/z$.}
+  % Repo: scripts/figuras_manuscrito.py (figura_esquema_montaje).
+  \label{fig:esquema}
+\end{figure}
+ La apertura numérica la fija el
 sensor, de ancho $W$, visto desde la fuente,
 \begin{equation}
   \mathrm{NA} = \frac{W/2}{\sqrt{(W/2)^2 + L^2}},

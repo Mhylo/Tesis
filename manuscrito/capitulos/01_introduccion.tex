@@ -129,10 +129,15 @@ numéricos y la formación experimental e instrumental.
 
 El trabajo se limita al régimen de difracción escalar y a hologramas en línea
 registrados en un montaje DLHM existente; no incluye instrumentación nueva, el
-régimen vectorial ni algoritmos de recuperación de fase.
+régimen vectorial ni algoritmos de recuperación de fase. La única salida
+deliberada de la geometría del banco es un ensayo con iluminación plana, de
+distancias cortas a la zona de Fresnel, que sirve para separar lo que aportan
+los coeficientes de control cuando el campo se sale de la ventana
+(Sección~\ref{sec:metodo-fresnel}).
 
 % Repo: CamposT/ (propagadores.py, dlhm.py, tests/);
-%       resultados/barrido_obj2/; resultados/mi_prueba_dlhm/.
+%       resultados/barrido_obj2/; scripts/comparacion_cruzada.py,
+%       cruzada_dlhm.py; scripts/hologramas_carlos/.
 Se entregaron:
 \begin{itemize}
   \item un paquete de \emph{software} en Python, \texttt{CamposT}, que agrupa
@@ -144,15 +149,18 @@ Se entregaron:
   \item los mapas de validez de los tres métodos bajo el muestreo del montaje
   DLHM del laboratorio, con los criterios para elegir los parámetros de
   muestreo;
-  \item las reconstrucciones de hologramas simulados de una muestra de
-  resolución conocida, con el MPASM de iluminación esférica y con el método del
-  laboratorio;
+  \item una comparación de ida y vuelta con fase entre el FFT-ASM y el MPASM,
+  desde el banco DLHM hasta la zona de Fresnel, que establece cuándo pesan
+  $s$, $K_f$ y la ventana de salida;
+  \item las reconstrucciones de los hologramas experimentales del laboratorio,
+  de \emph{targets} USAF de amplitud y de fase, con el MPASM de iluminación
+  esférica y con el método del laboratorio, junto con la geometría de registro
+  inferida de esos mismos hologramas;
   \item este documento.
 \end{itemize}
 
 \pendiente{repositorio y licencia del código (tareas 52 y 55; hoy no hay
-archivo LICENSE). Hologramas experimentales: decir si se reconstruyeron o
-declarar la desviación del objetivo~3, con el visto bueno de Carlos.}
+archivo LICENSE).}
 
 % ------------------------------------------------------------
 \section{Estructura del documento}
@@ -164,8 +172,10 @@ formación y la reconstrucción de hologramas en DLHM. Cierra con los
 antecedentes. El Capítulo~\ref{cap:metodos} describe lo que se construyó y cómo
 se midió, en el orden de las fases del anteproyecto: la implementación y su
 verificación; la calibración numérica bajo el muestreo de la DLHM, que incluye
-la iluminación esférica y el barrido de validez; el montaje; y la cadena de
-reconstrucción con sus métricas. El Capítulo~\ref{cap:resultados} presenta los
+la iluminación esférica, el barrido de validez y una comparación de ida y
+vuelta entre el FFT-ASM y el MPASM, desde el banco hasta la zona de Fresnel;
+el montaje y los hologramas experimentales; y la cadena de reconstrucción,
+con la búsqueda del foco, la calibración de la geometría y las métricas. El Capítulo~\ref{cap:resultados} presenta los
 resultados en el orden de los objetivos específicos y los discute frente a la
 pregunta de investigación. El Capítulo~\ref{cap:conclusiones} recoge las
 conclusiones y el trabajo futuro.
