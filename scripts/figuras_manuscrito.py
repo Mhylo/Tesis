@@ -18,7 +18,12 @@ la Figura 4.1 de scripts/exactitud.py).
                             resultados/barrido_obj2/barrido.csv, de
                             scripts/barrido_obj2.py. Sección 4.2.2.
     mapas_kf.pdf            el MPASM con K_f a 0.5, 1 y 2 veces el
-                            automático. Mismos datos. Sección 4.2.2.
+                            automático. Mismos datos. Sección 4.2.3.
+    interferometria.pdf     interferometría holográfica simulada a distancias
+                            largas: error de la ida y diferencia de fase
+                            contra q, y el mapa a q = 20. Datos:
+                            resultados/interferometria_larga/, de
+                            scripts/interferometria_larga.py. Anexo A.
     errata_kf.pdf          la Ec. (14) impresa frente a la del código
                             publicado, s = 10. Sección 4.1.
     tiempos.pdf             tiempo contra N y contra s. Datos:
@@ -777,6 +782,82 @@ def figura_mapas_kf():
     guardar(fig, "mapas_kf.pdf")
 
 
+# --------------------------------------- interferometría holográfica (anexo A)
+INTERF = RESULTADOS / "interferometria_larga"
+
+
+def figura_interferometria():
+    """Anexo A: (a) error de la ida contra q, (b) RMS de la diferencia de fase
+    frente a la deformación contra q, y la diferencia de fase a q = 20, (c) la
+    verdadera y (d) la del MPASM con s = 1. Datos: scripts/interferometria_larga.py."""
+    from scripts.interferometria_larga import A_FRAC, DELTA, N
+    filas = leer_csv(INTERF / "resumen.csv")
+    series = (("fft_p1", "FFT-ASM, sin relleno", COLOR["fft"], ":", "v"),
+              ("fft_p2", "FFT-ASM, relleno ×2", COLOR["fft"], "--", "s"),
+              ("fft_p4", "FFT-ASM, relleno ×4", COLOR["fft"], "-", "o"),
+              ("blas_p2", "BLAS, relleno ×2", COLOR["blas"], "--", "^"),
+              ("mpasm_s1", "MPASM, $s$ = 1", COLOR["mpasm"], "-", "D"),
+              ("mpasm_s2", "MPASM, $s$ = 2", COLOR["mpasm"], ":", "x"))
+    fig = plt.figure(figsize=(7.4, 6.4))
+    rej = fig.add_gridspec(2, 2, height_ratios=[1, 1.05], hspace=0.38, wspace=0.32)
+    a, b = fig.add_subplot(rej[0, 0]), fig.add_subplot(rej[0, 1])
+    for metodo, nombre, color, ls, marca in series:
+        sel = sorted((f for f in filas if f["metodo"] == metodo), key=lambda f: float(f["q"]))
+        q = [float(f["q"]) for f in sel]
+        a.plot(q, [max(float(f["err_ida"]), 1e-9) for f in sel], color=color, ls=ls, lw=1.4,
+               marker=marca, ms=4, label=nombre)
+        b.plot(q, [float(f["dphi_rms"]) if float(f["dphi_rms"]) > 0 else np.nan for f in sel],
+               color=color, ls=ls, lw=1.0, marker=marca, ms=3.5)
+    ideal = sorted((f for f in filas if f["metodo"] == "fft_p1"), key=lambda f: float(f["q"]))
+    b.plot([float(f["q"]) for f in ideal],
+           [float(f["dphi_ideal"]) if float(f["dphi_ideal"]) > 0 else np.nan for f in ideal],
+           color=TINTA, lw=2.4, alpha=0.25, label="reconstrucción ideal", zorder=1)
+    fres = sorted((f for f in filas if f["metodo"] == "fresnel"), key=lambda f: float(f["q"]))
+    b.plot([float(f["q"]) for f in fres], [float(f["dphi_rms"]) for f in fres], color=SUAVE,
+           ls="-.", lw=1.4, marker="*", ms=6, label="transformada de Fresnel")
+    a.axhspan(1e-9, 1e-8, color=SUAVE, alpha=0.15, lw=0)
+    a.text(2.2, 1.25e-9, "piso de la referencia", fontsize=7, color=SUAVE)
+    for ax, titulo, ylab in ((a, "(a) ida: simular el holograma", "error relativo del campo"),
+                             (b, "(b) vuelta: diferencia de fase", "RMS de $\\Delta\\varphi$ [rad]")):
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel(r"$q = z\,/\,(N\delta^2/\lambda)$")
+        ax.set_ylabel(ylab)
+        ax.set_title(titulo, fontsize=8.5, color=TINTA, loc="left")
+        limpiar(ax, rejilla="both")
+    # una sola leyenda, en el rincón vacío de (b): en (b) las curvas de los
+    # métodos quedan bajo la de la reconstrucción ideal
+    manijas, nombres = a.get_legend_handles_labels()
+    mb, nb = b.get_legend_handles_labels()
+    b.set_ylim(1e-6, 4)
+    b.legend(manijas + mb, nombres + nb, fontsize=6.3, frameon=False, loc="lower right")
+
+    # los mapas a q = 20, recortados al objeto
+    radio = A_FRAC * N * DELTA
+    x = (np.arange(N) - N / 2) * DELTA
+    R = np.hypot(*np.meshgrid(x, x))
+    m = int(np.ceil(1.08 * radio / DELTA))
+    corte = slice(N // 2 - m, N // 2 + m)
+    extension = (-m * DELTA, m * DELTA, -m * DELTA, m * DELTA)
+    verdad = np.angle(np.exp(1j * np.load(INTERF / "dphi_q20_verdad.npy")))
+    mpasm_s1 = np.load(INTERF / "dphi_q20_mpasm_s1.npy")
+    for k, (mapa, titulo) in enumerate(((verdad, "(c) deformación, $\\Delta\\varphi$ verdadera"),
+                                        (mpasm_s1, "(d) MPASM, $s$ = 1, a $q$ = 20"))):
+        ax = fig.add_subplot(rej[1, k])
+        mapa = np.where(R < radio, mapa, np.nan)[corte, corte]
+        im = ax.imshow(mapa, cmap="twilight", vmin=-np.pi, vmax=np.pi, extent=extension,
+                       interpolation="nearest")
+        ax.set_title(titulo, fontsize=8.5, color=TINTA, loc="left")
+        ax.set_xlabel("$x$ [mm]")
+        if k == 0:
+            ax.set_ylabel("$y$ [mm]")
+    barra = fig.colorbar(im, ax=fig.axes[-2:], shrink=0.85, pad=0.02,
+                         ticks=[-np.pi, 0, np.pi])
+    barra.ax.set_yticklabels(["$-\\pi$", "0", "$\\pi$"])
+    barra.set_label("$\\Delta\\varphi$ [rad]")
+    guardar(fig, "interferometria.pdf")
+
+
 def main():
     estilo()
     figura_kf_vs_z()
@@ -794,6 +875,7 @@ def main():
     figura_exp_z_frente_a_L()
     figura_exp_reconstrucciones()
     figura_exp_carlos()
+    figura_interferometria()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,146 @@
+% !TEX root = ../main.tex
+% ============================================================
+% ANEXO A. Tarea 86 del cronograma, pedida por el autor el 21/10:
+% contrasta el párrafo "Dónde rinde más el MPASM" de la discusión.
+% ============================================================
+\chapter{Propagación a distancias largas: interferometría holográfica simulada}
+\label{anx:larga}
+% Repo: scripts/interferometria_larga.py -> resultados/interferometria_larga/
+%       resumen.csv (21/10, CPU, complex128). Figura:
+%       scripts/figuras_manuscrito.py (figura_interferometria).
+
+La discusión (Sección~\ref{sec:discusion}) sostiene que el MPASM resulta más
+útil en montajes de propagación larga, como la interferometría holográfica
+digital, porque su $K_f$ automático crece con la distancia. Este anexo lo
+contrasta en una geometría de ese tipo, simulada, y separa, como el resto del
+trabajo, la propagación de la reconstrucción.
+
+\paragraph{El ensayo.} Un sensor de $1024\times1024$ píxeles de
+\SI{3.45}{\micro\metre} registra, a \SI{532}{nm}, la luz de un objeto que
+ocupa una ventana del mismo tamaño, coaxial con él. El objeto es un difusor:
+un campo complejo aleatorio con el espectro limitado a ángulos de
+\SI{10}{mrad} ---manchas de \emph{speckle} de unos \SI{53}{\micro\metre}---,
+sobre un disco de \SI{3.2}{mm} de diámetro con borde suave. Como en la
+interferometría holográfica, se registra en dos estados, y el segundo lleva la
+deformación de una placa circular empotrada: una diferencia de fase
+$\Delta\varphi(r) = \Delta\varphi_\mathrm{max}(1 - r^2/a^2)^2$ dentro del
+disco de radio $a$, con $\Delta\varphi_\mathrm{max} = 3\pi$. La distancia se
+da por el cociente de la ventana, $q = z/(N\delta^2/\lambda)$, entre 0.5 y 20:
+con este sensor, de \SI{11}{mm} a \SI{0.46}{m}; con uno de 2048 píxeles, el
+mismo $q$ cae al doble de distancia, hasta \SI{0.92}{m}.
+
+La referencia es el espectro angular en una malla rellenada lo bastante para
+que la luz que sale de la ventana no reentre y la función de transferencia
+quede bien muestreada en toda la banda del difusor. Repetida con 1.3 veces ese
+relleno, cambia menos de $6\times10^{-9}$ a la ida y de $2\times10^{-6}$ a la
+vuelta. Antes de devolverlo al objeto, el holograma se apodiza con una ventana
+de Tukey, la misma para todos los métodos: sin ella, el borde del sensor
+difracta hasta la frecuencia de Nyquist y, a $q = 20$, esa luz se abre más de
+lo que contiene la propia referencia. Se comparan el FFT-ASM sin relleno, con
+relleno al doble y al cuádruple; el BLAS con relleno al doble; el MPASM con
+$s = 1$, 2 y 4 y el $K_f$ automático, y, a la vuelta, la transformada de
+Fresnel de una sola FFT, que es paraxial y tiene malla de salida
+$\lambda z/(N\delta)$. Se mide el error relativo del campo en el sensor
+(Ec.~\eqref{eq:error-relativo}), que es el de simular el holograma, y el RMS de
+la diferencia de fase reconstruida frente a la deformación, pesado por la
+amplitud de las dos reconstrucciones, en el 80\,\% central de la placa: la
+medida de la interferometría holográfica.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption[Interferometría simulada: error de la ida]{Error relativo del
+  campo en el sensor al simular el holograma, frente a la referencia, por
+  cociente $q$ y método. Con 2048 píxeles, cada $q$ cae al doble de $z$. Los
+  valores menores que $10^{-8}$ están en el piso de la referencia. Abajo, el
+  mayor arreglo de cada método y su tiempo por propagación a $q = 20$, en CPU
+  y en complex128.}
+  \label{tab:larga}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{rrcccccccc}
+    \toprule
+    & & & \multicolumn{3}{c}{FFT-ASM, relleno} & BLAS
+      & \multicolumn{2}{c}{MPASM} \\
+    \cmidrule(lr){4-6}\cmidrule(lr){8-9}
+    $q$ & $z$ [mm] & $K_f$ ($s = 1$) & $\times1$ & $\times2$ & $\times4$
+      & $\times2$ & $s = 1$ & $s = 2$ \\
+    \midrule
+    0.5 & 11.5  & 1.00 & $5.2\times10^{-4}$ & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$
+        & $5.2\times10^{-4}$ & $<10^{-8}$ \\
+    1   & 22.9  & 1.00 & $1.8\times10^{-2}$ & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$
+        & $1.6\times10^{-2}$ & $<10^{-8}$ \\
+    2   & 45.8  & 1.42 & 0.11 & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$
+        & $<10^{-8}$ \\
+    3   & 68.7  & 1.73 & 0.20 & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$
+        & $<10^{-8}$ \\
+    5   & 114.6 & 2.24 & 0.38 & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$ & $<10^{-8}$
+        & $<10^{-8}$ \\
+    10  & 229.1 & 3.16 & 0.82 & $1.8\times10^{-5}$ & $<10^{-8}$ & $3.6\times10^{-5}$
+        & $<10^{-8}$ & $<10^{-8}$ \\
+    20  & 458.2 & 4.47 & 2.05 & 0.24 & $<10^{-8}$ & 0.094 & $7.4\times10^{-7}$
+        & $<10^{-8}$ \\
+    \midrule
+    \multicolumn{3}{l}{mayor arreglo [MB]} & 17 & 67 & 268 & 67 & 17 & 67 \\
+    \multicolumn{3}{l}{tiempo a $q = 20$ [s]} & 0.17 & 0.73 & 3.4 & 0.79 & 0.37
+      & 1.07 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Al propagar.} La Tabla~\ref{tab:larga} y la
+Figura~\ref{fig:larga}a dan el error de la ida. El $K_f$ automático vale 1
+hasta $q = 1$ y desde ahí crece como $\sqrt{q}$, hasta 4.47 en $q = 20$. El
+FFT-ASM necesita un relleno que crece con la distancia. Sin relleno se aparta
+de la referencia desde $q = 1$, y a $q = 20$ su error es de 2, el doble de la
+señal. Con relleno al doble es exacto hasta $q = 5$, se aparta del piso a
+$q = 10$ y a $q = 20$ da 0.24. Solo con relleno al cuádruple llega exacto a
+$q = 20$, con un arreglo de \SI{268}{MB} y \SI{3.4}{s} por propagación. El
+MPASM con $s = 1$, que no tiene relleno, se comporta como el FFT-ASM sin
+relleno mientras $K_f = 1$ ---a $q \le 1$ necesita $s = 2$---, pero desde
+$q = 2$, cuando $K_f$ pasa de 1, queda en el piso de la referencia, y a
+$q = 20$ da $7\times10^{-7}$ con \SI{17}{MB} y \SI{0.37}{s}. El BLAS no se
+contamina de \emph{aliasing}, pero a $q = 20$ recorta la banda y se equivoca
+en 0.094. Es la afirmación de la discusión, medida: el $K_f$ que crece con la
+distancia hace el papel del relleno que el FFT-ASM necesita, y lo hace sin
+agrandar la malla.
+
+\paragraph{Al medir la deformación.} La Figura~\ref{fig:larga}b da el RMS de
+la diferencia de fase reconstruida, y aquí el propagador no decide. La
+reconstrucción ideal ---la referencia devuelta desde el holograma--- se aparta
+de la deformación 0.009~rad a $q = 2$ y 0.33~rad a $q = 20$, y ninguno de los
+métodos sobre la malla del objeto se aparta de ella más de 0.003~rad, ni
+siquiera el FFT-ASM sin relleno. Lo que limita la medida es la apertura del
+sensor: a $q = 20$ solo le llega el 19\,\% de la luz del objeto, y la
+reconstrucción resuelve unos \SI{69}{\micro\metre}, $\lambda z/(N\delta)$, una
+escala en la que el gradiente de la deformación ya pesa
+(Figura~\ref{fig:larga}c y~d). La transformada de Fresnel da la misma
+diferencia de fase desde $q = 1$, con el menor costo (\SI{0.17}{s}), y falla a
+$q = 0.5$ (1.27~rad), donde su \emph{chirp} de entrada queda submuestreado.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{interferometria.pdf}
+  \caption[Interferometría holográfica simulada a distancias
+  largas]{Interferometría holográfica simulada: un difusor de \SI{3.2}{mm}
+  ante un sensor de $1024\times1024$ píxeles de \SI{3.45}{\micro\metre}, a
+  \SI{532}{nm}. (a)~Error del campo en el sensor al simular el holograma,
+  contra el cociente $q$; la banda gris es el piso de la referencia.
+  (b)~RMS de la diferencia de fase reconstruida frente a la deformación: las
+  curvas de los métodos quedan bajo la de la reconstrucción ideal. (c)~La
+  diferencia de fase de la deformación y (d)~la reconstruida con el MPASM,
+  $s = 1$, a $q = 20$ (\SI{0.46}{m}).}
+  \label{fig:larga}
+\end{figure}
+
+\paragraph{Lo que dice el ensayo.} En montajes de propagación larga, el MPASM
+rinde para propagar: simula el holograma con la exactitud del FFT-ASM con
+cuatro veces el relleno y con dieciséis veces menos memoria, y lo hace porque
+su $K_f$ crece con la distancia. Para la medida de la interferometría
+holográfica, en cambio, el propagador no decide: la fija la apertura del
+sensor, y la transformada de Fresnel, que es la de uso
+corriente~\cite{schnars2005}, basta. Es la misma separación entre propagar y
+reconstruir del resto del trabajo. El ensayo tiene los límites de una
+simulación: un solo objeto; un difusor de banda limitada ---uno real se abre
+más, lo que solo adelanta el desborde de la ventana---; el campo complejo en el
+sensor, como lo entrega el desplazamiento de fase, sin onda de referencia
+fuera de eje ni ruido, y el cálculo en CPU.
