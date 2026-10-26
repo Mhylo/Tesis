@@ -188,10 +188,14 @@ del tamaño de la malla $N$ y del sobremuestreo $s$, en CPU (Intel Core
 i5-11300H, NumPy) y en GPU (NVIDIA GeForce RTX 3050 de \SI{4}{GB}, CuPy). Se
 midieron las cuatro combinaciones de dispositivo y precisión (complex64 y
 complex128), porque pasar de CPU en doble precisión a GPU en simple mezcla dos
-efectos: el del dispositivo y el de la precisión. Los tiempos se tomaron con
-sincronización explícita del dispositivo, descartando una ejecución de
-calentamiento, y separando el cálculo de la transferencia de datos entre la
-memoria del sistema y la de la GPU.
+efectos: el del dispositivo y el de la precisión. El problema fue el mismo
+para todos: un objeto binario tipo USAF con $\delta = \SI{3.45}{\micro\metre}$
+y $\lambda = \SI{405}{nm}$, propagado \SI{150}{mm} sin relleno de ceros. Los
+tiempos se tomaron con sincronización explícita del dispositivo, descartando
+una ejecución de calentamiento, y separando el cálculo de la transferencia de
+datos entre la memoria del sistema y la de la GPU. Los de menos de
+\SI{50}{ms} son el promedio de entre 2 y 10 repeticiones; los demás, de una
+sola.
 
 \pendiente{confirmar con Carlos cómo se cita pyLHM: su repositorio no trae
 referencia publicada.}
@@ -343,10 +347,14 @@ banco, la malla tiene cuatro ejes:
   de 0.03 a 0.25 ($N$ de 328 a 2822). Uno es 0.1288, el primer cero del patrón
   de Airy del \emph{pinhole}, $1.22\lambda/d_\mathrm{p}$ con $d_\mathrm{p}$ su
   diámetro: es la apertura del cono que ilumina el lóbulo central, y se tomó
-  como la del banco. El máximo lo fija la memoria de
-  la GPU: con $N = 2822$ y $s = 3$ el MPASM ocupa \SI{1.8}{GB} de los
-  \SI{4}{GB} disponibles.
-  \item $s \in \{1, 2, 3\}$.
+  como la del banco. El máximo lo fija la memoria de la GPU. De sus
+  \SI{4}{GB}, el escritorio deja libres unos 3.2, y a cada cálculo se le
+  asignaron 2.5 para dejar sitio al campo de entrada, la referencia y la
+  métrica. Con $N = 2822$ y $s = 3$ el MPASM pide \SI{1.8}{GB}; con la NA
+  siguiente de la serie, 0.29 ($N = 3312$), pediría \SI{2.4}{GB}, al límite de
+  ese presupuesto.
+  \item $s \in \{1, 2, 3\}$. Con $s = 4$, el punto mayor pediría
+  \SI{2.6}{GB}.
   \item $K_f$ igual a 0.5, 1 y 2 veces el automático de la
   Ec.~\eqref{eq:kf-auto}, para
   medir si el automático es el adecuado. Los puntos con $sK_f < 1$ violan la
@@ -421,7 +429,13 @@ $z_\mathrm{eq}/[N(\delta/M)^2/\lambda]$. El ensayo cubre tres escalas.
 banco ($\lambda = \SI{528}{nm}$, $\delta = \SI{1.83}{\micro\metre}$,
 $L = \SI{10}{mm}$), un sensor simulado de $1024\times1024$ píxeles y la
 muestra a $z = 1$, 2, 3, 5 y \SI{7}{mm} de la fuente, el cociente va de 13.9 a
-0.66. A $z = \SI{3}{mm}$, el punto nominal, vale 3.6 con este sensor; con
+0.66. La distancia de \SI{1}{mm} queda por debajo del mínimo del barrido,
+\SI{1.44}{mm} (Sección~\ref{sec:barrido}), pero ese mínimo marca dónde el
+píxel proyectado se hace menor que $\lambda/2$ y afinarlo deja de aportar
+información, no dónde deja de valer el cálculo. Se incluyó para llevar el
+cociente muy por encima del criterio, y porque el laboratorio registró los
+hologramas experimentales con la muestra incluso a \SI{0.41}{mm} de la fuente
+(Sección~\ref{sec:res-obj3}). A $z = \SI{3}{mm}$, el punto nominal, vale 3.6 con este sensor; con
 los 4640 píxeles del sensor de los hologramas experimentales
 (Sección~\ref{sec:montaje}) valdría 0.79. Aquí los dos métodos son los de la
 DLHM. El \emph{MPASM} es el MPASM con la esférica exacta

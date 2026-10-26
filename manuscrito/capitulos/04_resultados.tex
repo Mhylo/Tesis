@@ -291,11 +291,19 @@ diferencia relativa máxima va de $4\times10^{-12}$ a $4\times10^{-10}$
 \end{table}
 
 La diferencia está en el costo, y es menor de lo que anticipa el conteo de
-operaciones (Sección~\ref{sec:czt-teoria}). En CPU y en doble precisión, con
-$s = 1$ y 4 y mallas de 512 a 2048 puntos por lado, los dos caminos tardan lo
-mismo en orden de magnitud: con $N = 512$ son más rápidas las matrices
-(\SI{0.11}{s} frente a \SI{0.15}{s} con $s = 1$), y desde $N = 1024$ la CZT,
-hasta 1.5 veces con $N = 2048$ (\SI{2.2}{s} frente a \SI{3.4}{s}). El producto
+operaciones (Sección~\ref{sec:czt-teoria}). Se midió aparte de la
+Tabla~\ref{tab:tiempos}, con los dos caminos uno junto al otro: en CPU y en
+doble precisión, en el escenario de Zhao et al.\ a \SI{12}{m}, con $s = 1$ y 4,
+mallas de 512 a 2048 puntos por lado, tras una ejecución de calentamiento:
+una sola repetición de las matrices y la mediana de dos de la CZT. Los dos caminos tardan lo mismo en orden de magnitud: con
+$N = 512$ son más rápidas las matrices (\SI{0.11}{s} frente a \SI{0.15}{s} con
+$s = 1$), y desde $N = 1024$ la CZT, hasta 1.5 veces con $N = 2048$
+(\SI{2.2}{s} frente a \SI{3.4}{s}). Los tiempos de las matrices no coinciden
+con los de la Tabla~\ref{tab:tiempos} (\SI{85}{ms} y \SI{2836}{ms} con
+$N = 512$ y 2048): son dos medidas independientes, de días distintos y en
+geometrías distintas, cada una de una sola repetición a esos tiempos, y sus
+valores absolutos difieren hasta en un 40\,\%. Por eso el contraste se lee en
+el cociente entre los dos caminos medidos juntos. El producto
 de matrices aprovecha las bibliotecas de álgebra lineal densa, y además corre
 sin cambios en la GPU: ahí, en precisión simple, tarda entre \SI{2.8}{ms} y
 \SI{89}{ms} con $s = 1$ (Tabla~\ref{tab:tiempos}), entre 25 y 50 veces menos
@@ -380,12 +388,15 @@ $s = 3$, en 95.
 \paragraph{La frontera es el criterio de ventana.} El FFT-ASM con relleno al
 doble se aparta del piso en 26 celdas, las de apertura numérica pequeña o
 muestra cerca de la fuente: con $z = \SI{3}{mm}$, las de NA hasta 0.09; con
-$z = \SI{1.5}{mm}$, todas. Son exactamente las de cociente
+$z = \SI{1.5}{mm}$, todas. Son las de cociente
 $z_\mathrm{eq}/[N(\delta/M)^2/\lambda]$ alto
 (Sección~\ref{sec:metodo-fresnel}): las 26 tienen un cociente de 3.17 o más,
-y todas las demás, de 3.20 o menos. A un lado de esa línea el error no pasa
-de 0.8 veces el piso; al otro, lo supera al menos cinco veces y llega a 2, el
-doble de la señal. El 3 es el valor que da la geometría con el relleno al
+y de las demás solo una pasa de ese valor, la de NA 0.03 con la muestra a
+\SI{6}{mm}, con 3.20. Los dos grupos se solapan en esas dos celdas ---la otra
+es la de NA 0.25 a \SI{1.5}{mm}, que se aparta con 3.17---, así que la
+frontera cae en un cociente de unos 3.2 y no en un valor exacto. En el error,
+en cambio, es nítida: de un lado no pasa de 0.8 veces el piso; del otro, lo
+supera al menos cinco veces y llega a 2, el doble de la señal. El 3 es el valor que da la geometría con el relleno al
 doble. La ventana rellenada mide $2N$ píxeles, y lo que sale de ella reaparece
 por el borde opuesto (Sección~\ref{sec:asm-fft}), así que la luz que parte del
 centro del objeto tiene que alejarse un ancho y medio de la ventana del sensor
@@ -395,7 +406,8 @@ llega a ese ancho y medio cuando el cociente vale $2\cdot2 - 1 = 3$. Sin
 relleno, el mismo razonamiento da 1, la $z_\mathrm{lim}$ de la
 Ec.~\eqref{eq:zlim}. La frontera es igual de nítida si se toman como umbral 2
 o 5 veces el piso, o si el cociente se calcula con la $z_\mathrm{lim}$ sin
-aproximar de la Ec.~\eqref{eq:zlim}, y en ese caso cae en 3.9. Que caiga en 3
+aproximar de la Ec.~\eqref{eq:zlim}, y en ese caso cae en 3.9, con el mismo
+solape de una celda. Que caiga en 3
 y no en 1 es lo que quiere decir que el criterio sea un orden de magnitud: su
 valor exacto depende del relleno y de cómo se calcule el cociente.
 
