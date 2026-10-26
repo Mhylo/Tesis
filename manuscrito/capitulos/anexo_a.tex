@@ -54,7 +54,8 @@ medida de la interferometría holográfica.
   cociente $q$ y método. Con 2048 píxeles, cada $q$ cae al doble de $z$. Los
   valores menores que $10^{-8}$ están en el piso de la referencia. Abajo, el
   mayor arreglo de cada método y su tiempo por propagación a $q = 20$, en CPU
-  y en complex128.}
+  y en complex128. El MPASM con $s = 4$ da lo mismo que con $s = 2$ en todos
+  los $q$, con \SI{268}{MB} y unos \SI{3.4}{s}, y no se muestra.}
   \label{tab:larga}
   \setlength{\tabcolsep}{4pt}
   \begin{tabular}{rrcccccccc}
@@ -90,9 +91,9 @@ medida de la interferometría holográfica.
 \paragraph{Al propagar.} La Tabla~\ref{tab:larga} y la
 Figura~\ref{fig:larga}a dan el error de la ida. El $K_f$ automático vale 1
 hasta $q = 1$ y desde ahí crece como $\sqrt{q}$, hasta 4.47 en $q = 20$. El
-FFT-ASM necesita un relleno que crece con la distancia. Sin relleno se aparta
-de la referencia desde $q = 1$, y a $q = 20$ su error es de 2, el doble de la
-señal. Con relleno al doble es exacto hasta $q = 5$, se aparta del piso a
+FFT-ASM necesita un relleno que crece con la distancia. Sin relleno ya se
+aparta de la referencia a $q = 0.5$, y a $q = 20$ su error es de 2, el doble de
+la señal. Con relleno al doble es exacto hasta $q = 5$, se aparta del piso a
 $q = 10$ y a $q = 20$ da 0.24. Solo con relleno al cuádruple llega exacto a
 $q = 20$, con un arreglo de \SI{268}{MB} y \SI{3.4}{s} por propagación. El
 MPASM con $s = 1$, que no tiene relleno, se comporta como el FFT-ASM sin

@@ -84,9 +84,19 @@
 % biblatex-ieee usa la cadena 'artno' (número de artículo, p. ej. e0275818)
 % y no la trae traducida al español.
 \DefineBibliographyStrings{spanish}{artno = {art\adddot}}
+% biblatex en español separa los rangos de páginas con guion (spanish.lbx);
+% el tutor los pide con raya corta, como en el estilo IEEE.
+\DefineBibliographyExtras{spanish}{%
+  \protected\def\bibrangedash{\textendash\penalty\hyphenpenalty}}
+% Sin estirar los DOI y URL por dentro: al partirse de línea quedaban
+% como "10 . 1007 / b138284".
+\biburlbigskip=0mu\relax
 
 % ---------- Enlaces (va al final) ----------
 \usepackage[hidelinks]{hyperref}
+% DOI y URL en la fuente del texto: en la monoespaciada el punto ocupa lo que
+% un dígito y "10.1007/b138284" se leía "10 . 1007 / b138284".
+\urlstyle{same}
 
 % ---------- Marcas de trabajo ----------
 % \pendiente{...} deja en rojo lo que falta escribir. Antes de entregar,

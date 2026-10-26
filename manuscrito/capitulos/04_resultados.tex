@@ -19,8 +19,8 @@
 Los tres propagadores quedaron implementados en un mismo paquete y verificados
 contra la solución analítica, que una segunda referencia independiente
 confirma; el MPASM reproduce el comportamiento de la Figura~4 de Zhao et
-al.~\cite{zhao2020}, y la verificación encontró dos erratas del artículo
-original. Esta sección presenta la evidencia en ese orden.
+al.~\cite{zhao2020}, y la verificación encontró una errata del artículo
+original y un error de su código publicado. Esta sección presenta la evidencia en ese orden.
 
 \subsection{Acuerdo con las implementaciones de terceros}
 
@@ -43,7 +43,7 @@ puntual compleja~\cite{deschamps1971}, a $3\lambda$ de distancia, la reducción
 radial da un error de $2.0\times10^{-6}$, que baja como el cuadrado del paso de
 la cuadratura.
 
-\subsection{Exactitud en el escenario de la Tabla~1}
+\subsection{Exactitud en el escenario de Zhao et al.}
 
 La Figura~\ref{fig:sam-vs-z} cumple el papel de la Figura~4
 de~\cite{zhao2020} en el escenario descrito en la
@@ -54,8 +54,8 @@ analítica, a lo largo de casi tres órdenes de magnitud en distancia.
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.85\textwidth]{obj1_sam_vs_z.pdf}
-  \caption[Exactitud de los tres propagadores en el escenario de la Tabla~1]{Exactitud de los tres propagadores frente a la solución analítica
-  del haz gaussiano, en el escenario de la Tabla~1 de~\cite{zhao2020}
+  \caption[Exactitud de los tres propagadores en el escenario de Zhao et al.]{Exactitud de los tres propagadores frente a la solución analítica
+  del haz gaussiano, en el escenario de Zhao et al.~\cite{zhao2020}
   ($\lambda = \SI{632.8}{nm}$, $w_0 = \SI{1}{mm}$, $N = 512$, ventana de
   \SI{5}{mm}). SAM según la Ec.~\eqref{eq:sam}; más alto es mejor. El MPASM
   usa $s = 10$ y el $K_f$ automático; el FFT-ASM y el BLAS, sin relleno de
@@ -93,10 +93,10 @@ desborda la ventana. La misma condición reaparece en DLHM
 
 Bajar a precisión simple no cambia nada medible: con el MPASM en GPU, el SAM
 en complex64 y en complex128 coincide hasta \SI{0.06}{dB} en las siete
-distancias de la tabla. Por eso el resto del trabajo se calculó en precisión
+distancias de control. Por eso el resto del trabajo se calculó en precisión
 simple en GPU.
 
-\subsection{Dos erratas del artículo original}
+\subsection{Una errata del artículo y un error de su código}
 
 \paragraph{La Ec.~(14), en el código publicado.} El artículo calcula $K_f$ con
 una expresión de la forma $\sqrt{A^2 + B}$; el código publicado por los
@@ -104,7 +104,7 @@ autores calcula $\sqrt{A^2 B}$~\cite{zhao2020code}. La versión del código no e
 dimensionalmente consistente: a distancias largas, el cociente entre los $K_f$
 que dan las dos tiende a $1/(sN\lambda)$, que tiene unidades de inverso de
 longitud, de modo que su efecto cambia con las unidades en que se escriba el
-problema. En el escenario de la Tabla~1, con $s = 10$ y las longitudes en
+problema. En el escenario de Zhao et al., con $s = 10$ y las longitudes en
 milímetros, como en el código publicado, el $K_f$ del código es 0.31 veces el
 del artículo a distancias largas (3.1 frente a 10.2 a \SI{80}{m};
 Figura~\ref{fig:errata-kf}), y la exactitud del MPASM cae en consecuencia: de
@@ -116,7 +116,7 @@ expresión del artículo.
   \includegraphics[width=0.8\textwidth]{errata_kf.pdf}
   \caption[La Ec.~(14) de Zhao et al.: artículo frente a código publicado]{$K_f$ automático con la Ec.~(14) de~\cite{zhao2020} tal como está
   impresa y tal como la calcula el código publicado~\cite{zhao2020code}, en el
-  escenario de la Tabla~1 con $s = 10$ y las longitudes en milímetros. A
+  escenario de Zhao et al. con $s = 10$ y las longitudes en milímetros. A
   distancias largas, el cociente entre las dos tiende a $1/(sN\lambda)$, que
   depende de las unidades; aquí vale 0.31.}
   % Repo: scripts/figuras_manuscrito.py (figura_errata_kf).
@@ -128,7 +128,7 @@ aparece impreso como $\iint I_\mathrm{ref}$ en lugar de
 $\iint I_\mathrm{ref}^2$ (Ec.~\eqref{eq:sam}). Con la versión impresa, el haz
 gaussiano a \SI{12}{m} comparado consigo mismo da $\alpha = 0.081$ y un SAM de
 \SI{0.37}{dB}, en lugar de $\alpha = 1$ y un SAM infinito. Además, la métrica deja de
-discriminar: en las siete distancias de la tabla el SAM no pasa de
+discriminar: en las siete distancias de control el SAM no pasa de
 \SI{3}{dB} y los tres métodos no se separan más de \SI{0.06}{dB} entre sí. Con
 esa métrica no podría haberse obtenido la Figura~4 del propio artículo. Con la
 corregida, el MPASM y el FFT-ASM se separan \SI{26.5}{dB} a \SI{12}{m}.
@@ -187,7 +187,7 @@ rápido que el FFT-ASM, aunque hace el mismo cálculo más una máscara. El
 control del muestreo tiene un precio: con $s = 1$ el
 MPASM cuesta entre 1.6 y 9.2 veces lo que el FFT-ASM en GPU, según $N$, y el
 costo crece con el sobremuestreo, unas 25 veces de $s = 1$ a $s = 8$ con
-$N = 512$ (de \SI{2.8}{ms} a \SI{70}{ms}). En el escenario de la Tabla~1, con
+$N = 512$ (de \SI{2.8}{ms} a \SI{70}{ms}). En el escenario de Zhao et al., con
 $s = 10$, una propagación del MPASM toma unos \SI{110}{ms} en GPU, frente a
 \SI{2}{ms} del FFT-ASM.
 
@@ -259,7 +259,7 @@ $b_k$ sobre mallas uniformes ---posiciones y frecuencias---, y eso es una CZT
 un factor de fase que centra la entrada. El MPASM se calculó de los dos modos,
 con sus matrices y con la CZT de SciPy, que usa la factorización de Bluestein,
 con las mismas frecuencias, el mismo $K_f$ y la misma función de
-transferencia, en el escenario de la Tabla~1 de~\cite{zhao2020} a
+transferencia, en el escenario de Zhao et al.~\cite{zhao2020} a
 \SI{0.5}{m}, \SI{12}{m} y \SI{200}{m}, con $s = 1$, 4 y 10. Los dos dan el
 mismo espectro y el mismo campo propagado: en las nueve combinaciones, la
 diferencia relativa máxima va de $4\times10^{-12}$ a $4\times10^{-10}$
@@ -270,8 +270,8 @@ diferencia relativa máxima va de $4\times10^{-12}$ a $4\times10^{-10}$
   \small
   \caption[El MPASM calculado con sus matrices y con la CZT]{Diferencia
   relativa máxima, $\max|a - b|/\max|b|$, entre el MPASM calculado con la CZT
-  y con sus matrices, en el espectro y en el campo propagado. Escenario de la
-  Tabla~1 de~\cite{zhao2020}, $K_f$ automático, complex128 en CPU.}
+  y con sus matrices, en el espectro y en el campo propagado. Escenario de Zhao
+  et al.~\cite{zhao2020}, $K_f$ automático, complex128 en CPU.}
   \label{tab:czt}
   \begin{tabular}{rrrcc}
     \toprule
@@ -415,7 +415,7 @@ FFT-ASM con relleno al doble en 69 de las 98 celdas.
 
 \paragraph{El $K_f$ automático es el adecuado.} La
 Figura~\ref{fig:mapas-kf} repite el MPASM con $K_f$ a la mitad y al doble del
-automático. En todas las celdas y con los tres valores de $s$, los dos
+automático. En todas las celdas calculadas y con los tres valores de $s$, los dos
 empeoran el error: al menos al doble, y en mediana entre 77 y
 $1.3\times10^{5}$ veces. Con la mitad, el intervalo espectral se extiende más
 de lo que el periodo admite y aparecen copias del campo ---con $s = 1$, solo
@@ -423,7 +423,7 @@ de lo que el periodo admite y aparecen copias del campo ---con $s = 1$, solo
 intervalo recorta la banda del objeto. El automático, a su vez, apenas se
 aparta de 1: en el punto del banco vale 1.65, 1.19 y 1 con $s = 1$, 2 y 3, y
 su máximo en todo el mapa es 5.3, con NA 0.03 y $z = \SI{1.5}{mm}$, frente a
-16.1 a \SI{200}{m} en el escenario de la Tabla~1
+16.1 a \SI{200}{m} en el escenario de Zhao et al.
 (Sección~\ref{sec:res-obj1}).
 
 \begin{figure}[htbp]
@@ -753,7 +753,9 @@ nominal, vale 21.15 en la posición 1, 11.11 en la 5, 7.46 en la 9 y 4.43 en la
 (Figura~\ref{fig:exp-geometria}b). El ajuste conjunto de los 17 focos y las 4
 magnificaciones da un píxel de $3.91\pm\SI{0.29}{\micro\metre}$ y
 $L = 18.7\pm\SI{1.4}{mm}$, con $\chi^2$ por grado de libertad de 8.2; con el
-píxel nominal fijo, de 105. La comprobación independiente es la platina. Con
+píxel nominal fijo, de 105. Con el píxel fijo en \SI{3.80}{\micro\metre}, el
+ajuste da $L = 18.19\pm\SI{0.29}{mm}$, y se adoptó $L = \SI{18.23}{mm}$,
+dentro de ese error. La comprobación independiente es la platina. Con
 el píxel adoptado y $L = \SI{18.23}{mm}$, el MPASM esférico enfoca el USAF
 de amplitud en $z_k = 0.416 + 0.0991\,(k - 1)$~mm, con un residuo de
 \SI{4.3}{\micro\metre} rms, y el de fase en $z_k = 0.462 + 0.0507\,(k - 1)$~mm,
@@ -765,11 +767,12 @@ paso fijo, pero no que ese paso sea redondo. La magnificación va de 44.1 a
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=\textwidth]{exp_geometria.pdf}
-  \caption[Geometría inferida de los hologramas experimentales]{(a)~$D$ del
-  foco por posición de la platina (mediana y cuartiles de las capturas) y la
-  curva de una platina a paso fijo con la geometría adoptada. (b)~$L$
-  implícita en cada posición donde se midió la magnificación, relativa a su
-  media, con el píxel nominal y con el adoptado.}
+  \caption[Geometría inferida de los hologramas experimentales]{(a)~$z$ del
+  foco con el MPASM esférico, con el píxel y la $L$ adoptados, por posición de
+  la platina (primera captura de cada posición), y la recta de una platina a
+  paso fijo ajustada a esos focos. (b)~$L$ implícita en cada posición donde se
+  midió la magnificación, relativa a su media, con el píxel nominal y con el
+  adoptado.}
   % Repo: scripts/figuras_manuscrito.py (figura_exp_geometria).
   \label{fig:exp-geometria}
 \end{figure}
@@ -850,7 +853,8 @@ independiente de la escala de la geometría adoptada.
   \small
   \caption[Contraste del USAF: MPASM esférico frente a la cadena del
   laboratorio]{Contraste de Michelson de los elementos del USAF de amplitud en
-  el foco común. Frecuencia y periodo en la muestra, del ajuste de tres barras
+  el foco común. Frecuencia, en pares de líneas por milímetro (pl/mm), y
+  periodo en la muestra, del ajuste de tres barras
   sobre la reconstrucción del recorte grande; entre paréntesis, el elemento
   del USAF más cercano.}
   \label{tab:exp-carlos}
@@ -858,7 +862,7 @@ independiente de la escala de la geometría adoptada.
     \toprule
     & & & \multicolumn{2}{c}{recorte de 512 px} & recorte grande \\
     \cmidrule(lr){4-5}\cmidrule(lr){6-6}
-    posición & lp/mm & periodo [\si{\micro\metre}] & MPASM esférico &
+    posición & pl/mm & periodo [\si{\micro\metre}] & MPASM esférico &
       laboratorio & MPASM esférico \\
     \midrule
     1  & 187.8 (G7E4) & 5.32  & 0.39 & 0.30 & 0.70 \\
@@ -909,18 +913,21 @@ mismo criterio: si el campo propagado cabe o no en la ventana.
 
 \paragraph{Cuándo pesa el control.} Mientras el campo cabe en la ventana, la
 malla de la FFT muestrea bien la función de transferencia, el $K_f$
-automático vale 1 y el MPASM no tiene nada que aportar: en el escenario de la
-Tabla~1 el FFT-ASM fue incluso algo más exacto (Sección~\ref{sec:res-obj1}),
+automático vale 1 y el MPASM no tiene nada que aportar: en el escenario de Zhao
+et al. el FFT-ASM fue incluso algo más exacto (Sección~\ref{sec:res-obj1}),
 y en la ida y vuelta a distancias cortas las cuatro combinaciones dieron el
 objeto exacto (Sección~\ref{sec:res-fresnel}). El control empieza a pesar
 cuando la distancia supera $z_\mathrm{lim} \approx N\delta^2/\lambda$
 (Ec.~\eqref{eq:zlim}), porque desde ahí el campo se sale de la ventana. No es,
 entonces, una cuestión de distancias largas a secas, sino del cociente entre
 la distancia y $N\delta^2/\lambda$. El $K_f$ automático lo registra: vale 1
-mientras el campo cabe y, pasada $sN\delta^2/\lambda$, crece con la distancia
-como $\sqrt{z}$ (Figura~\ref{fig:kf-z}), de 1 a 16.1 entre \SI{0.5}{m} y
-\SI{200}{m} en el escenario de la Tabla~1, el mismo intervalo en que el MPASM
-se separa del FFT-ASM en la Figura~\ref{fig:sam-vs-z}. En DLHM, donde por el escalado la
+hasta $sN\delta^2/\lambda$ y desde ahí crece con la distancia como
+$\sqrt{z}$ (Figura~\ref{fig:kf-z}), de 1 a 16.1 entre \SI{0.5}{m} y
+\SI{200}{m} en el escenario de Zhao et al., el mismo intervalo en que el MPASM
+se separa del FFT-ASM en la Figura~\ref{fig:sam-vs-z}. Entre
+$z_\mathrm{lim}$ y $sN\delta^2/\lambda$ el campo ya no cabe en la ventana,
+pero $K_f$ sigue en 1: ahí el sobremuestreo basta para muestrear la función de
+transferencia. En DLHM, donde por el escalado la
 propagación es de $z_\mathrm{eq}$ sobre la malla de paso $\delta/M$
 (Ec.~\eqref{eq:escalado}), ese papel lo cumple $N(\delta/M)^2/\lambda$. Las
 distancias físicas son de milímetros, pero la malla en la muestra es tan fina
@@ -993,8 +1000,8 @@ holográfica digital, que compara dos de esos hologramas para medir
 deformaciones y formas, trabaja en la misma geometría~\cite{schnars2005}. Con
 un sensor de 2048 píxeles de \SI{3.45}{\micro\metre} y luz de \SI{532}{nm},
 $N\delta^2/\lambda$ ronda los \SI{46}{mm}, y a \SI{1}{m} el cociente vale 22 y
-el $K_f$ automático, 4.7 con $s = 1$. Es el régimen del escenario de la
-Tabla~1 y de la zona de Fresnel del ensayo de ida y vuelta, donde el MPASM
+el $K_f$ automático, 4.7 con $s = 1$. Es el régimen del escenario de Zhao
+et al. y de la zona de Fresnel del ensayo de ida y vuelta, donde el MPASM
 propagó con la exactitud que el FFT-ASM pierde y amplió la ventana de salida a
 un costo de memoria que el FFT-ASM no puede igualar
 (Secciones~\ref{sec:res-obj1} y~\ref{sec:res-fresnel}). En esas técnicas
