@@ -33,8 +33,8 @@ integral de Rayleigh--Sommerfeld, verificada por su cuenta
 (Sección~\ref{sec:verificacion}). El segundo fue contra hologramas de muestras
 de resolución conocida: simulados con los parámetros del montaje, en una ida
 y vuelta con objeto conocido (Sección~\ref{sec:metodo-fresnel}), y
-experimentales, registrados por el laboratorio con \emph{targets} USAF de
-amplitud y de fase (Secciones~\ref{sec:montaje} y~\ref{sec:metricas}). En
+experimentales, registrados por el laboratorio con patrones de resolución
+USAF de amplitud y de fase (Secciones~\ref{sec:montaje} y~\ref{sec:metricas}). En
 cada nivel, los métodos que se comparan se aplicaron al mismo dato, de modo que
 las diferencias entre los resultados son atribuibles al propagador.
 
@@ -72,7 +72,8 @@ resultado publicado, y contra referencias que no comparten código con los
 propagadores.
 
 \paragraph{Escenario.} Un haz gaussiano colimado con los parámetros de la
-Tabla~1 de~\cite{zhao2020}: longitud de onda $\lambda = \SI{632.8}{nm}$, radio
+Tabla~1 de~\cite{zhao2020} ---en adelante, el escenario de Zhao et al.---:
+longitud de onda $\lambda = \SI{632.8}{nm}$, radio
 de cintura $w_0 = \SI{1}{mm}$ y una ventana de \SI{5}{mm} muestreada con
 $N = 512$ puntos por lado ($\delta = \SI{9.78}{\micro\metre}$). Se propagó a 30
 distancias entre \SI{0.5}{m} y \SI{200}{m}: siete distancias de control,
@@ -108,8 +109,8 @@ forma en que la evalúa el código:
   \label{eq:rs1}
 \end{equation}
 con $r$ la distancia entre el punto de entrada y el de salida. Evaluada
-directamente en 2-D cuesta $\mathcal{O}(N^4)$ operaciones: con la malla de la
-Tabla~1, la implementación por fuerza bruta de pyLHM~\cite{pylhm} tardaría
+directamente en 2-D cuesta $\mathcal{O}(N^4)$ operaciones: con la malla del escenario de Zhao
+et al., la implementación por fuerza bruta de pyLHM~\cite{pylhm} tardaría
 entre una y dos horas por distancia. Zhao et al. indican que reducen el cálculo
 a una dimensión, sin decir cómo~\cite{zhao2020}. Aquí la reducción se hizo
 reescribiendo la Ec.~\eqref{eq:rs1} en coordenadas polares: para un campo con
@@ -128,7 +129,7 @@ ecuación de Helmholtz, el campo de una fuente puntual en una posición
 compleja~\cite{deschamps1971}, propagado a una distancia de $3\lambda$, donde el
 término $1/r$ de la Ec.~\eqref{eq:rs1} pesa un 5\,\%. Donde las dos
 referencias valen, coinciden; donde dejan de coincidir, lo que se mide es el
-alcance de la aproximación paraxial. En el escenario de la Tabla~1 los ángulos
+alcance de la aproximación paraxial. En el escenario de Zhao et al. los ángulos
 de propagación son del orden de $\lambda/(\pi w_0) \approx \SI{2e-4}{rad}$, así
 que la solución analítica vale en todo el intervalo y es la que se usó para
 medir la exactitud de los propagadores.
@@ -157,7 +158,7 @@ importa, los campos se compararon como complejos.
 
 \paragraph{Contraste con implementaciones de terceros.} El FFT-ASM y el MPASM
 se contrastaron también con implementaciones ajenas. El FFT-ASM, con la de la
-librería pyDHM~\cite{castaneda2022}, que suministró el tutor de este trabajo;
+biblioteca pyDHM~\cite{castaneda2022}, que suministró el tutor de este trabajo;
 el MPASM, término a término, con el código publicado por sus
 autores~\cite{zhao2020code}. Para el BLAS no se usó una
 implementación ajena; lo verifican la solución analítica y las pruebas
@@ -281,7 +282,7 @@ $F(f) = \sum_n J_n\, A_n(f)$, con
   A_n(f) = e^{i\pi x_n^2/(\lambda L)}\, e^{-i2\pi f x_n}\,
   W\!\left(f - \frac{x_n}{\lambda L}\right),
   \qquad
-  W(g) = \delta\sqrt{i\lambda L}\int_{-B-g}^{B-g} e^{-i\pi\lambda L s^2}\,\mathrm{d}s,
+  W(g) = \delta\sqrt{i\lambda L}\int_{-B-g}^{B-g} e^{-i\pi\lambda L \xi^2}\,\mathrm{d}\xi,
   \label{eq:ventana-chirp}
 \end{equation}
 donde $B = 1/(2\delta)$. La integral es una diferencia de integrales de
@@ -410,7 +411,7 @@ complejo, con su fase, para que la imagen gemela no se mezcle con lo que se
 mide; la vuelta desde la intensidad se trata aparte, al final de esta sección.
 
 La distancia se mide con el criterio de la ventana: el cociente entre la
-distancia de propagación y $z_\mathrm{lim} = N\delta^2/\lambda$
+distancia de propagación y $z_\mathrm{lim} \approx N\delta^2/\lambda$
 (Ec.~\eqref{eq:zlim}), por debajo del cual el campo propagado cabe en la
 ventana. En la DLHM la propagación equivalente es $z_\mathrm{eq}$ sobre la
 malla de paso $\delta/M$ (Ec.~\eqref{eq:escalado}), y el cociente es
@@ -503,7 +504,7 @@ la CPU.
 
 El laboratorio registró los hologramas en su montaje DLHM
 (Figura~\ref{fig:esquema}) con dos muestras de resolución conocida: un
-\emph{target} USAF 1951 de amplitud, en el que se leen los grupos 4 a 7 con su
+patrón de resolución USAF 1951 de amplitud, en el que se leen los grupos 4 a 7 con su
 número impreso, y uno de fase con grupos del USAF y una estrella de Siemens.
 Para cada muestra la platina la llevó por 17 posiciones a lo largo del eje, y
 en cada posición se registraron dieciséis hologramas con la muestra en
@@ -524,7 +525,8 @@ parámetros con su origen. El píxel y $L$ son inferidos y quedan por confirmar
 con el laboratorio: el ajuste no distingue \SI{3.8}{\micro\metre} de
 \SI{3.66}{\micro\metre}, que sería el de \SI{1.83}{\micro\metre} con
 agrupamiento $2\times2$. Para reconstruir se adoptaron
-$\delta = \SI{3.80}{\micro\metre}$ y $L = \SI{18.23}{mm}$. Con ellos el sensor
+$\delta = \SI{3.80}{\micro\metre}$ y $L = \SI{18.23}{mm}$, dentro del error
+del ajuste con ese píxel, $18.19\pm\SI{0.29}{mm}$. Con ellos el sensor
 mide $17.6\times\SI{13.3}{mm}$ y su apertura numérica en el eje largo, por la
 Ec.~\eqref{eq:na}, es 0.43.
 
@@ -547,6 +549,7 @@ Ec.~\eqref{eq:na}, es 0.43.
      & $3.91\pm\SI{0.29}{\micro\metre}$; adoptado \SI{3.80}{\micro\metre} & inferido \\
     fuente--sensor $L$ & \SI{10}{mm} ($3 + 7$) & nominal \\
      & $18.7\pm\SI{1.4}{mm}$; con \SI{3.80}{\micro\metre}, $18.19\pm\SI{0.29}{mm}$ & inferido \\
+     & adoptado \SI{18.23}{mm}, dentro del error del ajuste & inferido \\
     fuente--muestra $z$ & \SI{3}{mm} & nominal \\
      & amplitud: 0.413 a \SI{2.001}{mm}, pasos de \SI{0.099}{mm} & medido \\
      & fase: 0.462 a \SI{1.274}{mm}, pasos de \SI{0.051}{mm} & medido \\
@@ -561,7 +564,7 @@ Ec.~\eqref{eq:na}, es 0.43.
 %       comparar.py); CamposT/dlhm.py; la cadena del laboratorio, en
 %       scripts/mi_prueba_dlhm.py (reconstruir, MotorCarlos).
 
-Un holograma experimental no trae verdad de terreno: no se sabe a qué
+Un holograma experimental no trae una referencia conocida: no se sabe a qué
 distancia está la muestra, y en este caso tampoco se conocía la geometría del
 banco (Sección~\ref{sec:montaje}). Por eso la cadena de reconstrucción tiene
 tres pasos antes de comparar métodos: normalizar el holograma, encontrar el
@@ -589,7 +592,7 @@ dos multiplican por la misma onda esférica y propagan con el espectro angular;
 lo que las separa es cómo tratan el muestreo de esa esférica. Se comparan
 sobre el mismo recorte central y con la misma normalización.
 
-\paragraph{Búsqueda del plano de foco.} Sin verdad de terreno, el foco se
+\paragraph{Búsqueda del plano de foco.} Sin referencia conocida, el foco se
 eligió por nitidez, con el coeficiente de Tamura del módulo de la
 reconstrucción, $\sqrt{\sigma/\mu}$~\cite{memmolo2011}. Un objeto de amplitud
 enfoca en su máximo; uno de fase, en su mínimo, porque en el foco $|t| = 1$.

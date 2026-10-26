@@ -478,6 +478,10 @@ COLOR_CONJ = {"amp": COLOR["mpasm"], "phase": COLOR["fft"]}
 #: (3.80 um, inferido) el mismo foco es D (3.80/1.83)^2, y entonces
 #: D = L(L - z)/z con L = 18.23 mm
 ESC_PIXEL = (3.80 / 1.83) ** 2
+#: mm, la L adoptada, con la que corrio el MPASM esferico (L_EXP de
+#: scripts/hologramas_carlos/correr.py); el ajuste con el pixel de 3.80 um da
+#: 18.19 +- 0.29 (calibracion.json, pixel_380)
+L_EXP = 18.229
 
 
 def _focos_por_carpeta(conjunto):
@@ -516,34 +520,27 @@ def figura_exp_foco():
 
 
 def figura_exp_geometria():
-    """(a) D del foco contra la posicion, con el modelo de platina a paso fijo
-    y la geometria adoptada. (b) L = D/(M - 1) implicito en cada posicion donde
-    se midio M, con el pixel de 1.83 um y con el de 3.80 um."""
-    import json
-    from scipy.optimize import least_squares
-    cal = json.load(open(EXP / "calibracion.json", encoding="utf-8"))
-    g = cal["pixel_380"]
-    L = g["L"]
+    """(a) z del foco con el MPASM esferico (captura 1, pixel de 3.80 um y
+    L_EXP) contra la posicion, con la recta de una platina a paso fijo: los
+    pasos y residuos de la Seccion 4.3.2. (b) L = D/(M - 1) implicito en cada
+    posicion donde se midio M, con el pixel de 1.83 um y con el de 3.80 um."""
+    focos = leer_csv(EXP / "focos_exactos.csv")
     fig, (a, b) = plt.subplots(1, 2, figsize=(7.4, 3.0))
-    kk = np.linspace(1, 17, 200)
     for conjunto in ("amp", "phase"):
-        ks, med, lo, hi = _focos_por_carpeta(conjunto)
-        if conjunto == "amp":
-            z1, dz = g["z1"], g["dz"]
-        else:
-            r = least_squares(lambda q: L**2 / (q[0] + (ks - 1) * q[1]) - L - med,
-                              [0.45, 0.05], loss="soft_l1", f_scale=2.0)
-            z1, dz = r.x
-        z = z1 + (kk - 1) * dz
-        a.plot(kk, L * (L - z) / z, color=COLOR_CONJ[conjunto], lw=1.0, alpha=0.7)
-        a.errorbar(ks, med, yerr=[med - lo, hi - med], fmt="o", ms=3.5, lw=0.9,
-                   color=COLOR_CONJ[conjunto], label=f"{NOMBRE_CONJ[conjunto]}, "
-                   f"$\\Delta z$ = {1e3 * dz:.1f} µm")
+        filas = [f for f in focos if f["conjunto"] == conjunto]
+        k = np.array([int(f["k"]) for f in filas])
+        z = np.array([float(f["z"]) for f in filas])
+        dz, z1 = np.polyfit(k - 1, z, 1)
+        rms = np.sqrt(np.mean((z - z1 - (k - 1) * dz) ** 2))
+        a.plot(k, z1 + (k - 1) * dz, color=COLOR_CONJ[conjunto], lw=1.0, alpha=0.7)
+        a.plot(k, z, "o", ms=3.5, color=COLOR_CONJ[conjunto],
+               label=f"{NOMBRE_CONJ[conjunto]}: $\\Delta z$ = {1e3 * dz:.1f} µm, "
+               f"rms {1e3 * rms:.1f} µm")
     a.set_xlabel("posición $k$ de la platina", fontsize=8.5)
-    a.set_ylabel(r"$D$ del foco, píxel de 3.80 µm [mm]", fontsize=8.5)
+    a.set_ylabel(r"$z$ del foco, MPASM esférico [mm]", fontsize=8.5)
     a.set_xticks(range(1, 18, 2))
-    a.legend(fontsize=7, frameon=False)
-    a.set_title(f"(a) focos y platina a paso fijo ($L$ = {L:.2f} mm)", fontsize=8.5,
+    a.legend(fontsize=7, frameon=False, loc="upper left")
+    a.set_title(f"(a) focos y platina a paso fijo ($L$ = {L_EXP:.2f} mm)", fontsize=8.5,
                 color=TINTA, loc="left")
     limpiar(a)
     filas = leer_csv(EXP / "L_implicito.csv")
@@ -617,7 +614,7 @@ def _mostrar(ax, A):
 def figura_exp_reconstrucciones():
     """|t| (amplitud) y la fase de t (fase) en el foco del MPASM esferico."""
     zex = {(f["conjunto"], int(f["k"])): float(f["z"]) for f in leer_csv(EXP / "focos_exactos.csv")}
-    L = 18.229
+    L = L_EXP
     fig, ejes = plt.subplots(2, 4, figsize=(7.4, 3.9))
     for j, k in enumerate((1, 5, 9, 17)):
         t = np.load(EXP / f"imagen_amp_z{k}.npy")

@@ -22,10 +22,10 @@ exacta que la evaluación por fuerza bruta de pyLHM. En el escenario con el que
 se presentó el MPASM, este se mantuvo entre 31.1 y \SI{48.5}{dB} de
 \SI{0.5}{m} a \SI{200}{m}, mientras el FFT-ASM caía por debajo de \SI{5}{dB}
 desde \SI{12}{m}, con el haz ya fuera de la ventana. La verificación encontró
-dos erratas en el artículo original: la Ec.~(14) del código publicado, que no
-es dimensionalmente consistente y baja el MPASM de 48.5 a \SI{33.3}{dB} a
-\SI{200}{m}, y el denominador impreso de la métrica SAM, con el que un campo
-comparado consigo mismo da \SI{0.37}{dB}. La GPU acelera los tres métodos
+una errata del artículo y un error de su código: el denominador impreso de la
+métrica SAM, con el que un campo comparado consigo mismo da \SI{0.37}{dB}, y la
+Ec.~(14) tal como la calcula el código publicado, que no es dimensionalmente
+consistente y baja el MPASM de 48.5 a \SI{33.3}{dB} a \SI{200}{m}. La GPU acelera los tres métodos
 entre 20 y 78 veces, y el control del muestreo tiene un precio: con $s = 1$, el
 MPASM cuesta entre 1.6 y 9.2 veces lo que el FFT-ASM.
 
@@ -66,7 +66,7 @@ supere la ida y vuelta consigo mismo no prueba nada: deshace su propio error a
 cualquier distancia.
 
 \paragraph{Objetivo 3: hologramas experimentales.} Se reconstruyeron los
-hologramas que registró el laboratorio de dos \emph{targets} USAF, de
+hologramas que registró el laboratorio de dos patrones de resolución USAF, de
 amplitud y de fase, en 17 posiciones de la platina con 16 capturas cada una.
 Todas las posiciones tienen un foco único, en el que las capturas coinciden
 con una dispersión de entre el 0.27 y el 0.57\,\% en amplitud y de entre el
@@ -104,9 +104,11 @@ un microscopio holográfico digital con objetivo (DHM) típico, con
 $N = 2048$ píxeles de \SI{3.45}{\micro\metre} y luz de \SI{532}{nm},
 $N\delta^2/\lambda$ ronda los 46~mm y un reenfoque de milímetros queda muy por
 debajo. La idea de que el MPASM rinde con mayores distancias se
-sostiene, entonces: su $K_f$ automático vale 1 mientras el campo cabe y crece
-como $\sqrt{z}$ cuando lo desborda, de 1 a 16.1 entre \SI{0.5}{m} y
-\SI{200}{m} en el escenario de la Tabla~1. Por eso el método resulta más útil
+sostiene, entonces: su $K_f$ automático vale 1 hasta $s$ veces la distancia a
+la que el campo deja de caber en la ventana ---hasta ahí basta el
+sobremuestreo--- y desde ahí crece como $\sqrt{z}$, de 1 a 16.1 entre
+\SI{0.5}{m} y
+\SI{200}{m} en el escenario de Zhao et al. Por eso el método resulta más útil
 en montajes de propagación larga frente a $N\delta^2/\lambda$, como la
 holografía digital de Fresnel y la interferometría holográfica, con el objeto
 a decenas de centímetros o a un metro del sensor~\cite{schnars1994,
@@ -115,7 +117,7 @@ frente a $z_\mathrm{lim}$. El criterio es un orden de magnitud, no una frontera,
 paraxial. Por encima de él hay que
 separar la propagación de la reconstrucción. Al propagar ---que es como se
 simula un holograma--- el MPASM con sobremuestreo ($s = 3$) y $K_f$ automático
-sigue a Rayleigh-Sommerfeld donde el FFT-ASM se contamina de aliasing, con
+sigue a Rayleigh--Sommerfeld donde el FFT-ASM se contamina de \emph{aliasing}, con
 entre 11 y 1100 veces menos error; con $s = 1$ pierde frente al FFT-ASM con
 relleno al doble. Al reconstruir, $K_f$ y $s$ no agregan información: con la
 misma ventana, las dos cadenas dan casi la misma imagen de los hologramas
@@ -141,7 +143,7 @@ ya está hecho:
   conjunto de hologramas el píxel efectivo, el agrupamiento y $L$, o registrar
   un holograma con la muestra en una posición conocida, haría innecesario el
   ajuste.
-  \item \textbf{Medir fidelidad, no solo contraste.} Sin verdad de terreno,
+  \item \textbf{Medir fidelidad, no solo contraste.} Sin una referencia conocida,
   las métricas del objetivo~3 miden nitidez y contraste. Muestras de
   transmitancia conocida y registros sin compresión, en lugar de JPEG de 8
   bits, permitirían comparar la reconstrucción con el objeto, como se hizo en

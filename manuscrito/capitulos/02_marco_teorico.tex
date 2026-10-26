@@ -209,12 +209,12 @@ Sección~\ref{sec:dlhm}, la magnificación--- en las posiciones $\mathbf{x}$ e $
 frecuencias $\mathbf{f}_x$ y $\mathbf{f}_y$ es
 \begin{equation}
   F(\mathbf{f}_x, \mathbf{f}_y) = \frac{1}{MN\,K_{fx}K_{fy}\,s^2}\;
-  \mathbf{M}_{y,f_y}^{\mathsf{T}}\, U_0\, \mathbf{M}_{f_x,x}^{\mathsf{T}},
+  \mathbf{E}_{y,f_y}^{\mathsf{T}}\, U_0\, \mathbf{E}_{f_x,x}^{\mathsf{T}},
   \qquad
-  \mathbf{M}_{f_x,x} = \exp\!\left(-i2\pi\,\mathbf{f}_x^{\mathsf{T}}\mathbf{x}\right),
+  \mathbf{E}_{f_x,x} = \exp\!\left(-i2\pi\,\mathbf{f}_x^{\mathsf{T}}\mathbf{x}\right),
   \label{eq:dft-matricial}
 \end{equation}
-y análogamente $\mathbf{M}_{y,f_y}$. La diferencia con la FFT es que los
+y análogamente $\mathbf{E}_{y,f_y}$. La diferencia con la FFT es que los
 vectores de frecuencia dejan de estar impuestos por el algoritmo: se eligen.
 En el MPASM,
 \begin{equation}
@@ -228,17 +228,17 @@ multiplicando el espectro por $H$ y aplicando una DFT inversa escrita del mismo
 modo, con el signo de la exponencial cambiado y vectores de salida $\mathbf{x}'$ de $rN$ puntos y paso $\delta'$,
 elegidos también libremente:
 \begin{equation}
-  U(\mathbf{x}', \mathbf{y}') = \mathbf{M}_{y',f_y}
+  U(\mathbf{x}', \mathbf{y}') = \mathbf{E}_{y',f_y}
   \left[ F(\mathbf{f}_x, \mathbf{f}_y) \cdot H(\mathbf{f}_x, \mathbf{f}_y; z) \right]
-  \mathbf{M}_{f_x,x'}.
+  \mathbf{E}_{f_x,x'}.
   \label{eq:mpasm}
 \end{equation}
 Con $s = K_f = r = 1$ y $\delta' = \delta$, el MPASM coincide con el espectro
 angular por FFT~\cite{zhao2020}.
 
 Los coeficientes de control tienen papeles distintos. El factor $K_f$ escala
-el intervalo espectral. Con $K_f > 1$, el uso de~\cite{zhao2020}, lo
-comprime: concentra las $sN$ muestras en la banda donde la función de
+el intervalo espectral. Con $K_f > 1$, que es el uso que le
+da~\cite{zhao2020}, lo comprime: concentra las $sN$ muestras en la banda donde la función de
 transferencia sí cumple la condición de muestreo, en lugar de repartirlas
 hasta la frecuencia de Nyquist. Con $K_f < 1$ lo expande más allá de esa
 frecuencia, que es lo que pide la iluminación esférica de la
@@ -273,7 +273,7 @@ como $\sqrt{s}$~\cite{zhao2020}.
   \centering
   \includegraphics[width=0.8\textwidth]{kf_vs_z.pdf}
   \caption[$K_f$ automático en función de la distancia]{$K_f$ automático (Ec.~\eqref{eq:kf-auto}) en función de la
-  distancia, en el escenario de la Tabla~1 de~\cite{zhao2020} ($N = 512$,
+  distancia, en el escenario de Zhao et al.~\cite{zhao2020} ($N = 512$,
   $\delta = \SI{9.78}{\micro\metre}$, $\lambda = \SI{632.8}{nm}$), para cuatro
   valores de $s$. Las líneas punteadas son la asíntota
   $\delta^{-1}\sqrt{\lambda z/(sN)}$, que cruza $K_f = 1$ en
@@ -308,7 +308,7 @@ plano complejo, no una distancia--- sobre los puntos
 $z_k = A\,W^{-k}$; con $A = e^{i2\pi f_0\delta}$ y $W = e^{-i2\pi\Delta f\delta}$,
 esos puntos son las frecuencias $f_k = f_0 + k\,\Delta f$, con origen, paso y
 número de muestras libres. Es exactamente lo que calcula la matriz
-$\mathbf{M}_{f_x,x}$ de la Ec.~\eqref{eq:dft-matricial}.
+$\mathbf{E}_{f_x,x}$ de la Ec.~\eqref{eq:dft-matricial}.
 
 La diferencia está en cómo se calcula. La identidad de
 Bluestein~\cite{bluestein1970}, $nk = \frac{1}{2}\left[n^2 + k^2 - (k - n)^2\right]$,
@@ -331,7 +331,7 @@ Fresnel--Bluestein, con la que se han modelado hologramas de alta apertura
 numérica~\cite{restrepo2011}: incorpora el frente esférico con una
 discretización no lineal que resuelve el problema de muestreo. Como se apoya
 en la aproximación de Fresnel, falla a magnificaciones bajas y para aperturas
-numéricas mayores que 0.58~\cite{restrepo2011, lopera2024}. La librería pyDHM
+numéricas mayores que 0.58~\cite{restrepo2011, lopera2024}. La biblioteca pyDHM
 incluye una implementación de la transformada de
 Fresnel--Bluestein~\cite{castaneda2022}, igualmente paraxial.
 
