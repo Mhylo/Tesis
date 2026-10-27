@@ -2,6 +2,7 @@
 
     python -m scripts.hologramas_carlos.correr foco
     python -m scripts.hologramas_carlos.correr calibracion
+    python -m scripts.hologramas_carlos.correr grupo5
     python -m scripts.hologramas_carlos.correr exacto
     python -m scripts.hologramas_carlos.correr zL
 
@@ -14,6 +15,9 @@ foco         Barrido grueso de D (5 a 200 mm, paso 0.5) en la captura 1 de cada
              -> focos_D.csv, curvas_<conjunto>.npz
 calibracion  M con el USAF (cajas_usaf.json) y el ajuste conjunto del pixel, L y
              la platina. -> calibracion.json, L_implicito.csv
+grupo5       El grupo 5 del USAF de amplitud, que no entra en la calibracion,
+             medido igual en z9/1 y z17/5 como comprobacion de la escala
+             (cajas_usaf.json["amp_grupo5"]). -> grupo5.csv
 exacto       El motor exacto del repo (CamposT.dlhm.Reconstructor) con la
              geometria adoptada (DELTA_EXP, L_EXP) en las 17 posiciones de los
              dos conjuntos, captura 1. -> focos_exactos.csv
@@ -191,6 +195,42 @@ def correr_calibracion():
             w.writerow(fila)
 
 
+# ------------------------------------------------------------------ grupo 5
+def correr_grupo5():
+    """Comprobacion de la escala con el grupo 5 del USAF de amplitud, que no
+    entra en la calibracion (lo pidio Carlos al revisar, 26/10). Se mide como
+    en correr_calibracion (medir_M y el mismo criterio de borde) y se compara
+    con la M de los otros grupos en esa posicion (calibracion.json) y con la
+    que predice la geometria adoptada con el pixel nominal, 1/p + p D/L
+    (Ec. M-D del manuscrito)."""
+    focos = leer_focos()
+    cajas = json.loads(CAJAS.read_text())["amp_grupo5"]
+    cal = json.load(open(SALIDA / "calibracion.json"))["magnificaciones"]
+    p = DELTA_EXP / DELTA_SUPUESTO
+    filas = []
+    for k, v in sorted(cajas.items(), key=lambda kv: int(kv[0])):
+        D = D_de(focos, "amp", k, v["captura"])
+        Ms = medir_M("amp", k, v["captura"], v["elementos"], D)
+        for g, e, o, w, s, m in Ms:
+            filas.append(dict(k=k, captura=v["captura"], g=g, e=e, o=o, w=f"{w:.2f}",
+                              sigma=f"{s:.2f}", M=f"{m:.4f}", nitido=int(s <= SIGMA_MAX)))
+        nitidos = np.array([m[5] for m in Ms if m[4] <= SIGMA_MAX])
+        if nitidos.size < 2:
+            print(f"z{k}/{v['captura']}: {nitidos.size} de {len(Ms)} con borde nitido; "
+                  f"no se promedia", flush=True)
+            continue
+        M, eM = nitidos.mean(), nitidos.std(ddof=1) / np.sqrt(nitidos.size)
+        M_geo = 1 / p + p * D / L_EXP
+        print(f"z{k}/{v['captura']}: grupo 5 M = {M:.3f} +- {eM:.3f} ({nitidos.size} de "
+              f"{len(Ms)} con borde nitido); otros grupos {cal[k]['M']:.3f} "
+              f"({100 * (M / cal[k]['M'] - 1):+.1f} %); geometria adoptada {M_geo:.3f} "
+              f"({100 * (M / M_geo - 1):+.1f} %)", flush=True)
+    with open(SALIDA / "grupo5.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(filas[0]))
+        w.writeheader()
+        w.writerows(filas)
+
+
 # ------------------------------------------------------------------ motor exacto
 def barrido_exacto(conjunto, k, cap, D, L, delta, semi, n):
     """-> (zs, curva orientada, segundos por plano). D en pixel de 1.83 um."""
@@ -270,7 +310,7 @@ def correr_zL():
 
 if __name__ == "__main__":
     a = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    a.add_argument("que", choices=("foco", "calibracion", "exacto", "zL", "imagenes"))
-    {"foco": correr_foco, "calibracion": correr_calibracion,
+    a.add_argument("que", choices=("foco", "calibracion", "grupo5", "exacto", "zL", "imagenes"))
+    {"foco": correr_foco, "calibracion": correr_calibracion, "grupo5": correr_grupo5,
      "exacto": correr_exacto, "zL": correr_zL,
      "imagenes": correr_imagenes}[a.parse_args().que]()
