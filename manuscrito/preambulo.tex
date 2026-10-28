@@ -82,8 +82,10 @@
 \usepackage[backend=biber, style=ieee]{biblatex}
 \addbibresource{referencias.bib}
 % biblatex-ieee usa la cadena 'artno' (número de artículo, p. ej. e0275818)
-% y no la trae traducida al español.
-\DefineBibliographyStrings{spanish}{artno = {art\adddot}}
+% y no la trae traducida al español. Las de las URL las pone tras punto y en
+% minúscula ("2024. visitado ... dirección: https://..."); van como frase.
+\DefineBibliographyStrings{spanish}{artno = {art\adddot},
+  urlseen = {Consultado el}, url = {Disponible en}}
 % biblatex en español separa los rangos de páginas con guion (spanish.lbx);
 % el tutor los pide con raya corta, como en el estilo IEEE.
 \DefineBibliographyExtras{spanish}{%

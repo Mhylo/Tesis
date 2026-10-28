@@ -135,8 +135,9 @@ y qué parte del cambio de precisión.
                         DLHM-processing-tools). NO están en git: son ~224 MB y
                         tienen su propia historia. Ver más abajo.
 
-    docs/               El paper de la tesis y el cronograma del trabajo de
-                        grado.
+    docs/               Notas de trabajo y planes. Los PDF de los artículos
+                        de referencia, el cronograma y las notas de reunión
+                        viven solo en disco (.gitignore).
 
 ## Instalación
 
@@ -305,7 +306,8 @@ los cuales 172 MB son salidas de plotly (`manual_focus.html`, 70 MB) que no
 aportan nada al repo. Si la carpeta no está, se recupera de:
 
 - <https://github.com/catrujilla/pyDHM>
-- DLHM-model y DLHM-processing-tools, del grupo de Óptica Aplicada de EAFIT
+- <https://github.com/mloper23/DLHM-model>
+- <https://github.com/mloper23/DLHM-processing-tools> (pyLHM)
 
 De ahí, lo relevante: `pyDHM/numericalPropagation.py` (propagadores de
 referencia ya publicados y validados) y `pyLHM/myfunctions.py` (versión
@@ -356,3 +358,9 @@ Compara `fft_asm`, `blas` y `mpasm` contra `angularSpectrum` y `bluestein` de
 pyDHM, con el gaussiano analítico propagado como árbitro para que el contraste
 no dependa de cuál implementación se dé por buena. Si la carpeta no está, lo
 dice y termina sin error.
+
+## Licencia
+
+El código propio se distribuye con licencia MIT (ver `LICENSE`).
+`referencia/zhao2020/` es el código de Zhao et al., publicado en figshare
+(doi:10.6084/m9.figshare.12972872) con licencia CC BY 4.0, y la conserva.
