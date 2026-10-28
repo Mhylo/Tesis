@@ -8,16 +8,16 @@ Rama: fuente-dlhm
 El usuario notó que los hologramas DLHM «ya no generan el característico patrón
 de frente de onda esférico». Lo que se investigó el 2026-09-29:
 
-- **No es una regresión.** Con el código de `main` (56f3694) la ida
+- **No es una regresión.** Con el código de `main` (27636b5) la ida
   regenera el holograma exacto guardado el 2026-09-28 a las 23:08 con
   diferencia relativa 1.8e-4, y `tests/test_dlhm.py` pasa entero (23
   pruebas, Rayleigh-Sommerfeld a 3.7e-6).
-- **El patrón venía de otro modelo.** Hasta 03d77a5, `mi_prueba_dlhm.py`
+- **El patrón venía de otro modelo.** Hasta a2fd810, `mi_prueba_dlhm.py`
   leía `Simulated_hologram.png` (Carlos) o `resultados/dlhm_propio/holo.png`
   (`dlhm()` de Lopera). Los dos modelos, DESPUÉS de propagar, multiplican
   por una envolvente de la fuente —`exp(-2r/(L·tan(asin NA)))` en `dlhm()`,
   `(1 - r/r.max())` en `realisticDLHM` de pyLHM— y aplican Brown-Conrady.
-  Desde dfe6fe7 el script simula con `CamposT.dlhm.holograma()`, que supone
+  Desde fa871bd el script simula con `CamposT.dlhm.holograma()`, que supone
   una fuente puntual ideal (isótropa) y devuelve I/I_ref. Por el escalado de
   Fresnel eso es un holograma de Gabor de onda plana del objeto magnificado,
   sin firma global.

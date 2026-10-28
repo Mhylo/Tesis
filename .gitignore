@@ -22,7 +22,7 @@ docs/reunion_asesor.*
 
 # TODO resultados/ es regenerable menos resultados/campos/, que son los campos
 # curados que si van al repo. Se ignora por lista blanca y no enumerando lo
-# regenerable, porque enumerar ya fallo una vez: el commit bd80c2f saco del
+# regenerable, porque enumerar ya fallo una vez: el commit a9809fc saco del
 # repo las salidas de comparacion.py, figura_escenario.py y la
 # retropropagacion, pero no las anadio aqui, y volvieron a aparecer sin
 # seguimiento a la primera corrida (tarea 71 del cronograma).

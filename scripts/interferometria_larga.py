@@ -1,7 +1,7 @@
 """Tarea 86: ¿rinde más el MPASM en montajes de distancia larga, como la
 interferometría holográfica digital (DHI)?
 
-El manuscrito (commit 8a3c4a3) dice que el K_f automático crece como sqrt(z)
+El manuscrito (commit 5747d73) dice que el K_f automático crece como sqrt(z)
 cuando el campo desborda la ventana y que por eso el MPASM es más útil en
 montajes largos. Aquí se contrasta en una geometría de DHI simulada.
 
