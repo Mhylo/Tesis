@@ -13,6 +13,13 @@ Tesis_env/
 Carlos/
 referencia/carlos/
 
+# Solo en disco desde el 28/10, al dejar el repo publico con licencia MIT: los
+# PDF de articulos de terceros (con derechos de sus editoriales), el
+# cronograma del TG y las notas de reunion con el tutor.
+docs/*.pdf
+docs/Cronograma_TG_DLHM.xlsx
+docs/reunion_asesor.*
+
 # TODO resultados/ es regenerable menos resultados/campos/, que son los campos
 # curados que si van al repo. Se ignora por lista blanca y no enumerando lo
 # regenerable, porque enumerar ya fallo una vez: el commit bd80c2f saco del
