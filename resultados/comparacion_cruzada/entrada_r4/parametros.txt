@@ -1,0 +1,9 @@
+objeto = C:\Users\User\Desktop\Tesis\resultados\campos\entrada.png
+malla = 512x512
+lambda [mm] = 0.000405
+delta [mm] = 0.00345
+ZS [mm] = (192.6, 385.2, 963.0, 1926.0)
+ENTRADA = intensidad
+S = 1
+R = 4
+dispositivo = gpu
