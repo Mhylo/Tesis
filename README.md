@@ -1,143 +1,29 @@
-# Tesis — propagación de campos ópticos en GPU
+# Tesis — propagadores con muestreo controlado para la DLHM
 
-Comparación de propagadores de campo óptico ejecutados en CPU y en GPU con el
-mismo código, para cuantificar qué parte de la aceleración viene del hardware
-y qué parte del cambio de precisión.
+Código del trabajo de grado *Implementación y validación de propagadores
+numéricos con muestreo controlado para la reconstrucción de hologramas en
+microscopía holográfica digital sin lentes* (Ingeniería Física, Universidad
+EAFIT, 2026). Tres propagadores del espectro angular —FFT-ASM, BLAS y el MPASM
+de Zhao et al. (2020)— en un mismo paquete que corre en CPU y en GPU con el
+mismo código: verificados contra referencias independientes, validados bajo el
+muestreo de la DLHM y aplicados a hologramas registrados en el laboratorio.
+
+**¿De dónde sale una figura, una tabla o una diapositiva de la defensa? Está en
+[INDICE.md](INDICE.md):** cada una lleva al script que la dibuja y a los datos
+que lee.
 
 ## Estructura
 
-    CamposT/            El paquete. Todo el código propio vive aquí. Los
-                        módulos, en el orden que recorre un campo:
-      campos.py         Construye el campo de entrada: una imagen, o el target
-                        sintético de barras con su geometría (ancho de barra,
-                        periodo, pares de línea por mm).
-      roi.py            Recorta una ventana de la imagen para propagar sólo
-                        eso. Es un recorte PREVIO al propagador, así que sirve
-                        igual en los dos sentidos; radio_del_cono() dice lo
-                        que cuesta, y no lo impide.
-      propagadores.py   Lo propaga. MPASM, FFT-ASM y BL-ASM bajo una firma
-                        común, más kf_auto y la función de transferencia.
-      referencias.py    Contra qué se contrasta: el gaussiano analítico
-                        (cerrado, paraxial) y la Rayleigh-Sommerfeld I
-                        (cuadratura, no paraxial).
-      metricas.py       Cómo se mide la discrepancia: SAM en dB (más alto
-                        mejor) y rms_amplitud (más bajo mejor).
-      pipeline.py       Orquesta lo anterior: diagnostico() dice si hace falta
-                        MPASM, propagar() lo ejecuta, guardar() lo escribe.
-      propagacion.py    El camino de ida desde la línea de órdenes: lee tu
-                        imagen, la recorta si le das una ROI y la propaga a
-                        cada distancia. No confundir con propagadores.py, que
-                        son los algoritmos.
-      retropropagacion.py
-                        El camino de vuelta: de un holograma medido al objeto.
-                        Toma la imagen que le des y la retropropaga con los
-                        tres métodos sobre un barrido de distancias.
-      dlhm.py           La DLHM con su fuente puntual: MPASM con la onda
-                        esférica exacta dentro de las matrices de la DFT, en
-                        los dos sentidos y sin aproximación paraxial.
-                        holograma() simula, Reconstructor reconstruye un
-                        barrido de z reutilizando el espectro del sensor.
-      backend.py        Debajo de todo: elige CuPy (GPU) o NumPy (CPU) y fija
-                        la política de precisión: fases en float64 siempre,
-                        campos en complex64 en GPU.
-
-    scripts/
-      comparacion.py    Benchmark CPU vs GPU del Objetivo 1: escalado con el
-                        tamaño de malla N y con el sobremuestreo s.
-      exactitud.py      SAM [dB] de cada método contra el gaussiano analítico
-                        sobre siete órdenes de z: la tabla de la Figura 4.
-      contraste_referencias.py
-                        Contrasta CamposT contra pyDHM sobre el gaussiano
-                        analítico, que hace de árbitro entre las dos.
-      parchar_referencias.py
-                        Arregla los repos de terceros para que corran en este
-                        entorno. Ver más abajo.
-      mi_holograma.py   Retropropaga TU holograma con los parámetros como
-                        constantes editables: pegas la ruta y le das a Run.
-                        Llama al main() de CamposT.retropropagacion, no
-                        duplica nada.
-      retro_fft_angular.py
-      retro_blas.py
-      retro_mpasm.py    La misma ida y vuelta en una sola pieza, un script por
-                        propagador, sin importar CamposT: contraste
-                        independiente del paquete. Para leer el algoritmo, no
-                        para producir. Cada uno enseña lo suyo:
-                        · fft: el angularSpectrum de pyDHM tal cual, con dos
-                          defectos suyos medidos (ejes cruzados, evanescentes).
-                        · blas: sin referencia de terceros -no hay ningún
-                          BL-ASM en referencia/- pero mide cuánta banda
-                          descarta la máscara a cada z, y comprueba que corta
-                          todas las evanescentes, que es lo que hace que no
-                          reviente al retropropagar.
-                        · mpasm: el MatrixDftCPU de Zhao copiado tal cual como
-                          referencia. Enseña las dos erratas del original
-                          corriendo: el A²·B de la Ec. (14) y el Kf que se
-                          apaga a z < 0.
-      retro_holograma.py
-                        Retropropaga un holograma ya grabado: se lo entregas,
-                        no lo genera. A diferencia de los tres de arriba no
-                        lleva copia propia -llama a CamposT.pipeline.propagar()-
-                        y corre uno o varios a la vez sobre el mismo dato.
-      comparacion_cruzada.py
-                        Ida y vuelta con fase cruzando FFT-ASM y MPASM
-                        (mpasm_minimo) a cada z de una lista: las cuatro
-                        combinaciones, con los .npy de ida y vuelta, SAM y
-                        rms_amplitud contra el objeto y resumen.csv. Ida y
-                        vuelta FFT sale exacta aunque este aliada; las
-                        cruzadas son las que miden. Con R > 1 anade MPASM
-                        con la ventana ampliada (r, mag): un sensor simulado
-                        mas grande, que en la zona de Fresnel recupera el
-                        detalle que la ventana fija pierde. Escribe en
-                        resultados/comparacion_cruzada/.
-      figura_escenario.py
-                        Dibuja el escenario de la Tabla 1 del paper en tres
-                        figuras: la apertura, el frente de onda propagado y el
-                        corte axial x-z del haz. Este ultimo comprueba que el
-                        radio 1/e sigue a w0(R+z)/R, o sea que la lente del
-                        paper es un pinhole virtual.
-      verif_dlhm_esferico.py
-                        De dónde salen las cifras de CamposT/dlhm.py: la ida
-                        contra Rayleigh-Sommerfeld directo, el campo completo
-                        con tres reconstrucciones (exacta, sin ventanas y el
-                        escalado paraxial de la tarea 24) y el contraste con
-                        la cadena de Carlos. Escribe en resultados/dlhm_esferico/.
-
-    tests/              Verificación (pytest). Un fichero por módulo:
-      test_propagadores.py   propiedades de los propagadores, Kf por eje
-      test_rs1.py            la Rayleigh-Sommerfeld y su reducción a 1-D
-      test_metricas.py       el SAM del paper y la errata de su Ec. (16)
-      test_campos.py         geometría del target USAF y su conversión a lp/mm
-      test_retropropagacion.py
-                             re-localización del objeto, convención de signo y
-                             la ambigüedad de la imagen gemela
-      test_dlhm.py           la ventana de Fresnel contra su definición, la ida
-                             contra Rayleigh-Sommerfeld, y la vuelta: recupera
-                             el objeto y lo pone donde está
-
-    resultados/         Salidas de los scripts: figuras y CSV. Se regeneran.
-      escenario/        Las tres figuras del escenario de la Tabla 1.
-      campos/           Los campos propagados, una carpeta por propagador
-                        (fft/, blas/, mpasm/), para que el método se lea en
-                        la ruta. Los parámetros van en el nombre:
-                        mpasm/z0020_s2.png es MPASM a z = 20 mm con s = 2.
-      retropropagacion/ Las reconstrucciones, una subcarpeta por holograma y
-                        dentro una por propagador.
-      propagacion/      Los campos de ida de tu propia imagen, con la misma
-                        forma: una subcarpeta por imagen y dentro una por
-                        propagador.
-      exactitud/        sam_vs_z.csv y sam_vs_z.png: la reproducción de la
-                        Figura 4, con la Ec. (16) corregida.
-
-    referencia/
-      zhao2020/         Código original de Zhao et al., Opt. Lett. 45, 5937
-                        (2020), del que parten los propagadores. No se modifica.
-      carlos/           Tres repos de terceros consultados (pyDHM, DLHM-model,
-                        DLHM-processing-tools). NO están en git: son ~224 MB y
-                        tienen su propia historia. Ver más abajo.
-
-    docs/               Notas de trabajo y planes. Los PDF de los artículos
-                        de referencia, el cronograma y las notas de reunión
-                        viven solo en disco (.gitignore).
+| Carpeta | Qué hay |
+|---|---|
+| [`CamposT/`](CamposT/README.md) | El paquete. Todo el código propio de cálculo: los propagadores, la DLHM con la onda esférica exacta, las referencias y las métricas. |
+| [`scripts/`](scripts/README.md) | Los cálculos de cada objetivo, que escriben en `resultados/`, y las figuras del manuscrito. |
+| [`tests/`](tests/README.md) | La suite de pytest. |
+| [`manuscrito/`](manuscrito/README.md) | El documento en LaTeX, en la versión entregada, y sus figuras. |
+| [`presentacion/`](presentacion/README.md) | Las figuras que se proyectaron en la defensa y el script que las dibuja. |
+| [`resultados/`](resultados/README.md) | Los datos detrás de las figuras y las tablas: los CSV y JSON chicos. Lo grande se regenera. |
+| [`referencia/`](referencia/README.md) | El código original de Zhao et al., del que parten los propagadores. |
+| [`docs/`](docs/README.md) | Notas de trabajo: la hoja de parámetros del montaje, la errata de K_f y las figuras de la guía de lectura. |
 
 ## Instalación
 

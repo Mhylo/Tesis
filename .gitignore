@@ -4,8 +4,12 @@ Tesis_env/
 *.egg-info/
 .pytest_cache/
 
-# Archivos de bloqueo que Excel crea junto al .xlsx mientras esta abierto
-~$*.xlsx
+# Archivos de bloqueo que Office crea junto al .xlsx o al .pptx mientras esta
+# abierto
+~$*
+
+# Configuracion local del editor
+.vscode/
 
 # Repos de terceros consultados como referencia (pyDHM, DLHM-model,
 # DLHM-processing-tools). Viven en disco pero no en el repo: son ~224 MB,
@@ -19,6 +23,28 @@ referencia/carlos/
 docs/*.pdf
 docs/Cronograma_TG_DLHM.xlsx
 docs/reunion_asesor.*
+
+# Solo en disco desde el 16/11: documentos personales y de entrega (carta de
+# aval, anteproyecto, avances), notas internas de la revision del manuscrito y
+# el texto de la guia de lectura. De la guia van al repo figuras_guia.py y sus
+# figuras, porque cuatro de ellas salen en las diapositivas de respaldo.
+docs/Entregables/
+docs/concilio_manuscrito.md
+docs/retomar_revision_carlos.md
+docs/guia_manuscrito/*
+!docs/guia_manuscrito/figuras_guia.py
+!docs/guia_manuscrito/figuras/
+
+# La presentacion de la defensa, por lista blanca. Van al repo las figuras que
+# se proyectan (figuras_charla.py y figuras_charla/) y el README. Quedan solo
+# en disco el .pptx (la fuente, que el autor edita en PowerPoint), sus
+# respaldos y su PDF, generar_defensa.py (lleva las notas del orador), los
+# guiones, ecuaciones/ y figuras/ (copias rasterizadas del manuscrito y
+# recortes de los hologramas crudos del laboratorio, que no se publican).
+presentacion/*
+!presentacion/README.md
+!presentacion/figuras_charla.py
+!presentacion/figuras_charla/
 
 # TODO resultados/ es regenerable menos resultados/campos/, que son los campos
 # curados que si van al repo. Se ignora por lista blanca y no enumerando lo
@@ -39,6 +65,56 @@ docs/reunion_asesor.*
 # o anade su ruta aqui con un ! delante.
 resultados/*
 !resultados/campos/
+!resultados/README.md
+
+# Los CSV y JSON chicos que respaldan las figuras y tablas del manuscrito y de
+# la presentacion (16/11, ver INDICE.md). Los .npy no: pesan de 2 a 64 MB cada
+# uno y se regeneran con el script que da INDICE.md. Una carpeta ignorada no
+# se recorre, asi que cada una se reabre (!carpeta/), se vuelve a ignorar por
+# dentro (carpeta/*) y se reabre solo lo que va.
+!resultados/escalado_N.csv
+!resultados/escalado_s.csv
+!resultados/exactitud/
+resultados/exactitud/*
+!resultados/exactitud/sam_vs_z.csv
+!resultados/dlhm_esferico/
+resultados/dlhm_esferico/*
+!resultados/dlhm_esferico/campo_N3000.csv
+!resultados/contraste_czt/
+resultados/contraste_czt/*
+!resultados/contraste_czt/acuerdo.csv
+!resultados/contraste_czt/tiempos.csv
+!resultados/barrido_obj2/
+resultados/barrido_obj2/*
+!resultados/barrido_obj2/barrido.csv
+!resultados/comparacion_cruzada/
+resultados/comparacion_cruzada/*
+!resultados/comparacion_cruzada/entrada*/
+resultados/comparacion_cruzada/entrada*/*
+!resultados/comparacion_cruzada/entrada*/resumen.csv
+!resultados/comparacion_cruzada/entrada*/parametros.txt
+!resultados/cruzada_dlhm/
+resultados/cruzada_dlhm/*
+!resultados/cruzada_dlhm/resumen.csv
+!resultados/interferometria_larga/
+resultados/interferometria_larga/*
+!resultados/interferometria_larga/resumen.csv
+# Derivados de los hologramas del laboratorio: medidas y curvas 1-D de enfoque,
+# nunca las imagenes (ni los hologramas ni las reconstrucciones .npy).
+!resultados/hologramas_carlos/
+resultados/hologramas_carlos/*
+!resultados/hologramas_carlos/L_implicito.csv
+!resultados/hologramas_carlos/calibracion.json
+!resultados/hologramas_carlos/carlos_vs_exacto.csv
+!resultados/hologramas_carlos/curvas_amp.npz
+!resultados/hologramas_carlos/curvas_phase.npz
+!resultados/hologramas_carlos/focos.csv
+!resultados/hologramas_carlos/focos_D.csv
+!resultados/hologramas_carlos/focos_exactos.csv
+!resultados/hologramas_carlos/grupo5.csv
+!resultados/hologramas_carlos/metricas_carlos.csv
+!resultados/hologramas_carlos/tiempos_carlos.csv
+!resultados/hologramas_carlos/z_frente_a_L.csv
 
 # Salida generada, 17 MB.
 test.html
